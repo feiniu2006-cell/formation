@@ -1,0 +1,16 @@
+.claude/
+__pycache__/
+*.pyc
+*.pyo
+*.exe
+dist/
+dist_encrypted/
+build/
+build_encrypted/
+build_backup_db/
+*.spec
+数据处理.code-workspace
+db_config.py
+formation_tool/formation_tool_settings.json
+formation_tool/formation_tool_settings.json.bak
+formation_tool/formation_tool_settings/

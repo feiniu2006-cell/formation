@@ -1,0 +1,169 @@
+"""Runner for generating group_weight data."""
+
+from formation_tool.utils import log_utils
+
+print = log_utils.emit
+
+
+def connect_group_weight_databases(read_db_name, write_db_name, *, deps):
+    """连接 group_weight 读取库和写入库。"""
+    read_conn = deps.connect_to_database(read_db_name)
+    if not read_conn:
+        print(f"无法连接配置库 {read_db_name}，生成 group_weight 终止")
+        return None, None
+
+    write_conn = deps.connect_to_database(write_db_name)
+    if not write_conn:
+        deps.close_safely(read_conn)
+        print(f"无法连接目标库 {write_db_name}，生成 group_weight 终止")
+        return None, None
+    return read_conn, write_conn
+
+
+def build_group_weight_generation_context(*, deps):
+    """Build the runtime context for one group_weight generation run."""
+    formation_exists = deps.get_group_weight_formation_exists()
+    active_modes = deps.get_active_group_weight_modes(formation_exists)
+    return {
+        'read_db_name': deps.get_config_db(),
+        'write_db_name': deps.get_final_db(),
+        'table_name': deps.get_group_weight_table_name(),
+        'formation_exists': formation_exists,
+        'active_modes': active_modes,
+        'ex_modes_enabled': [
+            mode for mode in deps.ex_group_modes
+            if formation_exists.get(mode, False)
+        ],
+    }
+
+
+def load_group_weight_generation_data(read_conn, context, *, deps):
+    """Load selected rebate values and convert them to weighted rebate pairs."""
+    rebates_by_mode, mode_exists = deps.load_group_weight_rebates_for_modes(
+        read_conn,
+        context['active_modes'],
+        context['read_db_name'],
+    )
+    mode_pairs = deps.build_group_weight_pairs_for_modes(
+        context['active_modes'],
+        rebates_by_mode,
+    )
+    return rebates_by_mode, mode_exists, mode_pairs
+
+
+def build_normalized_group_weight_generation_rows(
+    formation_exists,
+    rebates_by_mode,
+    mode_exists,
+    mode_pairs,
+    *,
+    deps,
+):
+    """Build and validate group_weight rows before writing."""
+    rows = deps.build_group_weight_rows_from_loaded_data(
+        formation_exists,
+        rebates_by_mode,
+        mode_exists,
+        mode_pairs,
+    )
+    if rows is None:
+        return None
+    if not rows:
+        deps.print_no_group_weight_rows()
+        return []
+    try:
+        return deps.normalize_group_weight_rows(rows)
+    except ValueError as exc:
+        deps.print_group_weight_validation_failed(exc)
+        return None
+
+
+def collect_group_weight_generation_warnings(context, rebates_by_mode, mode_exists, mode_pairs, rows):
+    """Collect non-blocking risks before replacing the final group_weight table."""
+    warnings = []
+    active_modes = context.get('active_modes') or []
+    if not rows:
+        warnings.append("没有可写入的 group_weight 行")
+    for mode in active_modes:
+        if not mode_exists.get(mode, False):
+            warnings.append(f"模式 {mode} 对应的采样配置表不存在")
+            continue
+        if not rebates_by_mode.get(mode):
+            warnings.append(f"模式 {mode} 的采样配置表为空或没有已选 rebate")
+            continue
+        if not mode_pairs.get(mode):
+            warnings.append(f"模式 {mode} 按当前权重规则匹配后没有可写入的非0权重 rebate")
+    return warnings
+
+
+def print_group_weight_generation_warnings(warnings):
+    if not warnings:
+        return
+    print("\ngroup_weight 写入前风险提示：")
+    for warning in warnings:
+        print(f"- {warning}")
+
+
+def write_group_weight_generation_rows(write_conn, context, rows, *, deps):
+    """Write normalized group_weight rows to the final database."""
+    if not rows:
+        return 0
+    target = f"{context['write_db_name']}.{context['table_name']}"
+    deps.print_replace_with_staging_notice(target)
+    written = deps.replace_group_weight_rows_atomically(
+        write_conn,
+        context['table_name'],
+        rows,
+        context['write_db_name'],
+    )
+    deps.print_write_complete(written, target)
+    return written
+
+
+def generate_group_weight_config(*, deps):
+    """根据已生成的 rebate_count 配置表生成当前游戏的 group_weight 表。"""
+    deps.check_cancelled()
+    context = deps.build_group_weight_generation_context()
+    deps.print_group_weight_generation_summary(context)
+
+    read_conn, write_conn = deps.connect_group_weight_databases(
+        context['read_db_name'],
+        context['write_db_name'],
+    )
+    if not read_conn or not write_conn:
+        return False
+
+    try:
+        rebates_by_mode, mode_exists, mode_pairs = deps.load_group_weight_generation_data(
+            read_conn,
+            context,
+        )
+        rows = deps.build_normalized_group_weight_generation_rows(
+            context['formation_exists'],
+            rebates_by_mode,
+            mode_exists,
+            mode_pairs,
+        )
+        if rows is None:
+            return False
+
+        print_group_weight_generation_warnings(
+            collect_group_weight_generation_warnings(
+                context,
+                rebates_by_mode,
+                mode_exists,
+                mode_pairs,
+                rows,
+            )
+        )
+        deps.write_group_weight_generation_rows(write_conn, context, rows)
+        deps.verify_group_weight_zero_rebate_rows(write_conn, context['table_name'], rows)
+        return True
+    except Exception as e:
+        deps.print_step_error("生成 group_weight 失败", e)
+        deps.rollback_safely(write_conn)
+        return False
+    finally:
+        deps.close_safely(read_conn)
+        deps.close_safely(write_conn)
+
