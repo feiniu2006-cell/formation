@@ -4,17 +4,23 @@ import hashlib
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from formation_tool.core import settings_logic
 
 STATE_SCHEMA_VERSION = 1
 STATE_DIR_NAME = 'formation_sampling_tasks'
+COMPLETED_STATUSES = {'completed', 'completed_no_data'}
+DEFAULT_COMPLETED_STATE_RETENTION_DAYS = 14
 
 
 def utc_now_text():
-    return datetime.utcnow().replace(microsecond=0).isoformat() + 'Z'
+    return datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None).isoformat() + 'Z'
+
+
+def parse_utc_text(value):
+    return datetime.fromisoformat(str(value).replace('Z', '+00:00')).astimezone(timezone.utc)
 
 
 def get_state_base_dir():
@@ -198,3 +204,37 @@ def build_staging_state_from_saved(state):
         },
         'next_id_state': [int(staging.get('next_id') or 1)],
     }
+
+
+def cleanup_completed_states(*, max_age_days=DEFAULT_COMPLETED_STATE_RETENTION_DAYS, base_dir=None, now=None, dry_run=False):
+    """Remove old completed state files; keep running/failed state for resume/debug."""
+    max_age_days = int(max_age_days)
+    if max_age_days < 0:
+        raise ValueError("max_age_days must be non-negative")
+    base_path = Path(base_dir) if base_dir is not None else get_state_base_dir()
+    if not base_path.exists():
+        return []
+
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    cutoff = now.astimezone(timezone.utc) - timedelta(days=max_age_days)
+    removed = []
+
+    for path in sorted(base_path.glob('*.json')):
+        try:
+            state = json.loads(path.read_text(encoding='utf-8-sig'))
+        except Exception:
+            continue
+        if state.get('status') not in COMPLETED_STATUSES:
+            continue
+        try:
+            updated_at = parse_utc_text(state.get('updated_at'))
+        except Exception:
+            updated_at = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+        if updated_at > cutoff:
+            continue
+        removed.append(path)
+        if not dry_run:
+            path.unlink(missing_ok=True)
+    return removed

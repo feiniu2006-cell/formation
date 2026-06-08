@@ -53,12 +53,12 @@ def build_direct_rebate_config_rows(stats_df, *, check_cancelled=_noop, print_fn
     print_fn(f"{'rebate':>12}  {'total':>10}  {'count':>10}  备注")
     print_fn("-" * 50)
     result_rows = []
-    for _, row in stats_df.iterrows():
+    for row in stats_df[['rebate', 'total']].itertuples(index=False):
         check_cancelled()
-        if _is_missing(row['rebate']):
+        if _is_missing(row.rebate):
             continue
-        rebate = int(row['rebate'])
-        total = int(row['total'])
+        rebate = int(row.rebate)
+        total = int(row.total)
         if total <= 0:
             continue
         print_fn(f"{rebate:>12}  {total:>10}  {total:>10}  直接写入")
@@ -132,10 +132,10 @@ def build_rule_based_rebate_config_rows(stats_df, rules, *, check_cancelled=_noo
     range_buckets = {}
     result_rows = []
 
-    for _, row in stats_df.iterrows():
+    for row in stats_df[['rebate', 'total']].itertuples(index=False):
         check_cancelled()
-        rebate = int(row['rebate'])
-        total = int(row['total'])
+        rebate = int(row.rebate)
+        total = int(row.total)
         rule = get_rule_for_rebate(rebate, rules)
         if rule is None:
             print_fn(f"{rebate:>12}  {total:>10}  {'---':>10}  跳过")

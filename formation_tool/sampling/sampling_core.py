@@ -18,6 +18,48 @@ print = log_utils.emit
 
 SAMPLE_ID_RANDOM_RANGE_ATTEMPTS = 8
 SAMPLE_ID_RANDOM_RANGE_MAX_CANDIDATES_PER_QUERY = 20000
+SAMPLE_ROW_WRITE_CHUNK_SIZE = 500
+SAMPLING_TIMING_KEYS = (
+    'id_query_seconds',
+    'row_read_seconds',
+    'row_write_seconds',
+    'id_remap_seconds',
+    'rebate_seconds',
+)
+
+
+def new_sampling_timing():
+    timing = {key: 0.0 for key in SAMPLING_TIMING_KEYS}
+    timing.update({
+        'rebate_count': 0,
+        'row_count': 0,
+    })
+    return timing
+
+
+def add_sampling_timing(timing, key, elapsed):
+    if timing is not None:
+        timing[key] = float(timing.get(key, 0.0)) + float(elapsed)
+
+
+def print_sampling_timing_summary(timing):
+    if not timing:
+        return
+    print("\n采样性能汇总：")
+    print(f"  rebate数: {int(timing.get('rebate_count', 0))}，写入行数: {int(timing.get('row_count', 0))}")
+    print(f"  查ID耗时: {timing.get('id_query_seconds', 0.0):.2f} 秒")
+    print(f"  读完整行耗时: {timing.get('row_read_seconds', 0.0):.2f} 秒")
+    print(f"  写入临时表耗时: {timing.get('row_write_seconds', 0.0):.2f} 秒")
+    print(f"  append冲突ID处理耗时: {timing.get('id_remap_seconds', 0.0):.2f} 秒")
+    print(f"  rebate循环总耗时: {timing.get('rebate_seconds', 0.0):.2f} 秒")
+
+
+def record_rebate_timing(timing, start, row_count=0):
+    if timing is None:
+        return
+    add_sampling_timing(timing, 'rebate_seconds', time.perf_counter() - start)
+    timing['rebate_count'] = int(timing.get('rebate_count', 0)) + 1
+    timing['row_count'] = int(timing.get('row_count', 0)) + int(row_count or 0)
 
 
 def configure(**values):
@@ -193,46 +235,24 @@ def warn_sampling_read_index(source_conn, source_table_name, sample_conditions):
     )
 
 
-def select_sample_ids_for_rebate(
-    *,
-    source_engine,
-    source_db_name,
-    source_table_ref,
-    sample_conditions,
-    target_rebate,
-    sample_size,
-):
-    """查询并抽取一组需要采样的 id。"""
-    id_query = f"""
-    SELECT DISTINCT id
-    FROM {source_table_ref}
-    WHERE {sample_conditions['where_clause'].format(target_rebate=target_rebate)}
-    """
-    id_df = sql_with_retry(
-        lambda: pd.read_sql_query(id_query, source_engine),
-        f"查询采样ID (rebate={target_rebate})",
-    )
-    check_cancelled()
-    print(f"从 {source_db_name} 查询到 {len(id_df)} 个符合条件的ID (rebate={target_rebate})")
-
-    if len(id_df) > sample_size:
-        sampled_ids = id_df.sample(
-            n=sample_size,
-            random_state=sample_conditions['random_seed'],
-        )['id'].tolist()
-        print(f"随机抽取 {sample_size} 个ID")
-    else:
-        sampled_ids = id_df['id'].tolist()
-        print(f"ID数量不足，使用全部 {len(id_df)} 个ID")
-    return [int(value) for value in sampled_ids]
-
-
 def _sample_ids_from_candidates(candidate_ids, sample_size, random_seed):
     candidate_ids = sorted({int(value) for value in candidate_ids})
     if len(candidate_ids) <= sample_size:
         return candidate_ids
     rng = random.Random(str(random_seed))
     return rng.sample(candidate_ids, sample_size)
+
+
+def _query_int_column(source_engine, query):
+    with source_engine.connect() as conn:
+        result = conn.exec_driver_sql(query)
+        return [int(row[0]) for row in result if row[0] is not None]
+
+
+def _query_single_row(source_engine, query):
+    with source_engine.connect() as conn:
+        result = conn.exec_driver_sql(query)
+        return result.fetchone()
 
 
 def _select_sample_ids_with_full_scan(
@@ -244,6 +264,7 @@ def _select_sample_ids_with_full_scan(
     target_rebate,
     sample_size,
     random_seed,
+    timing=None,
 ):
     """Fallback: query all matching distinct ids and sample in Python."""
     start = time.perf_counter()
@@ -252,25 +273,27 @@ def _select_sample_ids_with_full_scan(
     FROM {source_table_ref}
     WHERE {where_clause}
     """
-    id_df = sql_with_retry(
-        lambda: pd.read_sql_query(id_query, source_engine),
+    ids = sql_with_retry(
+        lambda: _query_int_column(source_engine, id_query),
         f"全量查询采样ID (rebate={target_rebate})",
     )
+    elapsed = time.perf_counter() - start
+    add_sampling_timing(timing, 'id_query_seconds', elapsed)
     check_cancelled()
     print(
-        f"从 {source_db_name} 全量查询到 {len(id_df)} 个符合条件的ID "
-        f"(rebate={target_rebate})，耗时 {time.perf_counter() - start:.2f} 秒"
+        f"从 {source_db_name} 全量查询到 {len(ids)} 个符合条件的ID "
+        f"(rebate={target_rebate})，耗时 {elapsed:.2f} 秒"
     )
 
-    sampled_ids = _sample_ids_from_candidates(id_df['id'].tolist(), sample_size, random_seed)
-    if len(id_df) > sample_size:
+    sampled_ids = _sample_ids_from_candidates(ids, sample_size, random_seed)
+    if len(ids) > sample_size:
         print(f"随机抽取 {sample_size} 个ID")
     else:
         print(f"ID数量不足，使用全部 {len(sampled_ids)} 个ID")
     return sampled_ids
 
 
-def _query_limited_distinct_ids(source_engine, source_table_ref, where_clause, target_rebate, limit):
+def _query_limited_distinct_ids(source_engine, source_table_ref, where_clause, target_rebate, limit, *, timing=None):
     start = time.perf_counter()
     query = f"""
     SELECT DISTINCT `id`
@@ -278,34 +301,37 @@ def _query_limited_distinct_ids(source_engine, source_table_ref, where_clause, t
     WHERE {where_clause}
     LIMIT {int(limit)}
     """
-    id_df = sql_with_retry(
-        lambda: pd.read_sql_query(query, source_engine),
+    ids = sql_with_retry(
+        lambda: _query_int_column(source_engine, query),
         f"稀疏rebate探测 (rebate={target_rebate})",
     )
+    elapsed = time.perf_counter() - start
+    add_sampling_timing(timing, 'id_query_seconds', elapsed)
     print(
-        f"稀疏rebate探测耗时：{time.perf_counter() - start:.2f} 秒，"
-        f"最多检查 {int(limit)} 个，返回 {len(id_df)} 个 (rebate={target_rebate})"
+        f"稀疏rebate探测耗时：{elapsed:.2f} 秒，"
+        f"最多检查 {int(limit)} 个，返回 {len(ids)} 个 (rebate={target_rebate})"
     )
-    return [int(value) for value in id_df['id'].tolist()]
+    return ids
 
 
-def _query_sample_id_range(source_engine, source_table_ref, where_clause, target_rebate):
+def _query_sample_id_range(source_engine, source_table_ref, where_clause, target_rebate, *, timing=None):
     start = time.perf_counter()
     range_query = f"""
     SELECT MIN(`id`) AS min_id, MAX(`id`) AS max_id
     FROM {source_table_ref}
     WHERE {where_clause}
     """
-    range_df = sql_with_retry(
-        lambda: pd.read_sql_query(range_query, source_engine),
+    range_row = sql_with_retry(
+        lambda: _query_single_row(source_engine, range_query),
         f"查询采样ID范围 (rebate={target_rebate})",
     )
     elapsed = time.perf_counter() - start
-    if range_df.empty:
+    add_sampling_timing(timing, 'id_query_seconds', elapsed)
+    if not range_row:
         print(f"采样ID范围查询耗时：{elapsed:.2f} 秒，未查询到范围")
         return None, None
-    min_id = range_df.iloc[0].get('min_id')
-    max_id = range_df.iloc[0].get('max_id')
+    min_id = range_row[0]
+    max_id = range_row[1]
     if pd.isna(min_id) or pd.isna(max_id):
         print(f"采样ID范围查询耗时：{elapsed:.2f} 秒，未查询到范围")
         return None, None
@@ -328,6 +354,7 @@ def _query_candidate_ids_from_random_ranges(
     random_seed,
     min_id,
     max_id,
+    timing=None,
 ):
     if sample_size <= 0 or min_id is None or max_id is None:
         return []
@@ -351,17 +378,18 @@ def _query_candidate_ids_from_random_ranges(
         LIMIT {per_query_limit}
         """
         start = time.perf_counter()
-        id_df = sql_with_retry(
-            lambda: pd.read_sql_query(query, source_engine),
+        ids = sql_with_retry(
+            lambda: _query_int_column(source_engine, query),
             f"随机范围查询采样ID (rebate={target_rebate}, 第{attempt}次)",
         )
         elapsed = time.perf_counter() - start
+        add_sampling_timing(timing, 'id_query_seconds', elapsed)
         before = len(candidate_ids)
-        candidate_ids.update(int(value) for value in id_df['id'].tolist())
+        candidate_ids.update(ids)
         added = len(candidate_ids) - before
         print(
             f"  随机范围第 {attempt}/{SAMPLE_ID_RANDOM_RANGE_ATTEMPTS} 次："
-            f"起点id={start_id}，返回 {len(id_df)} 个，新增 {added} 个，"
+            f"起点id={start_id}，返回 {len(ids)} 个，新增 {added} 个，"
             f"累计 {len(candidate_ids)} 个，耗时 {elapsed:.2f} 秒"
         )
         if len(candidate_ids) >= sample_size:
@@ -382,6 +410,7 @@ def select_sample_ids_for_rebate(
     sample_conditions,
     target_rebate,
     sample_size,
+    timing=None,
 ):
     """Query and sample ids for one rebate, preferring random id-range probes."""
     sample_size = int(sample_size)
@@ -398,6 +427,7 @@ def select_sample_ids_for_rebate(
         where_clause,
         target_rebate,
         sample_size + 1,
+        timing=timing,
     )
     if len(sparse_probe_ids) <= sample_size:
         print(
@@ -412,6 +442,7 @@ def select_sample_ids_for_rebate(
         source_table_ref,
         where_clause,
         target_rebate,
+        timing=timing,
     )
     candidate_ids = _query_candidate_ids_from_random_ranges(
         source_engine=source_engine,
@@ -422,6 +453,7 @@ def select_sample_ids_for_rebate(
         random_seed=random_seed,
         min_id=min_id,
         max_id=max_id,
+        timing=timing,
     )
 
     if len(candidate_ids) < sample_size:
@@ -437,6 +469,7 @@ def select_sample_ids_for_rebate(
             target_rebate=target_rebate,
             sample_size=sample_size,
             random_seed=random_seed,
+            timing=timing,
         )
     else:
         sampled_ids = _sample_ids_from_candidates(candidate_ids, sample_size, random_seed)
@@ -449,7 +482,7 @@ def select_sample_ids_for_rebate(
     return [int(value) for value in sampled_ids]
 
 
-def read_sample_rows_by_ids(source_engine, source_table_ref, id_batch, target_rebate, sample_conditions=None):
+def read_sample_rows_by_ids(source_engine, source_table_ref, id_batch, target_rebate, sample_conditions=None, *, timing=None):
     """按 id 分块读取源表完整行。"""
     id_text = ','.join(str(int(value)) for value in id_batch)
     where_parts = [f"`id` IN ({id_text})"]
@@ -469,8 +502,10 @@ def read_sample_rows_by_ids(source_engine, source_table_ref, id_batch, target_re
         lambda: pd.read_sql_query(query, source_engine),
         f"提取采样数据 (rebate={target_rebate})",
     )
+    elapsed = time.perf_counter() - start
+    add_sampling_timing(timing, 'row_read_seconds', elapsed)
     print(
-        f"读取完整采样行耗时：{time.perf_counter() - start:.2f} 秒，"
+        f"读取完整采样行耗时：{elapsed:.2f} 秒，"
         f"id数={len(id_batch)}，行数={len(df)} (rebate={target_rebate})"
     )
     return df
@@ -509,14 +544,23 @@ def remap_sample_chunk_for_append_mode(
     return current_df, len(changed_pairs), changed_row_count, final_conn
 
 
-def write_sample_chunk_to_staging(current_df, final_engine, staging_table_name, target_rebate):
+def write_sample_chunk_to_staging(current_df, final_engine, staging_table_name, target_rebate, *, timing=None):
     start = time.perf_counter()
     sql_with_retry(
-        lambda: current_df.to_sql(staging_table_name, final_engine, if_exists='append', index=False),
+        lambda: current_df.to_sql(
+            staging_table_name,
+            final_engine,
+            if_exists='append',
+            index=False,
+            chunksize=SAMPLE_ROW_WRITE_CHUNK_SIZE,
+            method='multi',
+        ),
         f"写入数据 (rebate={target_rebate})",
     )
+    elapsed = time.perf_counter() - start
+    add_sampling_timing(timing, 'row_write_seconds', elapsed)
     print(
-        f"写入临时表耗时：{time.perf_counter() - start:.2f} 秒，"
+        f"写入临时表耗时：{elapsed:.2f} 秒，"
         f"行数={len(current_df)} (rebate={target_rebate})"
     )
 
@@ -536,6 +580,7 @@ def fetch_and_write_sample_rows_in_chunks(
     append_mode,
     id_mapping,
     next_id_state,
+    timing=None,
 ):
     """分块提取采样行并写入临时表，避免超长 IN 查询和过大 DataFrame。"""
     total_start = time.perf_counter()
@@ -552,6 +597,7 @@ def fetch_and_write_sample_rows_in_chunks(
             id_batch,
             target_rebate,
             sample_conditions,
+            timing=timing,
         )
         check_cancelled()
         if current_df.empty:
@@ -568,8 +614,10 @@ def fetch_and_write_sample_rows_in_chunks(
                 id_mapping=id_mapping,
                 next_id_state=next_id_state,
             )
+            elapsed = time.perf_counter() - start
+            add_sampling_timing(timing, 'id_remap_seconds', elapsed)
             print(
-                f"追加模式id冲突处理耗时：{time.perf_counter() - start:.2f} 秒，"
+                f"追加模式id冲突处理耗时：{elapsed:.2f} 秒，"
                 f"冲突id={changed_pair_count}，改写行={changed_row_count}"
             )
             totals['changed_pair_count'] += changed_pair_count
@@ -580,6 +628,7 @@ def fetch_and_write_sample_rows_in_chunks(
             final_engine,
             staging_table_name,
             target_rebate,
+            timing=timing,
         )
         totals['row_count'] += len(current_df)
         if append_mode:
@@ -606,6 +655,7 @@ def sample_rebate_to_staging(
     append_mode,
     id_mapping,
     next_id_state,
+    timing=None,
 ):
     """按一条 rebate_count 配置采样并写入临时目标表。"""
     total_start = time.perf_counter()
@@ -624,9 +674,11 @@ def sample_rebate_to_staging(
         sample_conditions=sample_conditions,
         target_rebate=target_rebate,
         sample_size=sample_size,
+        timing=timing,
     )
     if not sampled_ids:
         print(f"没有找到 rebate={target_rebate} 的数据")
+        record_rebate_timing(timing, total_start)
         return 0, 0, 0, final_conn
 
     totals, final_conn = fetch_and_write_sample_rows_in_chunks(
@@ -643,13 +695,16 @@ def sample_rebate_to_staging(
         append_mode=append_mode,
         id_mapping=id_mapping,
         next_id_state=next_id_state,
+        timing=timing,
     )
     if totals['row_count'] <= 0:
         print(f"没有提取到 rebate={target_rebate} 的数据")
+        record_rebate_timing(timing, total_start)
         return 0, totals['changed_pair_count'], totals['changed_row_count'], final_conn
 
     print(f"成功写入 {totals['row_count']} 条数据到临时表 {final_db_name}.{staging_table_name} (rebate={target_rebate})")
     print(f"rebate={target_rebate} 单项采样总耗时：{time.perf_counter() - total_start:.2f} 秒")
+    record_rebate_timing(timing, total_start, totals['row_count'])
     return totals['row_count'], totals['changed_pair_count'], totals['changed_row_count'], final_conn
 
 
@@ -768,15 +823,20 @@ def sample_config_rows_to_staging(
         'remapped_id_count': 0,
         'remapped_row_count': 0,
     })
+    timing = new_sampling_timing()
     completed_rebates = sampling_task_state.completed_rebate_set(task_state or {})
-    for _, row in config_df.iterrows():
+    for row in config_df[['rebate', 'count']].itertuples(index=False):
         check_cancelled()
-        target_rebate = int(row['rebate'])
+        target_rebate = int(row.rebate)
         if target_rebate in completed_rebates:
             print(f"跳过已完成的 rebate={target_rebate}，继续恢复采样")
             continue
+        row_data = {
+            'rebate': target_rebate,
+            'count': int(row.count),
+        }
         sampled_count, changed_pair_count, changed_row_count, final_conn = sample_rebate_to_staging(
-            row,
+            row_data,
             source_engine=source_engine,
             final_engine=final_engine,
             final_conn=final_conn,
@@ -788,6 +848,7 @@ def sample_config_rows_to_staging(
             append_mode=append_mode,
             id_mapping=staging_state['id_mapping'],
             next_id_state=staging_state['next_id_state'],
+            timing=timing,
         )
         totals['sampled_count'] += sampled_count
         totals['remapped_id_count'] += changed_pair_count
@@ -797,12 +858,13 @@ def sample_config_rows_to_staging(
                 task_state,
                 staging_state,
                 rebate=target_rebate,
-                sample_size=int(row['count']),
+                sample_size=row_data['count'],
                 sampled_count=sampled_count,
                 changed_pair_count=changed_pair_count,
                 changed_row_count=changed_row_count,
             )
             completed_rebates.add(target_rebate)
+    print_sampling_timing_summary(timing)
     return totals, final_conn
 
 

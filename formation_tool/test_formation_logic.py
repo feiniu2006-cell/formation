@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import build_formation_exe
 from formation_tool.common import common_config_entrypoints
 from formation_tool.common import common_config_runner
+from formation_tool.cli import formation_cli
 from formation_tool.core import buy_group_config
 from formation_tool.core import game_type_config
 from formation_tool.core import runtime_config
@@ -22,6 +23,7 @@ from formation_tool.core import runtime_context_sync
 from formation_tool.core import formation_modes
 from formation_tool.core import settings_logic
 from formation_tool.db import formation_db_access
+from formation_tool.db import db_runtime
 from formation_tool.db import db_entrypoints
 from formation_tool.db import game_type_config_runtime
 from formation_tool.group_weight import group_weight_builder
@@ -131,6 +133,48 @@ class PackageLayoutTests(unittest.TestCase):
                     bad_lines.append(f"{path}:{line_no}: {line}")
 
         self.assertEqual(bad_lines, [])
+
+
+class CliEntryPointTests(unittest.TestCase):
+    def test_run_cli_uses_choice_callback_for_single_game(self):
+        events = []
+        deps = SimpleNamespace(
+            game_configs={"1": {"name": "普通局"}},
+            run_all_sampling_jobs=lambda: events.append("all"),
+            generate_all_rebate_configs=lambda: events.append("rebate"),
+            write_common_configs=lambda: events.append("common"),
+            run_single_game=lambda _config: events.append("legacy"),
+            run_single_game_by_choice=lambda choice: events.append(("choice", choice)) or True,
+        )
+
+        result = formation_cli.run_cli(
+            deps,
+            input_func=lambda _prompt: "1",
+            print_func=lambda _text: None,
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(events, [("choice", "1")])
+
+    def test_run_cli_keeps_legacy_single_game_callback(self):
+        events = []
+        config = {"name": "普通局"}
+        deps = SimpleNamespace(
+            game_configs={"1": config},
+            run_all_sampling_jobs=lambda: events.append("all"),
+            generate_all_rebate_configs=lambda: events.append("rebate"),
+            write_common_configs=lambda: events.append("common"),
+            run_single_game=lambda received: events.append(("legacy", received)) or True,
+        )
+
+        result = formation_cli.run_cli(
+            deps,
+            input_func=lambda _prompt: "1",
+            print_func=lambda _text: None,
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(events, [("legacy", config)])
 
 
 class GroupWeightLogicTests(unittest.TestCase):
@@ -1132,6 +1176,25 @@ class RebateConfigStorageTests(unittest.TestCase):
 
 
 class DatabaseAccessTests(unittest.TestCase):
+    def test_get_engine_preserves_special_characters_in_credentials(self):
+        engine = db_runtime.get_engine({
+            "user": "user:name",
+            "password": "p@ss:word/with#chars",
+            "host": "127.0.0.1",
+            "port": "3306",
+            "database": "formation_db",
+        })
+
+        try:
+            self.assertEqual(engine.url.username, "user:name")
+            self.assertEqual(engine.url.password, "p@ss:word/with#chars")
+            self.assertEqual(engine.url.host, "127.0.0.1")
+            self.assertEqual(engine.url.port, 3306)
+            self.assertEqual(engine.url.database, "formation_db")
+            self.assertEqual(engine.url.query["use_pure"], "True")
+        finally:
+            engine.dispose()
+
     def test_db_entrypoints_build_typed_database_access_callbacks(self):
         callbacks = db_entrypoints.DatabaseAccessCallbacks(
             get_database_configs=lambda: {"SRC": {"host": "127.0.0.1"}},
@@ -1191,6 +1254,98 @@ class DatabaseAccessTests(unittest.TestCase):
 
         self.assertEqual(conn, "conn")
         self.assertEqual(calls, [{"name": "SRC"}])
+
+
+class SamplingCoreWriteTests(unittest.TestCase):
+    def test_id_queries_use_engine_connection_and_record_timing(self):
+        calls = []
+
+        class FakeResult:
+            def __init__(self, rows):
+                self.rows = rows
+
+            def __iter__(self):
+                return iter(self.rows)
+
+            def fetchone(self):
+                return self.rows[0] if self.rows else None
+
+        class FakeConnection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def exec_driver_sql(self, query):
+                calls.append(("query", query))
+                if "MIN" in query:
+                    return FakeResult([(10, 90)])
+                return FakeResult([(11,), (12,), (None,)])
+
+        class FakeEngine:
+            def connect(self):
+                calls.append("connect")
+                return FakeConnection()
+
+        old_sql_with_retry = getattr(sampling_core, "sql_with_retry", None)
+        had_sql_with_retry = hasattr(sampling_core, "sql_with_retry")
+        sampling_core.sql_with_retry = lambda fn, label: calls.append(("retry", label)) or fn()
+        timing = sampling_core.new_sampling_timing()
+        try:
+            ids = sampling_core._query_limited_distinct_ids(
+                FakeEngine(),
+                "`source_table`",
+                "`rebate` = 1000",
+                1000,
+                3,
+                timing=timing,
+            )
+            min_id, max_id = sampling_core._query_sample_id_range(
+                FakeEngine(),
+                "`source_table`",
+                "`rebate` = 1000",
+                1000,
+                timing=timing,
+            )
+        finally:
+            if had_sql_with_retry:
+                sampling_core.sql_with_retry = old_sql_with_retry
+            else:
+                delattr(sampling_core, "sql_with_retry")
+
+        self.assertEqual(ids, [11, 12])
+        self.assertEqual((min_id, max_id), (10, 90))
+        self.assertEqual(calls.count("connect"), 2)
+        self.assertGreaterEqual(timing["id_query_seconds"], 0)
+
+    def test_write_sample_chunk_uses_batched_multi_insert(self):
+        calls = []
+
+        class FakeFrame:
+            def __len__(self):
+                return 3
+
+            def to_sql(self, *args, **kwargs):
+                calls.append(("to_sql", args, kwargs))
+
+        old_sql_with_retry = getattr(sampling_core, "sql_with_retry", None)
+        had_sql_with_retry = hasattr(sampling_core, "sql_with_retry")
+        sampling_core.sql_with_retry = lambda fn, label: calls.append(("retry", label)) or fn()
+        try:
+            sampling_core.write_sample_chunk_to_staging(FakeFrame(), "engine", "tmp_table", 1000)
+        finally:
+            if had_sql_with_retry:
+                sampling_core.sql_with_retry = old_sql_with_retry
+            else:
+                delattr(sampling_core, "sql_with_retry")
+
+        to_sql_call = next(item for item in calls if item[0] == "to_sql")
+        self.assertEqual(to_sql_call[1], ("tmp_table", "engine"))
+        self.assertEqual(to_sql_call[2]["if_exists"], "append")
+        self.assertFalse(to_sql_call[2]["index"])
+        self.assertEqual(to_sql_call[2]["chunksize"], sampling_core.SAMPLE_ROW_WRITE_CHUNK_SIZE)
+        self.assertEqual(to_sql_call[2]["method"], "multi")
 
 
 class DirectSamplingRunnerTests(unittest.TestCase):
@@ -1537,6 +1692,42 @@ class SamplingTaskStateTests(unittest.TestCase):
                     os.environ.pop(settings_logic.APP_SETTINGS_DIR_ENV, None)
                 else:
                     os.environ[settings_logic.APP_SETTINGS_DIR_ENV] = old_settings_dir
+
+    def test_cleanup_completed_states_removes_only_expired_completed_files(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            def write_state(name, status, updated_at):
+                path = tmp_path / name
+                path.write_text(
+                    textwrap.dedent(f"""\
+                    {{
+                      "schema_version": 1,
+                      "status": "{status}",
+                      "identity": {{}},
+                      "updated_at": "{updated_at}"
+                    }}
+                    """),
+                    encoding="utf-8",
+                )
+                return path
+
+            old_completed = write_state("old_completed.json", "completed", "2026-01-01T00:00:00Z")
+            recent_completed = write_state("recent_completed.json", "completed", "2026-01-19T00:00:00Z")
+            old_running = write_state("old_running.json", "running", "2026-01-01T00:00:00Z")
+            old_failed = write_state("old_failed.json", "failed", "2026-01-01T00:00:00Z")
+
+            removed = sampling_task_state.cleanup_completed_states(
+                max_age_days=7,
+                base_dir=tmp_path,
+                now=sampling_task_state.parse_utc_text("2026-01-20T00:00:00Z"),
+            )
+
+            self.assertEqual(removed, [old_completed])
+            self.assertFalse(old_completed.exists())
+            self.assertTrue(recent_completed.exists())
+            self.assertTrue(old_running.exists())
+            self.assertTrue(old_failed.exists())
 
 
 class RuleImportPreviewTests(unittest.TestCase):
@@ -2097,6 +2288,10 @@ class BuildFormationExeTests(unittest.TestCase):
         )
         self.assertIn(
             "formation_tool.sampling.sampling_entrypoints",
+            build_formation_exe.FORMATION_TOOL_ENCRYPTED_MODULES,
+        )
+        self.assertFalse(
+            any(".test_" in module_name for module_name in build_formation_exe.FORMATION_TOOL_ENCRYPTED_MODULES),
             build_formation_exe.FORMATION_TOOL_ENCRYPTED_MODULES,
         )
 

@@ -4,6 +4,7 @@ import contextlib
 
 import mysql.connector
 from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
 
 
 def rollback_safely(conn, label="数据库事务"):
@@ -24,10 +25,17 @@ def close_safely(conn):
 def get_engine(db_config):
     """创建 SQLAlchemy 引擎。"""
     use_pure = str(db_config.get('use_pure', True))
+    url = URL.create(
+        'mysql+mysqlconnector',
+        username=db_config['user'],
+        password=db_config['password'],
+        host=db_config['host'],
+        port=int(db_config['port']),
+        database=db_config['database'],
+        query={'use_pure': use_pure},
+    )
     return create_engine(
-        f'mysql+mysqlconnector://{db_config["user"]}:{db_config["password"]}'
-        f'@{db_config["host"]}:{db_config["port"]}/{db_config["database"]}'
-        f'?use_pure={use_pure}',
+        url,
         pool_pre_ping=True,
         pool_recycle=1800,
     )

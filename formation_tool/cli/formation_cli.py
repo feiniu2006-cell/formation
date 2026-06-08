@@ -41,7 +41,11 @@ def run_cli(deps, *, input_func=input, print_func=print):
         print_func(f"无效选项: {choice}")
         return False
 
-    success = deps.run_single_game(deps.game_configs[choice])
+    run_single_game_by_choice = getattr(deps, 'run_single_game_by_choice', None)
+    if run_single_game_by_choice is not None:
+        success = run_single_game_by_choice(choice)
+    else:
+        success = deps.run_single_game(deps.game_configs[choice])
     print_func("程序已退出")
     return success
 

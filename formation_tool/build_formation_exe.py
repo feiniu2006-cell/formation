@@ -86,6 +86,7 @@ def list_production_module_files():
         for path in TOOL_ROOT.rglob('*.py')
         if not is_in_excluded_dir(path)
         and path.name != '__init__.py'
+        and not path.name.startswith('test_')
         and path.name not in PRODUCTION_EXCLUDED_NAMES
     )
 

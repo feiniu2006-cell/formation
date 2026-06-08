@@ -1,4 +1,5 @@
 ﻿# ================== 配置区域 ==================
+import copy
 import os
 import sys
 import contextlib
@@ -311,6 +312,7 @@ from formation_tool.db import db_entrypoints
 from formation_tool.cli.formation_cli import run_cli
 from formation_tool.sampling import sampling_core
 from formation_tool.sampling import sampling_entrypoints
+from formation_tool.sampling import sampling_task_state
 from formation_tool.group_weight import group_weight_runner
 from formation_tool.group_weight import group_weight_builder
 from formation_tool.group_weight import group_weight_storage
@@ -2348,6 +2350,31 @@ def get_runtime_game_configs():
     return configs
 
 
+def get_cli_menu_game_configs():
+    """Return menu configs without touching dynamic database-backed table overrides."""
+    _sync_runtime_selection_from_globals()
+    _sync_group_weight_runtime_from_globals()
+    configs = {
+        mode: copy.deepcopy(config)
+        for mode, config in RUNTIME_STATE.game_configs.items()
+    }
+    configs.update(
+        buy_source_rebate_configs.build_buy_source_rebate_game_configs(
+            table_prefix=RUNTIME_STATE.game_table_prefix,
+            source_db=RUNTIME_STATE.source_db,
+            final_db=RUNTIME_STATE.final_db,
+            config_db=RUNTIME_STATE.config_db,
+            random_seed=RANDOM_SEED,
+            base_game_configs=configs,
+            buy_enabled=RUNTIME_STATE.buy_group_enabled,
+            buy_game_type=RUNTIME_STATE.buy_group_game_type,
+            buy_source_suffix=RUNTIME_STATE.buy_group_source_suffix,
+            extra_buy_groups=RUNTIME_STATE.extra_buy_groups,
+        )
+    )
+    return configs
+
+
 def get_runtime_sample_game_type_names():
     names = dict(SAMPLE_GAME_TYPE_NAMES)
     for mode, config in get_buy_source_rebate_game_configs().items():
@@ -2469,19 +2496,33 @@ def run_gui():
 def main():
     if not load_cli_settings():
         return False
-    game_configs = get_runtime_game_configs()
+    game_configs = get_cli_menu_game_configs()
     deps = SimpleNamespace(
         game_configs=game_configs,
         run_all_sampling_jobs=run_all_sampling_jobs,
         generate_all_rebate_configs=generate_all_rebate_configs,
         write_common_configs=write_common_configs,
         run_single_game=run_single_game,
+        run_single_game_by_choice=run_single_game_job,
     )
     return run_cli(deps)
 
 
+def clean_sampling_task_states(max_age_days=sampling_task_state.DEFAULT_COMPLETED_STATE_RETENTION_DAYS, *, dry_run=True):
+    removed = sampling_task_state.cleanup_completed_states(max_age_days=max_age_days, dry_run=dry_run)
+    if dry_run:
+        print(f"将清理 {len(removed)} 个已完成采样任务状态文件（保留 {int(max_age_days)} 天内记录）；追加 --yes 才会实际删除")
+    else:
+        print(f"已清理 {len(removed)} 个已完成采样任务状态文件（保留 {int(max_age_days)} 天内记录）")
+    return removed
+
+
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
+    if len(sys.argv) > 1 and sys.argv[1] == "--clean-sampling-tasks":
+        clean_args = [arg for arg in sys.argv[2:] if arg != "--yes"]
+        retention_days = int(clean_args[0]) if clean_args else sampling_task_state.DEFAULT_COMPLETED_STATE_RETENTION_DAYS
+        clean_sampling_task_states(retention_days, dry_run="--yes" not in sys.argv[2:])
+    elif len(sys.argv) > 1 and sys.argv[1] == "--cli":
         main()
     else:
         run_gui()

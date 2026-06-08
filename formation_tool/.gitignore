@@ -1,0 +1,3 @@
+# Runtime sampling task state files.
+formation_sampling_tasks/*.json
+formation_sampling_tasks/*.tmp
