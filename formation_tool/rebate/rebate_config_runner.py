@@ -104,6 +104,11 @@ def build_rebate_config_rows(game_key, game_config, stats_df, rules, deps, count
             "直接将统计到的 rebate 和数量写入配置表"
         )
         result_rows = deps.build_direct_rebate_config_rows(stats_df)
+        result_rows = deps.apply_direct_count_tier_limits_to_rows(
+            result_rows,
+            count_limits,
+            game_config['name'],
+        )
         empty_message = "未查询到可写入的 rebate 数据；配置表未替换"
     else:
         result_rows = deps.build_rule_based_rebate_config_rows(stats_df, rules)

@@ -1490,6 +1490,14 @@ def build_direct_rebate_config_rows(stats_df):
     )
 
 
+def apply_direct_count_tier_limits_to_rows(rows, count_limits=None, label="采样配置"):
+    return rebate_config_logic.apply_direct_count_tier_limits_to_rows(
+        rows,
+        count_limits,
+        label,
+    )
+
+
 def select_smooth_rebate_bucket_rows(rule, bucket_rows, limit_min, limit_max):
     return rebate_config_logic.select_smooth_rebate_bucket_rows(
         rule,
@@ -1554,6 +1562,7 @@ def generate_rebate_config_for_game(game_key, game_config, rules, count_limits=N
             get_engine_by_table=get_engine_by_table,
             quote_identifier=quote_identifier,
             build_direct_rebate_config_rows=build_direct_rebate_config_rows,
+            apply_direct_count_tier_limits_to_rows=apply_direct_count_tier_limits_to_rows,
             build_rule_based_rebate_config_rows=build_rule_based_rebate_config_rows,
             build_rebate_sql_filter=build_rebate_sql_filter,
             apply_rebate_config_count_limits_to_rows=apply_rebate_config_count_limits_to_rows,

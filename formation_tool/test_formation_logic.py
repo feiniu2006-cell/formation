@@ -903,6 +903,26 @@ class RebateConfigLogicTests(unittest.TestCase):
         self.assertEqual(direct_rows, [(0, 30000), (500, 350)])
         self.assertEqual(limited_rows, [(0, 20000), (500, 200)])
 
+    def test_direct_count_tier_limits_reduce_high_rebate_counts(self):
+        messages = []
+        rows = rebate_config_logic.apply_direct_count_tier_limits_to_rows(
+            [(0, 30000), (500, 350), (1000, 300), (20000, 300), (50000, 300)],
+            {
+                "direct_count_tiers": [
+                    {"rebate": 0, "count": 20000},
+                    {"rebate_min": 1, "rebate_max": 999, "count": 200},
+                    {"rebate_min": 1000, "rebate_max": 9999, "count": 100},
+                    {"rebate_min": 10000, "rebate_max": 49999, "count": 20},
+                    {"rebate_min": 50000, "rebate_max": 500000, "count": 5},
+                ],
+            },
+            "普通局",
+            print_fn=messages.append,
+        )
+
+        self.assertEqual(rows, [(0, 20000), (500, 200), (1000, 100), (20000, 20), (50000, 5)])
+        self.assertEqual(len([msg for msg in messages if "直接计数阶梯" in msg]), 6)
+
     def test_rule_based_rebate_rows_then_limits_support_all_generation_flow(self):
         pd = importlib.import_module("pandas")
         stats_df = pd.DataFrame([
@@ -971,7 +991,7 @@ class RebateConfigRunnerTests(unittest.TestCase):
             "sample_conditions": {"where_clause": "rebate = {target_rebate}"},
         }
 
-    def build_runner_deps(self, events, *, table_exists=True, write_result=True):
+    def build_runner_deps(self, events, *, table_exists=True, write_result=True, direct_count_modes=None):
         conn = object()
 
         def close_safely(value):
@@ -991,8 +1011,9 @@ class RebateConfigRunnerTests(unittest.TestCase):
             close_safely=close_safely,
             get_engine_by_table=lambda *_args: "engine",
             quote_identifier=lambda value, _label=None: f"`{value}`",
-            direct_count_modes=set(),
+            direct_count_modes=set(direct_count_modes or []),
             build_direct_rebate_config_rows=rebate_config_logic.build_direct_rebate_config_rows,
+            apply_direct_count_tier_limits_to_rows=rebate_config_logic.apply_direct_count_tier_limits_to_rows,
             build_rule_based_rebate_config_rows=lambda _stats, _rules: [(0, 10), (1000, 5)],
             build_rebate_sql_filter=rebate_config_logic.build_rebate_sql_filter,
             apply_rebate_config_count_limits_to_rows=lambda rows, _limits, _label: rows,
@@ -1050,6 +1071,41 @@ class RebateConfigRunnerTests(unittest.TestCase):
 
         self.assertFalse(result)
         self.assertIn(("write", "CFG", "rebate_count", [(0, 10), (1000, 5)]), events)
+
+    def test_generate_direct_count_config_applies_tier_limits(self):
+        events = []
+        deps = self.build_runner_deps(events, direct_count_modes={"1"})
+        pd = importlib.import_module("pandas")
+        original_read_sql_query = rebate_config_runner.pd.read_sql_query
+        try:
+            rebate_config_runner.pd.read_sql_query = lambda *_args, **_kwargs: pd.DataFrame([
+                {"rebate": 0, "total": 30000},
+                {"rebate": 500, "total": 350},
+                {"rebate": 1000, "total": 300},
+                {"rebate": 20000, "total": 300},
+                {"rebate": 50000, "total": 300},
+            ])
+            result = self.run_generate_silently(
+                deps,
+                count_limits={
+                    "direct_count_tiers": [
+                        {"rebate": 0, "count": 20000},
+                        {"rebate_min": 1, "rebate_max": 999, "count": 200},
+                        {"rebate_min": 1000, "rebate_max": 9999, "count": 100},
+                        {"rebate_min": 10000, "rebate_max": 49999, "count": 20},
+                        {"rebate_min": 50000, "rebate_max": 500000, "count": 5},
+                    ],
+                },
+            )
+        finally:
+            rebate_config_runner.pd.read_sql_query = original_read_sql_query
+
+        self.assertTrue(result)
+        write_events = [event for event in events if isinstance(event, tuple) and event[0] == "write"]
+        self.assertEqual(
+            write_events[-1][3],
+            [(0, 20000), (500, 200), (1000, 100), (20000, 20), (50000, 5)],
+        )
 
     def test_generate_rebate_config_pushes_rebate_limits_into_stats_sql(self):
         events = []
@@ -1151,6 +1207,7 @@ class RebateConfigStorageTests(unittest.TestCase):
             get_engine_by_table=lambda *_args: None,
             quote_identifier=lambda value, *_args: value,
             build_direct_rebate_config_rows=lambda *_args: [],
+            apply_direct_count_tier_limits_to_rows=lambda rows, *_args: rows,
             build_rule_based_rebate_config_rows=lambda *_args: [],
             build_rebate_sql_filter=lambda *_args, **_kwargs: None,
             apply_rebate_config_count_limits_to_rows=lambda rows, *_args: rows,

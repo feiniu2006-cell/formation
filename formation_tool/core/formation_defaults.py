@@ -7,10 +7,19 @@ DEFAULT_SAMPLE_ID_FETCH_CHUNK_SIZE = 500
 DEFAULT_REBATE_CONFIG_REBATE_ZERO_COUNT_LIMIT = 20000
 DEFAULT_REBATE_CONFIG_POSITIVE_REBATE_COUNT_LIMIT = 200
 DEFAULT_REBATE_CONFIG_MAX_REBATE = 500000
+DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIER_LIMITS = (
+    {'rebate': 0, 'count': DEFAULT_REBATE_CONFIG_REBATE_ZERO_COUNT_LIMIT},
+    {'rebate_min': 1, 'rebate_max': 999, 'count': 200},
+    {'rebate_min': 1000, 'rebate_max': 9999, 'count': 100},
+    {'rebate_min': 10000, 'rebate_max': 19999, 'count': 50},
+    {'rebate_min': 20000, 'rebate_max': 49999, 'count': 20},
+    {'rebate_min': 50000, 'rebate_max': DEFAULT_REBATE_CONFIG_MAX_REBATE, 'count': 5},
+)
 DEFAULT_REBATE_CONFIG_COUNT_LIMITS = {
     'rebate_zero': DEFAULT_REBATE_CONFIG_REBATE_ZERO_COUNT_LIMIT,
     'rebate_positive': DEFAULT_REBATE_CONFIG_POSITIVE_REBATE_COUNT_LIMIT,
     'max_rebate': DEFAULT_REBATE_CONFIG_MAX_REBATE,
+    'direct_count_tiers': DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIER_LIMITS,
 }
 DEFAULT_REBATE_CONFIG_DIRECT_COUNT_MODES = set()
 DEFAULT_SAMPLING_APPEND_MODE = False
@@ -62,7 +71,11 @@ def clone_int_map(value):
 
 def clone_count_limits():
     """Return a mutable copy of default rebate-count generation limits."""
-    return dict(DEFAULT_REBATE_CONFIG_COUNT_LIMITS)
+    limits = dict(DEFAULT_REBATE_CONFIG_COUNT_LIMITS)
+    limits['direct_count_tiers'] = [
+        dict(rule) for rule in DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIER_LIMITS
+    ]
+    return limits
 
 
 def clone_extra_buy_groups():
@@ -228,6 +241,8 @@ GROUP_WEIGHT_RULES = {
     ],
     '99': [  # 购买局，独立配置；界面中可单独调整
         {'rebate_min': 0,        'weight': 0},
+        {'rebate_min': 5000,     'weight': 0},
+        {'rebate_min': 10000,    'weight': 30000},
         {'rebate_min': 20000,    'weight': 30000},
         {'rebate_min': 30000,    'weight': 30000},
         {'rebate_min': 40000,    'weight': 25000},
@@ -331,6 +346,8 @@ GROUP_WEIGHT_RULES = {
     ],
     '98': [  # 购买局，独立配置；界面中可单独调整
         {'rebate_min': 0,        'weight': 0},
+        {'rebate_min': 5000,     'weight': 0},
+        {'rebate_min': 10000,    'weight': 30000},
         {'rebate_min': 20000,    'weight': 30000},
         {'rebate_min': 30000,    'weight': 30000},
         {'rebate_min': 40000,    'weight': 25000},

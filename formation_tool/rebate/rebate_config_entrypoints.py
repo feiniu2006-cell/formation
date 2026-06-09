@@ -39,6 +39,7 @@ class RunnerDeps:
     quote_identifier: Callable[..., str]
     direct_count_modes: set
     build_direct_rebate_config_rows: Callable[[Any], list]
+    apply_direct_count_tier_limits_to_rows: Callable[..., list]
     build_rule_based_rebate_config_rows: Callable[[Any, list], list]
     build_rebate_sql_filter: Callable[..., str | None]
     apply_rebate_config_count_limits_to_rows: Callable[..., list]
@@ -86,6 +87,7 @@ def build_runner_deps(callbacks, runtime):
         quote_identifier=callbacks.quote_identifier,
         direct_count_modes=set(runtime.direct_count_modes),
         build_direct_rebate_config_rows=callbacks.build_direct_rebate_config_rows,
+        apply_direct_count_tier_limits_to_rows=callbacks.apply_direct_count_tier_limits_to_rows,
         build_rule_based_rebate_config_rows=callbacks.build_rule_based_rebate_config_rows,
         build_rebate_sql_filter=callbacks.build_rebate_sql_filter,
         apply_rebate_config_count_limits_to_rows=callbacks.apply_rebate_config_count_limits_to_rows,

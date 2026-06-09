@@ -66,6 +66,46 @@ def build_direct_rebate_config_rows(stats_df, *, check_cancelled=_noop, print_fn
     return result_rows
 
 
+def get_direct_count_tier_limit_for_rebate(rebate, count_limits):
+    """Return direct-count mode cap for one rebate from direct_count_tiers."""
+    if not count_limits:
+        return None
+    for rule in count_limits.get('direct_count_tiers') or ():
+        if 'rebate' in rule and int(rule['rebate']) == int(rebate):
+            return int(rule['count'])
+        if (
+            'rebate_min' in rule
+            and 'rebate_max' in rule
+            and int(rule['rebate_min']) <= int(rebate) <= int(rule['rebate_max'])
+        ):
+            return int(rule['count'])
+    return None
+
+
+def apply_direct_count_tier_limits_to_rows(rows, count_limits=None, label="采样配置", *, print_fn=print):
+    """Apply rebate-dependent caps for low-volume direct-count mode."""
+    if not count_limits or not count_limits.get('direct_count_tiers'):
+        return rows
+
+    limited_rows = []
+    truncated_count = 0
+    for rebate, count in rows:
+        rebate = int(rebate)
+        count = int(count)
+        tier_limit = get_direct_count_tier_limit_for_rebate(rebate, count_limits)
+        if tier_limit is not None and tier_limit > 0 and count > tier_limit:
+            truncated_count += 1
+            print_fn(
+                f"  {label} 直接计数阶梯：rebate={rebate}，"
+                f"{count} -> {tier_limit}（上限 {tier_limit}）"
+            )
+            count = tier_limit
+        limited_rows.append((rebate, count))
+    if truncated_count:
+        print_fn(f"  {label} 直接计数阶梯共截断 {truncated_count} 条 rebate 配置")
+    return limited_rows
+
+
 def select_smooth_rebate_bucket_rows(rule, bucket_rows, limit_min, limit_max, *, check_cancelled=_noop, print_fn=print):
     """Select rebate rows from a range rule using smooth buckets."""
     selected_rows = []
