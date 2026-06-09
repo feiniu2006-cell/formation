@@ -89,6 +89,9 @@ class SlotAppTaskMixin:
                 if mode in game_configs
             ]
             self.append_log(f"低数据量直写采样配置：{', '.join(direct_names)}\n")
+        direct_count_tiers = getattr(deps, "get_direct_count_tiers", lambda: [])()
+        if direct_count_tiers:
+            self.append_log(f"直接计数阶梯：{len(direct_count_tiers)} 条\n")
 
     def append_group_weight_config_log(self):
         deps = self.task_deps

@@ -72,10 +72,16 @@ def clone_int_map(value):
 def clone_count_limits():
     """Return a mutable copy of default rebate-count generation limits."""
     limits = dict(DEFAULT_REBATE_CONFIG_COUNT_LIMITS)
-    limits['direct_count_tiers'] = [
-        dict(rule) for rule in DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIER_LIMITS
-    ]
+    limits['direct_count_tiers'] = clone_direct_count_tiers()
     return limits
+
+
+def clone_direct_count_tiers(tiers=None):
+    """Return a mutable copy of direct-count tier caps."""
+    return [
+        dict(rule)
+        for rule in (DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIER_LIMITS if tiers is None else tiers)
+    ]
 
 
 def clone_extra_buy_groups():

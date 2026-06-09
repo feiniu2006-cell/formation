@@ -81,6 +81,7 @@ def build_app_settings_data(
     group_weight_rules,
     group_weight_options,
     direct_count_modes,
+    direct_count_tiers,
 ):
     group_weight_options = dict(group_weight_options)
     group_weight_options['buy_groups'] = buy_group_config.build_buy_groups_from_legacy(
@@ -104,6 +105,7 @@ def build_app_settings_data(
         'group_weight_rules': group_weight_rules,
         'group_weight_options': group_weight_options,
         'direct_count_modes': sorted(direct_count_modes),
+        'direct_count_tiers': [dict(rule) for rule in direct_count_tiers],
     }
 
 

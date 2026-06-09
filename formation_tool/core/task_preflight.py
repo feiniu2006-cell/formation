@@ -60,6 +60,66 @@ def _safe_count_rows(conn, table_name, deps):
         raise RuntimeError(f"读取 {table_name} 行数失败：{exc}") from exc
 
 
+def _safe_rebate_config_summary(conn, table_name, deps):
+    if not hasattr(conn, "cursor") or not hasattr(deps, "quote_identifier"):
+        row_count = _safe_count_rows(conn, table_name, deps)
+        return {"rows": row_count, "total_count": row_count, "max_count": row_count}
+    table_ref = deps.quote_identifier(table_name, "采样配置表名")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT COUNT(*), COALESCE(SUM(`count`), 0), COALESCE(MAX(`count`), 0) "
+                f"FROM {table_ref}"
+            )
+            row = cur.fetchone()
+            return {
+                "rows": int(row[0] or 0),
+                "total_count": int(row[1] or 0),
+                "max_count": int(row[2] or 0),
+            }
+    except Exception as exc:
+        raise RuntimeError(f"读取 {table_name} 采样配置汇总失败：{exc}") from exc
+
+
+def _cursor_rows_as_dicts(cur):
+    columns = [desc[0] for desc in (cur.description or [])]
+    return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
+def _load_index_columns(conn, table_name, deps):
+    table_ref = deps.quote_identifier(table_name, "源表名")
+    with conn.cursor() as cur:
+        cur.execute(f"SHOW INDEX FROM {table_ref}")
+        rows = _cursor_rows_as_dicts(cur)
+    index_columns = {}
+    for row in rows:
+        key_name = row.get("Key_name")
+        column_name = row.get("Column_name")
+        seq = row.get("Seq_in_index")
+        if not key_name or not column_name:
+            continue
+        index_columns.setdefault(str(key_name), []).append((int(seq or 0), str(column_name)))
+    return {
+        key: [column for _seq, column in sorted(values)]
+        for key, values in index_columns.items()
+    }
+
+
+def _sampling_read_index_warning(index_columns):
+    lower_indexes = {
+        name: [column.lower() for column in columns]
+        for name, columns in index_columns.items()
+    }
+    if any(columns[:1] == ["id"] for columns in lower_indexes.values()):
+        return None
+    for columns in lower_indexes.values():
+        if len(columns) >= 3 and columns[0] in {"game_end", "is_end"} and columns[1:3] == ["rebate", "id"]:
+            return None
+        if columns[:2] == ["rebate", "id"]:
+            return None
+    return "未检测到 id 单列索引或适合读取完整采样行的复合索引，采样读取完整行可能较慢"
+
+
 def _check_selected_database_names(report, runtime, database_configs):
     for label, key in (("源库", "source_db"), ("目标库", "final_db"), ("配置库", "config_db")):
         db_name = runtime.get(key)
@@ -238,14 +298,78 @@ def _check_sampling_config_tables(report, modes, game_configs, connections, deps
             if not deps.table_exists_exact(conn, config_table):
                 report.add_fatal(f"{config['name']} 缺少采样配置表：{config_db}.{config_table}")
                 continue
-            row_count = _safe_count_rows(conn, config_table, deps)
+            summary = _safe_rebate_config_summary(conn, config_table, deps)
         except Exception as exc:
             report.add_fatal(f"{config['name']} 采样配置表检查失败：{config_db}.{config_table}，{exc}")
             continue
+        row_count = summary["rows"]
         if row_count <= 0:
             report.add_fatal(f"{config['name']} 采样配置表为空：{config_db}.{config_table}")
         else:
-            report.add_info(f"{config['name']} 采样配置表可用：{config_db}.{config_table}，{row_count} 行")
+            report.add_info(
+                f"{config['name']} 采样配置表可用：{config_db}.{config_table}，"
+                f"{row_count} 行，count合计 {summary['total_count']}，单项最大 {summary['max_count']}"
+            )
+
+
+def _check_sampling_target_tables(report, modes, game_configs, connections, deps):
+    append_mode = bool(getattr(deps, "get_sampling_append_mode", lambda: False)())
+    for mode in modes:
+        config = game_configs.get(mode)
+        if not config:
+            continue
+        table_config = config["table_config"]
+        if "FINAL_TABLE" not in table_config:
+            continue
+        final_db = deps.get_table_database("FINAL_TABLE", table_config)
+        final_table = deps.get_table_name("FINAL_TABLE", table_config)
+        conn = connections.get(final_db)
+        if conn is None:
+            report.add_fatal(f"{config['name']} 无法检查目标表，目标库未连接：{final_db}")
+            continue
+        try:
+            exists = deps.table_exists_exact(conn, final_table)
+            row_count = _safe_count_rows(conn, final_table, deps) if exists else 0
+        except Exception as exc:
+            report.add_fatal(f"{config['name']} 目标表检查失败：{final_db}.{final_table}，{exc}")
+            continue
+        if not exists:
+            report.add_info(f"{config['name']} 目标表不存在：{final_db}.{final_table}，采样成功后将创建")
+        elif append_mode:
+            report.add_warning(
+                f"{config['name']} 目标表已存在：{final_db}.{final_table}，当前 {row_count} 行；"
+                "追加模式会复制旧数据并处理 id 冲突"
+            )
+        else:
+            report.add_warning(
+                f"{config['name']} 目标表已存在：{final_db}.{final_table}，当前 {row_count} 行；"
+                "清空模式会在采样成功后整体替换"
+            )
+
+
+def _check_sampling_source_indexes(report, modes, game_configs, connections, deps):
+    for mode in modes:
+        config = game_configs.get(mode)
+        if not config:
+            continue
+        table_config = config["table_config"]
+        if "SOURCE_TABLE" not in table_config:
+            continue
+        source_db = deps.get_table_database("SOURCE_TABLE", table_config)
+        source_table = deps.get_table_name("SOURCE_TABLE", table_config)
+        conn = connections.get(source_db)
+        if conn is None:
+            continue
+        try:
+            index_columns = _load_index_columns(conn, source_table, deps)
+            warning = _sampling_read_index_warning(index_columns)
+        except Exception as exc:
+            report.add_warning(f"{config['name']} 源表索引检查失败：{source_db}.{source_table}，{exc}")
+            continue
+        if warning:
+            report.add_warning(f"{config['name']} 源表索引风险：{source_db}.{source_table}，{warning}")
+        else:
+            report.add_info(f"{config['name']} 源表采样读取索引已检查：{source_db}.{source_table}")
 
 
 def _check_group_weight_rebate_tables(report, active_modes, context, connections, deps):
@@ -307,6 +431,8 @@ def preflight_sampling(report, metadata, deps):
         if all_modes_requested and not existing_modes:
             report.add_fatal("全部采样未检测到任何可采样源表")
         _check_sampling_config_tables(report, existing_modes, game_configs, connections, deps)
+        _check_sampling_target_tables(report, existing_modes, game_configs, connections, deps)
+        _check_sampling_source_indexes(report, existing_modes, game_configs, connections, deps)
     finally:
         _close_connections(connections, deps)
 

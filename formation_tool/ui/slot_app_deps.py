@@ -29,6 +29,7 @@ class SettingsDeps:
     default_ex_group_multiplier: Any
     default_extra_buy_groups: Any
     default_rebate_rules: Any
+    default_direct_count_tiers: Any
     default_group_weight_rules: Any
     default_special_group_target_rtp: Any
     get_runtime_state: Any
@@ -46,6 +47,7 @@ class SettingsDeps:
     get_ex_group_multiplier: Any
     get_extra_buy_groups: Any
     get_direct_count_modes: Any
+    get_direct_count_tiers: Any
     get_app_settings_path: Any
     get_app_profile_settings_path: Any
     get_profile_key: Any
@@ -56,6 +58,7 @@ class SettingsDeps:
     clear_config_warnings: Any
     consume_config_warnings: Any
     normalize_rebate_rules_for_load: Any
+    normalize_direct_count_tiers_for_load: Any
     normalize_group_weight_rules_for_load: Any
     apply_runtime_config: Any
     apply_weight_config: Any
@@ -72,6 +75,7 @@ class SettingsDeps:
     apply_extra_buy_groups_config: Any
     load_buy_group_options_from_game_type_config: Any
     apply_rebate_config_direct_count_modes: Any
+    apply_rebate_config_direct_count_tiers: Any
     apply_sampling_append_mode: Any
 
 
@@ -84,6 +88,7 @@ class TaskDeps:
     get_rebate_rules: Any
     get_sampling_append_mode: Any
     get_direct_count_modes: Any
+    get_direct_count_tiers: Any
     get_game_configs: Any
     get_group_weight_rules: Any
     get_special_group_target_rtp: Any
@@ -230,6 +235,7 @@ def build_settings_deps(ctx):
         default_ex_group_multiplier=ctx.default_ex_group_multiplier,
         default_extra_buy_groups=ctx.default_extra_buy_groups,
         default_rebate_rules=ctx.default_rebate_rules,
+        default_direct_count_tiers=ctx.default_direct_count_tiers,
         default_group_weight_rules=ctx.default_group_weight_rules,
         default_special_group_target_rtp=ctx.default_special_group_target_rtp,
         get_runtime_state=ctx.get_runtime_state,
@@ -247,6 +253,7 @@ def build_settings_deps(ctx):
         get_ex_group_multiplier=ctx.get_ex_group_multiplier,
         get_extra_buy_groups=ctx.get_extra_buy_groups,
         get_direct_count_modes=ctx.get_direct_count_modes,
+        get_direct_count_tiers=ctx.get_direct_count_tiers,
         get_app_settings_path=ctx.get_app_settings_path,
         get_app_profile_settings_path=ctx.get_app_profile_settings_path,
         get_profile_key=lambda: (
@@ -260,6 +267,7 @@ def build_settings_deps(ctx):
         clear_config_warnings=ctx.clear_config_warnings,
         consume_config_warnings=ctx.consume_config_warnings,
         normalize_rebate_rules_for_load=ctx.normalize_rebate_rules_for_load,
+        normalize_direct_count_tiers_for_load=ctx.normalize_direct_count_tiers_for_load,
         normalize_group_weight_rules_for_load=ctx.normalize_group_weight_rules_for_load,
         apply_runtime_config=ctx.apply_runtime_config,
         apply_weight_config=ctx.apply_weight_config,
@@ -276,6 +284,7 @@ def build_settings_deps(ctx):
         apply_extra_buy_groups_config=ctx.apply_extra_buy_groups_config,
         load_buy_group_options_from_game_type_config=ctx.load_buy_group_options_from_game_type_config,
         apply_rebate_config_direct_count_modes=ctx.apply_rebate_config_direct_count_modes,
+        apply_rebate_config_direct_count_tiers=ctx.apply_rebate_config_direct_count_tiers,
         apply_sampling_append_mode=ctx.apply_sampling_append_mode,
     )
 
@@ -289,6 +298,7 @@ def build_task_deps(ctx):
         get_rebate_rules=ctx.get_rebate_rules,
         get_sampling_append_mode=ctx.get_sampling_append_mode,
         get_direct_count_modes=ctx.get_direct_count_modes,
+        get_direct_count_tiers=ctx.get_direct_count_tiers,
         get_game_configs=ctx.get_game_configs,
         get_group_weight_rules=ctx.get_group_weight_rules,
         get_special_group_target_rtp=ctx.get_special_group_target_rtp,

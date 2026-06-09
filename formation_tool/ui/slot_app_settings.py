@@ -60,6 +60,8 @@ def build_rule_import_preview(data):
         lines.append(f"- 购买局配置：{group_count} 个购买局配置")
     if 'direct_count_modes' in data:
         lines.append(f"- 小表直接计数模式：{_count_sequence_items(data.get('direct_count_modes'))} 个")
+    if 'direct_count_tiers' in data:
+        lines.append(f"- 直接计数阶梯：{_count_sequence_items(data.get('direct_count_tiers'))} 条")
 
     lines.extend([
         "",
@@ -119,6 +121,7 @@ class SlotAppSettingsMixin:
         deps.apply_buy_group_source_suffix(deps.default_buy_group_source_suffix)
         deps.apply_extra_buy_groups_config(deps.default_extra_buy_groups)
         deps.apply_rebate_config_direct_count_modes([])
+        deps.apply_rebate_config_direct_count_tiers(deps.default_direct_count_tiers)
 
     def build_last_settings_data(self):
         return settings_logic.build_last_settings_data(**self.settings_deps.get_runtime_state())
@@ -154,6 +157,7 @@ class SlotAppSettingsMixin:
                 'extra_buy_groups': deps.clone_extra_buy_groups(deps.get_extra_buy_groups()),
             },
             direct_count_modes=deps.get_direct_count_modes(),
+            direct_count_tiers=deps.get_direct_count_tiers(),
         )
 
     def build_rule_settings_data(self):
@@ -236,6 +240,10 @@ class SlotAppSettingsMixin:
             raise ValueError("配置文件中的基础配置无效")
 
         deps.apply_rebate_config_direct_count_modes(data.get('direct_count_modes', []))
+        if 'direct_count_tiers' in data:
+            deps.apply_rebate_config_direct_count_tiers(
+                deps.normalize_direct_count_tiers_for_load(data['direct_count_tiers'])
+            )
 
     def load_app_settings_from_path(self, path, *, runtime_only=False, reset_missing=False):
         data = settings_logic.read_settings_file(path)

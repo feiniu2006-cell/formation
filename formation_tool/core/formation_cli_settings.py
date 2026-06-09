@@ -65,6 +65,10 @@ def apply_cli_settings_data(data, *, deps, runtime_only=False):
             deps.apply_special_group_target_rtp(group_options.get('special_target_rtp'))
 
     deps.apply_rebate_config_direct_count_modes(data.get('direct_count_modes', []))
+    if 'direct_count_tiers' in data:
+        deps.apply_rebate_config_direct_count_tiers(
+            deps.normalize_direct_count_tiers_for_load(data['direct_count_tiers'])
+        )
 
 
 def load_cli_settings(*, deps, print_func=print):

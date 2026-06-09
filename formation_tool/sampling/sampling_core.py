@@ -825,16 +825,23 @@ def sample_config_rows_to_staging(
     })
     timing = new_sampling_timing()
     completed_rebates = sampling_task_state.completed_rebate_set(task_state or {})
-    for row in config_df[['rebate', 'count']].itertuples(index=False):
+    config_rows = list(config_df[['rebate', 'count']].itertuples(index=False))
+    total_requested_count = sum(int(row.count) for row in config_rows)
+    print(
+        f"采样配置汇总：rebate项 {len(config_rows)} 个，"
+        f"count合计 {total_requested_count}，已完成 {len(completed_rebates)} 个"
+    )
+    for row_index, row in enumerate(config_rows, start=1):
         check_cancelled()
         target_rebate = int(row.rebate)
         if target_rebate in completed_rebates:
-            print(f"跳过已完成的 rebate={target_rebate}，继续恢复采样")
+            print(f"跳过已完成的 rebate={target_rebate} ({row_index}/{len(config_rows)})，继续恢复采样")
             continue
         row_data = {
             'rebate': target_rebate,
             'count': int(row.count),
         }
+        print(f"\n采样进度：{row_index}/{len(config_rows)}，rebate={target_rebate}")
         sampled_count, changed_pair_count, changed_row_count, final_conn = sample_rebate_to_staging(
             row_data,
             source_engine=source_engine,

@@ -1981,6 +1981,7 @@ class SlotAppDepsTests(unittest.TestCase):
             "DEFAULT_EX_GROUP_MULTIPLIER": 1.5,
             "DEFAULT_EXTRA_BUY_GROUPS": [],
             "DEFAULT_REBATE_RULES": {},
+            "DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIERS": [],
             "DEFAULT_GROUP_WEIGHT_RULES": {},
             "DEFAULT_SPECIAL_GROUP_TARGET_RTP": None,
             "get_runtime_game_configs": lambda: {},
@@ -2158,6 +2159,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             get_extra_buy_groups=lambda: extra_groups,
             clone_extra_buy_groups=lambda groups: [dict(group) for group in groups],
             get_direct_count_modes=lambda: {"1", "6"},
+            get_direct_count_tiers=lambda: [{"rebate_min": 1, "rebate_max": 999, "count": 88}],
         )
         app = FakeSettingsApp(deps, self.tcl_root)
 
@@ -2171,6 +2173,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertEqual(data["group_weight_options"]["buy_groups"][0]["game_type"], 99)
         self.assertEqual(data["group_weight_options"]["buy_groups"][1]["game_type"], 120)
         self.assertEqual(set(data["direct_count_modes"]), {"1", "6"})
+        self.assertEqual(data["direct_count_tiers"], [{"rebate_min": 1, "rebate_max": 999, "count": 88}])
 
     def test_apply_app_settings_data_restores_buy_and_extra_buy_options(self):
         calls = []
@@ -2193,6 +2196,8 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             apply_extra_buy_groups_config=lambda groups: calls.append(("extra", [dict(group) for group in groups])),
             apply_special_group_target_rtp=lambda value: calls.append(("special_rtp", value)),
             apply_rebate_config_direct_count_modes=lambda modes: calls.append(("direct", list(modes))),
+            normalize_direct_count_tiers_for_load=lambda tiers: [dict(rule) for rule in tiers],
+            apply_rebate_config_direct_count_tiers=lambda tiers: calls.append(("direct_tiers", [dict(rule) for rule in tiers])),
         )
         app = FakeSettingsApp(deps, self.tcl_root)
         data = settings_logic.build_app_settings_data(
@@ -2218,6 +2223,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
                 "extra_buy_groups": extra_groups,
             },
             direct_count_modes=["1", "6"],
+            direct_count_tiers=[{"rebate_min": 1, "rebate_max": 999, "count": 88}],
         )
 
         app.apply_app_settings_data(data)
@@ -2231,6 +2237,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertTrue(app.apply_selected_config_called)
         self.assertIn(("special_rtp", 7.25), calls)
         self.assertIn(("direct", ["1", "6"]), calls)
+        self.assertIn(("direct_tiers", [{"rebate_min": 1, "rebate_max": 999, "count": 88}]), calls)
         self.assertIn(("extra", extra_groups), calls)
 
     def test_buy_group_load_summary_and_skip_details_include_missing_tables(self):
@@ -2594,6 +2601,10 @@ class GuiDialogSmokeTests(unittest.TestCase):
             validate_rules=lambda rules: rules,
             apply_rules=lambda rules: None,
             apply_direct_count_modes=lambda modes: None,
+            current_direct_count_tiers_getter=lambda: [],
+            default_direct_count_tiers_getter=lambda: [],
+            normalize_direct_count_tiers=lambda tiers: tiers,
+            apply_direct_count_tiers=lambda tiers: None,
             formation_exists_loader=lambda: {"1": True},
             low_volume_infos_loader=lambda: {},
             generate_configs=lambda: True,

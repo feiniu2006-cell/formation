@@ -66,6 +66,69 @@ def build_direct_rebate_config_rows(stats_df, *, check_cancelled=_noop, print_fn
     return result_rows
 
 
+def normalize_direct_count_tier_limits(tiers):
+    """Normalize and validate direct-count tier cap rules."""
+    normalized = []
+    for index, rule in enumerate(tiers or [], start=1):
+        if not isinstance(rule, dict):
+            raise ValueError(f"直接计数阶梯第 {index} 行必须是对象")
+        has_exact = 'rebate' in rule and str(rule.get('rebate')).strip() != ''
+        has_range = (
+            'rebate_min' in rule and str(rule.get('rebate_min')).strip() != ''
+            or 'rebate_max' in rule and str(rule.get('rebate_max')).strip() != ''
+        )
+        if has_exact and has_range:
+            raise ValueError(f"直接计数阶梯第 {index} 行不能同时填写 rebate 和区间")
+        if not has_exact and not has_range:
+            raise ValueError(f"直接计数阶梯第 {index} 行必须填写 rebate 或 rebate_min/rebate_max")
+        if 'count' not in rule or str(rule.get('count')).strip() == '':
+            raise ValueError(f"直接计数阶梯第 {index} 行 count 不能为空")
+        try:
+            count = int(rule['count'])
+        except (TypeError, ValueError):
+            raise ValueError(f"直接计数阶梯第 {index} 行 count 必须是整数: {rule.get('count')}") from None
+        if count <= 0:
+            raise ValueError(f"直接计数阶梯第 {index} 行 count 必须大于 0: {count}")
+
+        if has_exact:
+            try:
+                rebate = int(rule['rebate'])
+            except (TypeError, ValueError):
+                raise ValueError(f"直接计数阶梯第 {index} 行 rebate 必须是整数: {rule.get('rebate')}") from None
+            if rebate < 0:
+                raise ValueError(f"直接计数阶梯第 {index} 行 rebate 不能小于 0: {rebate}")
+            normalized.append({'rebate': rebate, 'count': count})
+            continue
+
+        if 'rebate_min' not in rule or 'rebate_max' not in rule:
+            raise ValueError(f"直接计数阶梯第 {index} 行区间必须同时填写 rebate_min 和 rebate_max")
+        try:
+            rebate_min = int(rule['rebate_min'])
+            rebate_max = int(rule['rebate_max'])
+        except (TypeError, ValueError):
+            raise ValueError(f"直接计数阶梯第 {index} 行 rebate_min/rebate_max 必须是整数") from None
+        if rebate_min < 0 or rebate_max < 0:
+            raise ValueError(f"直接计数阶梯第 {index} 行 rebate 区间不能小于 0")
+        if rebate_min > rebate_max:
+            raise ValueError(f"直接计数阶梯第 {index} 行 rebate_min 不能大于 rebate_max")
+        normalized.append({'rebate_min': rebate_min, 'rebate_max': rebate_max, 'count': count})
+
+    sortable = []
+    for rule in normalized:
+        if 'rebate' in rule:
+            sortable.append((rule['rebate'], rule['rebate'], rule))
+        else:
+            sortable.append((rule['rebate_min'], rule['rebate_max'], rule))
+    sortable.sort(key=lambda item: (item[0], item[1]))
+
+    previous_end = None
+    for start, end, _rule in sortable:
+        if previous_end is not None and start <= previous_end:
+            raise ValueError(f"直接计数阶梯区间存在重叠，冲突位置: {start}")
+        previous_end = end
+    return [rule for _start, _end, rule in sortable]
+
+
 def get_direct_count_tier_limit_for_rebate(rebate, count_limits):
     """Return direct-count mode cap for one rebate from direct_count_tiers."""
     if not count_limits:

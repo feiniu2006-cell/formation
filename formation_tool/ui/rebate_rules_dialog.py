@@ -8,6 +8,16 @@ from formation_tool.ui import ui_layout_defaults
 from formation_tool.ui.gui_components import LoadingDialogBase, RuleTableEditor
 
 
+DIRECT_COUNT_TIER_MODE = '__direct_count_tiers__'
+DIRECT_COUNT_TIER_FIELDS = ('rebate', 'rebate_min', 'rebate_max', 'count')
+DIRECT_COUNT_TIER_LABELS = {
+    'rebate': '精确rebate',
+    'rebate_min': 'rebate_min',
+    'rebate_max': 'rebate_max',
+    'count': 'count上限',
+}
+
+
 class RebateRulesDialog(LoadingDialogBase):
     """采样规则配置窗口。"""
 
@@ -25,6 +35,10 @@ class RebateRulesDialog(LoadingDialogBase):
         validate_rules,
         apply_rules,
         apply_direct_count_modes,
+        current_direct_count_tiers_getter,
+        default_direct_count_tiers_getter,
+        normalize_direct_count_tiers,
+        apply_direct_count_tiers,
         formation_exists_loader,
         low_volume_infos_loader,
         generate_configs,
@@ -42,6 +56,10 @@ class RebateRulesDialog(LoadingDialogBase):
         self.validate_rules = validate_rules
         self.apply_rules = apply_rules
         self.apply_direct_count_modes = apply_direct_count_modes
+        self.current_direct_count_tiers_getter = current_direct_count_tiers_getter
+        self.default_direct_count_tiers_getter = default_direct_count_tiers_getter
+        self.normalize_direct_count_tiers = normalize_direct_count_tiers
+        self.apply_direct_count_tiers = apply_direct_count_tiers
         self.formation_exists_loader = formation_exists_loader
         self.low_volume_infos_loader = low_volume_infos_loader
         self.generate_configs = generate_configs
@@ -53,6 +71,7 @@ class RebateRulesDialog(LoadingDialogBase):
         self.missing_modes = []
         self.base_rules = {}
         self.rule_editor = None
+        self.direct_count_tier_editor = None
         self.check_status_var = None
         self.check_progress = None
         self.restore_button = None
@@ -165,6 +184,19 @@ class RebateRulesDialog(LoadingDialogBase):
                 self.base_rules.get(mode, []),
                 add_button_text=f"新增{self.mode_names[mode]}规则",
             )
+        self.direct_count_tier_editor = RuleTableEditor(
+            notebook,
+            DIRECT_COUNT_TIER_FIELDS,
+            DIRECT_COUNT_TIER_LABELS,
+            row_width=13,
+            x_scroll=True,
+        )
+        self.direct_count_tier_editor.add_mode_tab(
+            DIRECT_COUNT_TIER_MODE,
+            "直接计数阶梯",
+            self.current_direct_count_tiers_getter(),
+            add_button_text="新增直接计数阶梯",
+        )
 
     def build_buttons(self):
         button_frame = ttk.Frame(self.frame)
@@ -208,7 +240,10 @@ class RebateRulesDialog(LoadingDialogBase):
             self.rule_editor.clear_rule_rows(mode)
             for rule in self.base_rules.get(mode, []):
                 self.rule_editor.add_rule_row(mode, rule)
-        self.check_status_var.set("已恢复代码默认采样规则，点击“确认并开始”后生效")
+        self.direct_count_tier_editor.clear_rule_rows(DIRECT_COUNT_TIER_MODE)
+        for rule in self.default_direct_count_tiers_getter():
+            self.direct_count_tier_editor.add_rule_row(DIRECT_COUNT_TIER_MODE, rule)
+        self.check_status_var.set("已恢复代码默认采样规则和直接计数阶梯，点击“确认并开始”后生效")
 
     def collect_rebate_rules(self):
         rules = self.clone_rules(self.base_rules)
@@ -232,6 +267,24 @@ class RebateRulesDialog(LoadingDialogBase):
             rules[mode] = mode_rules
         return self.validate_rules(rules)
 
+    def collect_direct_count_tiers(self):
+        tiers = []
+        rows = self.direct_count_tier_editor.mode_rows.get(DIRECT_COUNT_TIER_MODE, [])
+        for row_idx, row_info in enumerate(rows, start=1):
+            rule = {}
+            for field, variable in row_info['vars'].items():
+                text = variable.get().strip()
+                if not text:
+                    continue
+                try:
+                    rule[field] = int(text)
+                except ValueError:
+                    label = DIRECT_COUNT_TIER_LABELS[field]
+                    raise ValueError(f"直接计数阶梯第 {row_idx} 行 {label} 必须是整数: {text}") from None
+            if rule:
+                tiers.append(rule)
+        return self.normalize_direct_count_tiers(tiers)
+
     def set_low_volume_check_state(self, checking):
         button_state = "disabled" if checking else "normal"
         self.confirm_button.configure(state=button_state)
@@ -248,7 +301,7 @@ class RebateRulesDialog(LoadingDialogBase):
         self.check_status_var.set("")
         self.app.status_var.set(self.ready_status_getter())
 
-    def finish_low_volume_check(self, rules, low_volume_infos=None, error=None):
+    def finish_low_volume_check(self, rules, direct_count_tiers, low_volume_infos=None, error=None):
         if not self.dialog.winfo_exists():
             return
         self.set_low_volume_check_state(False)
@@ -276,6 +329,7 @@ class RebateRulesDialog(LoadingDialogBase):
                 direct_count_modes.add(info['mode'])
 
         self.apply_rules(rules)
+        self.apply_direct_count_tiers(direct_count_tiers)
         self.apply_direct_count_modes(direct_count_modes)
         self.dialog.destroy()
         self.app.run_task(
@@ -284,7 +338,7 @@ class RebateRulesDialog(LoadingDialogBase):
             preflight={"kind": "rebate_config", "modes": list(self.mode_names)},
         )
 
-    def finish_index_check(self, rules, warnings=None, error=None):
+    def finish_index_check(self, rules, direct_count_tiers, warnings=None, error=None):
         if not self.dialog.winfo_exists():
             return
         self.set_low_volume_check_state(False)
@@ -317,9 +371,9 @@ class RebateRulesDialog(LoadingDialogBase):
                 self.app.status_var.set(self.ready_status_getter())
                 return
 
-        self.start_low_volume_check(rules)
+        self.start_low_volume_check(rules, direct_count_tiers)
 
-    def start_low_volume_check(self, rules):
+    def start_low_volume_check(self, rules, direct_count_tiers):
         self.set_low_volume_check_state(True)
         self.check_status_var.set("正在后台检查源表数据量...")
         self.app.status_var.set("正在检查源表数据量...")
@@ -329,12 +383,13 @@ class RebateRulesDialog(LoadingDialogBase):
             try:
                 low_volume_infos = self.low_volume_infos_loader(visible_rules)
             except Exception as e:
-                self.root.after(0, lambda err=str(e): self.finish_low_volume_check(rules, error=err))
+                self.root.after(0, lambda err=str(e): self.finish_low_volume_check(rules, direct_count_tiers, error=err))
                 return
             self.root.after(
                 0,
                 lambda infos=low_volume_infos: self.finish_low_volume_check(
                     rules,
+                    direct_count_tiers,
                     low_volume_infos=infos,
                 ),
             )
@@ -344,6 +399,7 @@ class RebateRulesDialog(LoadingDialogBase):
     def confirm_and_run(self):
         try:
             rules = self.collect_rebate_rules()
+            direct_count_tiers = self.collect_direct_count_tiers()
         except ValueError as e:
             messagebox.showerror("采样规则错误", str(e), parent=self.dialog)
             return
@@ -357,12 +413,13 @@ class RebateRulesDialog(LoadingDialogBase):
             try:
                 warnings = self.index_warnings_loader(visible_rules)
             except Exception as e:
-                self.root.after(0, lambda err=str(e): self.finish_index_check(rules, error=err))
+                self.root.after(0, lambda err=str(e): self.finish_index_check(rules, direct_count_tiers, error=err))
                 return
             self.root.after(
                 0,
                 lambda items=warnings: self.finish_index_check(
                     rules,
+                    direct_count_tiers,
                     warnings=items,
                 ),
             )

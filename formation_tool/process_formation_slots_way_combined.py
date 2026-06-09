@@ -42,6 +42,7 @@ REBATE_CONFIG_REBATE_ZERO_COUNT_LIMIT = formation_defaults.DEFAULT_REBATE_CONFIG
 REBATE_CONFIG_POSITIVE_REBATE_COUNT_LIMIT = formation_defaults.DEFAULT_REBATE_CONFIG_POSITIVE_REBATE_COUNT_LIMIT
 REBATE_CONFIG_MAX_REBATE = formation_defaults.DEFAULT_REBATE_CONFIG_MAX_REBATE
 REBATE_CONFIG_COUNT_LIMITS = formation_defaults.clone_count_limits()
+DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIERS = formation_defaults.clone_direct_count_tiers()
 REBATE_CONFIG_DIRECT_COUNT_MODES = set(formation_defaults.DEFAULT_REBATE_CONFIG_DIRECT_COUNT_MODES)
 SAMPLING_APPEND_MODE = formation_defaults.DEFAULT_SAMPLING_APPEND_MODE
 
@@ -135,6 +136,7 @@ def build_cli_settings_deps():
         apply_rebate_rules_config=apply_rebate_rules_config,
         apply_sampling_append_mode=apply_sampling_append_mode,
         apply_group_weight_rules_config=apply_group_weight_rules_config,
+        apply_rebate_config_direct_count_tiers=apply_rebate_config_direct_count_tiers,
         apply_buy_group_enabled=apply_buy_group_enabled,
         apply_ex_buy_group_enabled=apply_ex_buy_group_enabled,
         apply_buy_group_game_type=apply_buy_group_game_type,
@@ -144,6 +146,7 @@ def build_cli_settings_deps():
         apply_extra_buy_groups_config=apply_extra_buy_groups_config,
         apply_special_group_target_rtp=apply_special_group_target_rtp,
         apply_rebate_config_direct_count_modes=apply_rebate_config_direct_count_modes,
+        normalize_direct_count_tiers_for_load=normalize_direct_count_tiers_for_load,
     )
 
 
@@ -719,6 +722,25 @@ def apply_rebate_config_direct_count_modes(modes):
     global REBATE_CONFIG_DIRECT_COUNT_MODES
     REBATE_CONFIG_DIRECT_COUNT_MODES = {str(mode) for mode in modes}
     RUNTIME_STATE.rebate_config_direct_count_modes = set(REBATE_CONFIG_DIRECT_COUNT_MODES)
+
+
+def clone_direct_count_tiers(tiers):
+    return formation_defaults.clone_direct_count_tiers(tiers)
+
+
+def get_rebate_config_direct_count_tiers():
+    return clone_direct_count_tiers(REBATE_CONFIG_COUNT_LIMITS.get('direct_count_tiers', []))
+
+
+def normalize_direct_count_tiers_for_load(tiers):
+    return rebate_config_logic.normalize_direct_count_tier_limits(tiers)
+
+
+def apply_rebate_config_direct_count_tiers(tiers):
+    """Apply direct-count tier caps used only by low-volume direct count mode."""
+    normalized = normalize_direct_count_tiers_for_load(tiers)
+    REBATE_CONFIG_COUNT_LIMITS['direct_count_tiers'] = clone_direct_count_tiers(normalized)
+    return normalized
 
 
 def apply_sampling_append_mode(enabled):

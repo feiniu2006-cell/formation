@@ -24,6 +24,7 @@ class SlotAppDepsContext:
     default_ex_group_multiplier: Any
     default_extra_buy_groups: Any
     default_rebate_rules: Any
+    default_direct_count_tiers: Any
     default_group_weight_rules: Any
     default_special_group_target_rtp: Any
     get_runtime_state: Any
@@ -41,6 +42,7 @@ class SlotAppDepsContext:
     get_ex_group_multiplier: Any
     get_extra_buy_groups: Any
     get_direct_count_modes: Any
+    get_direct_count_tiers: Any
     get_app_settings_path: Any
     get_app_profile_settings_path: Any
     get_external_config_source: Any
@@ -73,6 +75,7 @@ class SlotAppDepsContext:
     apply_extra_buy_groups_config: Any
     load_buy_group_options_from_game_type_config: Any
     apply_rebate_config_direct_count_modes: Any
+    apply_rebate_config_direct_count_tiers: Any
     apply_sampling_append_mode: Any
     format_weighted_rtp: Any
     clear_cancel_request: Any
@@ -85,6 +88,7 @@ class SlotAppDepsContext:
     rebate_rule_fields: Any
     rebate_rule_field_labels: Any
     low_volume_rebate_count_threshold: Any
+    normalize_direct_count_tiers_for_load: Any
     get_default_rebate_rules: Any
     validate_rebate_rules: Any
     get_rebate_config_low_volume_infos: Any
@@ -162,6 +166,7 @@ REQUIRED_MODULE_ATTRS = (
     'DEFAULT_EX_GROUP_MULTIPLIER',
     'DEFAULT_EXTRA_BUY_GROUPS',
     'DEFAULT_REBATE_RULES',
+    'DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIERS',
     'DEFAULT_GROUP_WEIGHT_RULES',
     'DEFAULT_SPECIAL_GROUP_TARGET_RTP',
     'get_app_settings_path',
@@ -188,7 +193,10 @@ REQUIRED_MODULE_ATTRS = (
     'apply_extra_buy_groups_config',
     'load_buy_group_options_from_game_type_config',
     'apply_rebate_config_direct_count_modes',
+    'apply_rebate_config_direct_count_tiers',
     'apply_sampling_append_mode',
+    'get_rebate_config_direct_count_tiers',
+    'normalize_direct_count_tiers_for_load',
     'format_weighted_rtp',
     'clear_cancel_request',
     'request_cancel',
@@ -270,6 +278,7 @@ def build_slot_app_deps_context(runtime, module):
         default_ex_group_multiplier=m.DEFAULT_EX_GROUP_MULTIPLIER,
         default_extra_buy_groups=m.DEFAULT_EXTRA_BUY_GROUPS,
         default_rebate_rules=m.DEFAULT_REBATE_RULES,
+        default_direct_count_tiers=m.DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIERS,
         default_group_weight_rules=m.DEFAULT_GROUP_WEIGHT_RULES,
         default_special_group_target_rtp=m.DEFAULT_SPECIAL_GROUP_TARGET_RTP,
         get_runtime_state=r.runtime_dict,
@@ -287,6 +296,7 @@ def build_slot_app_deps_context(runtime, module):
         get_ex_group_multiplier=lambda: runtime.ex_group_multiplier,
         get_extra_buy_groups=lambda: runtime.extra_buy_groups,
         get_direct_count_modes=lambda: runtime.rebate_config_direct_count_modes,
+        get_direct_count_tiers=m.get_rebate_config_direct_count_tiers,
         get_app_settings_path=m.get_app_settings_path,
         get_app_profile_settings_path=m.get_app_profile_settings_path,
         get_external_config_source=lambda: runtime.external_config_source,
@@ -319,6 +329,7 @@ def build_slot_app_deps_context(runtime, module):
         apply_extra_buy_groups_config=m.apply_extra_buy_groups_config,
         load_buy_group_options_from_game_type_config=m.load_buy_group_options_from_game_type_config,
         apply_rebate_config_direct_count_modes=m.apply_rebate_config_direct_count_modes,
+        apply_rebate_config_direct_count_tiers=m.apply_rebate_config_direct_count_tiers,
         apply_sampling_append_mode=m.apply_sampling_append_mode,
         format_weighted_rtp=m.format_weighted_rtp,
         clear_cancel_request=m.clear_cancel_request,
@@ -331,6 +342,7 @@ def build_slot_app_deps_context(runtime, module):
         rebate_rule_fields=m.REBATE_RULE_FIELDS,
         rebate_rule_field_labels=m.REBATE_RULE_FIELD_LABELS,
         low_volume_rebate_count_threshold=m.LOW_VOLUME_REBATE_COUNT_THRESHOLD,
+        normalize_direct_count_tiers_for_load=m.normalize_direct_count_tiers_for_load,
         get_default_rebate_rules=lambda: m.DEFAULT_REBATE_RULES,
         validate_rebate_rules=m.validate_rebate_rules,
         get_rebate_config_low_volume_infos=m.get_rebate_config_low_volume_infos,
