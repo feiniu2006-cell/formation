@@ -111,7 +111,9 @@ REBATE_RULES = {
         {'rebate_min': 1000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 90, 'rebate_limit_max': 200, 'smooth_buckets': 9,'min_total': 5},
         {'rebate_min': 10000, 'rebate_max': 19999, 'count': 50, 'rebate_limit_min': 40, 'rebate_limit_max': 80, 'smooth_buckets': 6,'min_total': 5},
         {'rebate_min': 20000, 'rebate_max': 49999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 4,'min_total': 5},
-        {'rebate_min': 50000, 'rebate_max': 150001, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 50000, 'rebate_max': 99999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 100000, 'rebate_max': 599999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 600000, 'rebate_max': 1099999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
     ],
     '2': [  # 特殊局
         {'rebate': 0,   'count': 2000},
@@ -119,14 +121,16 @@ REBATE_RULES = {
         {'rebate_min': 1000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 90, 'rebate_limit_max': 200, 'smooth_buckets': 9,'min_total': 5},
         {'rebate_min': 10000, 'rebate_max': 19999, 'count': 50, 'rebate_limit_min': 40, 'rebate_limit_max': 80, 'smooth_buckets': 6,'min_total': 5},
         {'rebate_min': 20000, 'rebate_max': 49999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 4,'min_total': 5},
-        {'rebate_min': 50000, 'rebate_max': 79999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 1,'min_total': 2},
-        {'rebate_min': 100000, 'rebate_max': 300001, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 1,'min_total': 2},
+        {'rebate_min': 50000, 'rebate_max': 99999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 100000, 'rebate_max': 599999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 600000, 'rebate_max': 1099999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
     ],
     '3': [  # 免费局
         {'rebate_min': 5000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 80, 'rebate_limit_max': 160, 'smooth_buckets': 8,'min_total': 5},
         {'rebate_min': 10000, 'rebate_max': 49999, 'count': 50, 'rebate_limit_min': 40, 'rebate_limit_max': 80, 'smooth_buckets': 5,'min_total': 5},
         {'rebate_min': 50000, 'rebate_max': 99999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 3,'min_total': 5},
-        {'rebate_min': 100000, 'rebate_max': 300001, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 20, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 100000, 'rebate_max': 599999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 600000, 'rebate_max': 1099999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
     ],
     '6': [  # ex普通局
         {'rebate': 0,   'count': 2000},
@@ -134,22 +138,26 @@ REBATE_RULES = {
         {'rebate_min': 1000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 90, 'rebate_limit_max': 200, 'smooth_buckets': 9,'min_total': 5},
         {'rebate_min': 10000, 'rebate_max': 19999, 'count': 50, 'rebate_limit_min': 40, 'rebate_limit_max': 80, 'smooth_buckets': 6,'min_total': 5},
         {'rebate_min': 20000, 'rebate_max': 49999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 4,'min_total': 5},
-        {'rebate_min': 50000, 'rebate_max': 150001, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 50000, 'rebate_max': 99999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 100000, 'rebate_max': 599999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 600000, 'rebate_max': 1099999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
     ],
     '7': [  # ex特殊局
         {'rebate': 0,   'count': 2000},
         {'rebate_min': 1, 'rebate_max': 999, 'count': 100, 'rebate_limit_min': 100, 'rebate_limit_max': 200, 'smooth_buckets': 10,'min_total': 5},
         {'rebate_min': 1000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 90, 'rebate_limit_max': 200, 'smooth_buckets': 9,'min_total': 5},
         {'rebate_min': 10000, 'rebate_max': 19999, 'count': 50, 'rebate_limit_min': 40, 'rebate_limit_max': 80, 'smooth_buckets': 6,'min_total': 5},
-        {'rebate_min': 20000, 'rebate_max': 49999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 4,'min_total': 5},
-        {'rebate_min': 50000, 'rebate_max': 79999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 1,'min_total': 2},
-        {'rebate_min': 100000, 'rebate_max': 300001, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 1,'min_total': 2},
+            {'rebate_min': 20000, 'rebate_max': 49999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 4,'min_total': 5},
+        {'rebate_min': 50000, 'rebate_max': 99999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 100000, 'rebate_max': 599999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 600000, 'rebate_max': 1099999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
     ],
     '8': [  # ex免费局
         {'rebate_min': 5000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 80, 'rebate_limit_max': 160, 'smooth_buckets': 8,'min_total': 5},
         {'rebate_min': 10000, 'rebate_max': 49999, 'count': 50, 'rebate_limit_min': 40, 'rebate_limit_max': 80, 'smooth_buckets': 5,'min_total': 5},
         {'rebate_min': 50000, 'rebate_max': 99999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 3,'min_total': 5},
-        {'rebate_min': 100000, 'rebate_max': 300001, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 20, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 100000, 'rebate_max': 599999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
+        {'rebate_min': 600000, 'rebate_max': 1099999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 2,'min_total': 2},
     ],
     # '99': [  # ex局
     #     {'rebate_min': 5000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 80, 'rebate_limit_max': 160, 'smooth_buckets': 8,'min_total': 50},
@@ -162,7 +170,7 @@ REBATE_RULES = {
 
 # ==================  group_weight 区间权重配置 ==================
 # 每个局类型各自维护一套区间规则，区间按“当前 rebate_min <= rebate < 下一 rebate_min”匹配。
-# weight 为 0 的 rebate 不写入 group_weight 表。
+# weight 为 0 的 rebate 也写入 group_weight 表，但不参与 RTP 权重计算。
 GROUP_WEIGHT_RULES = {
     '1': [  # 普通局
         {'rebate_min': 0,       'weight': 0},
