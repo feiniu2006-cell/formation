@@ -7,6 +7,7 @@ import sys
 import tkinter as tk
 import tempfile
 import textwrap
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,6 +42,7 @@ from formation_tool.sampling import direct_sampling_runner
 from formation_tool.sampling import sampling_core
 from formation_tool.sampling import sampling_entrypoints
 from formation_tool.sampling import sampling_task_state
+from formation_tool.utils import log_utils
 from formation_tool.ui import slot_app_context
 from formation_tool.ui import slot_app_deps
 from formation_tool.ui import buy_group_ui
@@ -1314,6 +1316,66 @@ class DatabaseAccessTests(unittest.TestCase):
 
 
 class SamplingCoreWriteTests(unittest.TestCase):
+    def test_sampling_config_normalization_rejects_invalid_rows(self):
+        valid = sampling_core.normalize_sampling_config_df(
+            sampling_core.pd.DataFrame([
+                {"rebate": "0", "count": "10"},
+                {"rebate": 1000, "count": 5},
+            ]),
+            "CFG",
+            "rebate_count",
+        )
+        self.assertEqual(valid.to_dict("records"), [
+            {"rebate": 0, "count": 10},
+            {"rebate": 1000, "count": 5},
+        ])
+
+        with self.assertRaisesRegex(ValueError, "rebate 重复"):
+            sampling_core.normalize_sampling_config_df(sampling_core.pd.DataFrame([
+                {"rebate": 1000, "count": 10},
+                {"rebate": 1000, "count": 5},
+            ]))
+        with self.assertRaisesRegex(ValueError, "count 必须大于 0"):
+            sampling_core.normalize_sampling_config_df(sampling_core.pd.DataFrame([
+                {"rebate": 1000, "count": 0},
+            ]))
+        with self.assertRaisesRegex(ValueError, "rebate 不能小于 0"):
+            sampling_core.normalize_sampling_config_df(sampling_core.pd.DataFrame([
+                {"rebate": -1, "count": 1},
+            ]))
+        with self.assertRaisesRegex(ValueError, "必须是整数"):
+            sampling_core.normalize_sampling_config_df(sampling_core.pd.DataFrame([
+                {"rebate": 1000.5, "count": 1},
+            ]))
+
+    def test_sampling_timing_records_slowest_rebate_breakdown(self):
+        messages = []
+        old_writer = log_utils._LOG_WRITER
+        log_utils.set_log_writer(messages.append)
+        timing = sampling_core.new_sampling_timing()
+        before = sampling_core.snapshot_sampling_timing(timing)
+        sampling_core.add_sampling_timing(timing, "id_query_seconds", 1.25)
+        sampling_core.add_sampling_timing(timing, "row_read_seconds", 2.5)
+        sampling_core.add_sampling_timing(timing, "row_write_seconds", 3.75)
+        sampling_core.add_sampling_timing(timing, "id_remap_seconds", 0.5)
+        try:
+            sampling_core.record_rebate_timing(
+                timing,
+                time.perf_counter() - 8.0,
+                row_count=20,
+                target_rebate=1000,
+                before=before,
+            )
+            sampling_core.print_sampling_timing_summary(timing)
+        finally:
+            log_utils.set_log_writer(old_writer)
+
+        self.assertEqual(timing["rebate_details"][0]["rebate"], 1000)
+        self.assertEqual(timing["rebate_details"][0]["row_count"], 20)
+        self.assertAlmostEqual(timing["rebate_details"][0]["id_query_seconds"], 1.25)
+        self.assertTrue(any("最慢rebate" in message for message in messages))
+        self.assertTrue(any("rebate=1000" in message for message in messages))
+
     def test_id_queries_use_engine_connection_and_record_timing(self):
         calls = []
 
@@ -1375,6 +1437,41 @@ class SamplingCoreWriteTests(unittest.TestCase):
         self.assertEqual((min_id, max_id), (10, 90))
         self.assertEqual(calls.count("connect"), 2)
         self.assertGreaterEqual(timing["id_query_seconds"], 0)
+
+    def test_read_sample_rows_by_ids_reads_complete_id_groups(self):
+        calls = []
+
+        class FakeFrame:
+            def __len__(self):
+                return 2
+
+        old_sql_with_retry = getattr(sampling_core, "sql_with_retry", None)
+        had_sql_with_retry = hasattr(sampling_core, "sql_with_retry")
+        old_read_sql_query = sampling_core.pd.read_sql_query
+        sampling_core.sql_with_retry = lambda fn, label: calls.append(("retry", label)) or fn()
+        sampling_core.pd.read_sql_query = (
+            lambda query, engine: calls.append(("read_sql", query, engine)) or FakeFrame()
+        )
+        try:
+            df = sampling_core.read_sample_rows_by_ids(
+                "engine",
+                "`source_table`",
+                [10, 20],
+                1000,
+            )
+        finally:
+            sampling_core.pd.read_sql_query = old_read_sql_query
+            if had_sql_with_retry:
+                sampling_core.sql_with_retry = old_sql_with_retry
+            else:
+                delattr(sampling_core, "sql_with_retry")
+
+        self.assertEqual(len(df), 2)
+        query = next(item[1] for item in calls if item[0] == "read_sql")
+        normalized_query = " ".join(query.split())
+        self.assertIn("WHERE `id` IN (10,20)", normalized_query)
+        self.assertNotIn("rebate", normalized_query.lower())
+        self.assertNotIn("game_end", normalized_query.lower())
 
     def test_write_sample_chunk_uses_batched_multi_insert(self):
         calls = []

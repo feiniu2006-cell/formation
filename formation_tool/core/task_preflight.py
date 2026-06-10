@@ -68,7 +68,10 @@ def _safe_rebate_config_summary(conn, table_name, deps):
     try:
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT COUNT(*), COALESCE(SUM(`count`), 0), COALESCE(MAX(`count`), 0) "
+                f"SELECT COUNT(*), COALESCE(SUM(`count`), 0), COALESCE(MAX(`count`), 0), "
+                f"COALESCE(SUM(CASE WHEN `rebate` IS NULL OR `count` IS NULL "
+                f"OR `rebate` < 0 OR `count` <= 0 THEN 1 ELSE 0 END), 0), "
+                f"COUNT(DISTINCT `rebate`) "
                 f"FROM {table_ref}"
             )
             row = cur.fetchone()
@@ -76,6 +79,8 @@ def _safe_rebate_config_summary(conn, table_name, deps):
                 "rows": int(row[0] or 0),
                 "total_count": int(row[1] or 0),
                 "max_count": int(row[2] or 0),
+                "invalid_rows": int(row[3] or 0),
+                "distinct_rebates": int(row[4] or 0),
             }
     except Exception as exc:
         raise RuntimeError(f"读取 {table_name} 采样配置汇总失败：{exc}") from exc
@@ -110,14 +115,18 @@ def _sampling_read_index_warning(index_columns):
         name: [column.lower() for column in columns]
         for name, columns in index_columns.items()
     }
-    if any(columns[:1] == ["id"] for columns in lower_indexes.values()):
-        return None
-    for columns in lower_indexes.values():
-        if len(columns) >= 3 and columns[0] in {"game_end", "is_end"} and columns[1:3] == ["rebate", "id"]:
-            return None
-        if columns[:2] == ["rebate", "id"]:
-            return None
-    return "未检测到 id 单列索引或适合读取完整采样行的复合索引，采样读取完整行可能较慢"
+    has_complete_row_read_index = any(columns[:1] == ["id"] for columns in lower_indexes.values())
+    has_id_select_index = any(
+        columns[:2] == ["rebate", "id"]
+        or (len(columns) >= 3 and columns[0] in {"game_end", "is_end"} and columns[1:3] == ["rebate", "id"])
+        for columns in lower_indexes.values()
+    )
+    warnings = []
+    if not has_id_select_index:
+        warnings.append("缺少适合按 rebate/结束条件挑选采样ID的复合索引")
+    if not has_complete_row_read_index:
+        warnings.append("缺少按 id 读取完整ID组的单列索引")
+    return "；".join(warnings) if warnings else None
 
 
 def _check_selected_database_names(report, runtime, database_configs):
@@ -305,6 +314,13 @@ def _check_sampling_config_tables(report, modes, game_configs, connections, deps
         row_count = summary["rows"]
         if row_count <= 0:
             report.add_fatal(f"{config['name']} 采样配置表为空：{config_db}.{config_table}")
+        elif summary.get("invalid_rows", 0) > 0:
+            report.add_fatal(
+                f"{config['name']} 采样配置表存在无效行：{config_db}.{config_table}，"
+                f"{summary['invalid_rows']} 行 rebate/count 为空、rebate<0 或 count<=0"
+            )
+        elif summary.get("distinct_rebates", row_count) != row_count:
+            report.add_fatal(f"{config['name']} 采样配置表存在重复 rebate：{config_db}.{config_table}")
         else:
             report.add_info(
                 f"{config['name']} 采样配置表可用：{config_db}.{config_table}，"

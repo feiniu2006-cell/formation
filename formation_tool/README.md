@@ -17,7 +17,7 @@
 | `utils/` | SQL、文件、日志、取消控制等通用工具。 |
 | `cli/` | 旧版命令行菜单入口。 |
 | `build_formation_exe.py` | 加密打包脚本，支持打包前自检和可选测试。 |
-| `run_tests.py` / `test_formation_logic.py` | 统一测试入口和轻量逻辑/打包 smoke tests。 |
+| `run_tests.py` / `test_*.py` | 统一测试入口和轻量逻辑/打包 smoke tests；`run_tests.py` 会发现并运行全部 `test_*.py`。 |
 
 ## 主要流程
 
@@ -25,6 +25,31 @@
 2. 执行采样：`ui.SingleSamplingDialog` 或全部采样按钮 -> `core.task_entrypoints` -> `sampling.direct_sampling_runner` -> `sampling.sampling_core`。
 3. 生成 `group_weight`：`ui.GroupWeightRulesDialog` -> `group_weight.group_weight_runner` -> `group_weight.group_weight_builder` / `group_weight.group_weight_logic` -> `group_weight.group_weight_storage`。
 4. 写通用配置：主界面按钮 -> `common.common_config_entrypoints` -> `common.common_config_runner` / `common.common_config_writer`。
+
+## 采样配置生成
+
+采样配置表通常是 `rebate_count`、`rebate_special_count`、`rebate_free_count` 等表，核心字段为 `rebate` 和 `count`。
+
+- 规则模式：根据 rebate 规则、源表统计量和全局 count 上限生成配置。
+- 直接计数模式：先按源表中每个 rebate 的实际数量生成 `count`，再应用“直接计数阶梯”限制，使低 rebate 保留较大的 count，高 rebate 自动压小 count。
+- 直接计数阶梯配置会随 GUI 设置导入导出，也会被 CLI 设置加载逻辑恢复。
+
+## 直接采样逻辑
+
+直接采样的核心语义不能变：**采样条件只用于挑选符合 rebate 的 `id`；真正读取写入时只按 `id IN (...)` 取完整 id 组数据，不再叠加 `rebate`、`game_end` 或 `is_end` 条件。**
+
+执行顺序：
+
+1. 从采样配置表读取 `rebate/count`。
+2. 为目标表创建临时表；追加模式会先把旧目标表复制到临时表。
+3. 逐个 rebate 处理，按 `rebate = {target_rebate}` 和结束字段条件挑选候选 `id`。
+4. 优先使用稀疏探测、随机 id 范围查询和候选抽样，候选不足时回退到全量 `DISTINCT id` 查询。
+5. 对选中的 id，读取 SQL 只保留 `WHERE id IN (...)`，确保一局或一组 formation 数据被完整写入。
+6. 分批读取和写入临时表，避免过长 `IN` 查询和过大的 DataFrame。
+7. 追加模式下处理新旧数据 id 冲突，必要时为新采样数据分配新 id。
+8. 采样完成后校验临时表行数，再用临时表整体替换正式目标表。
+
+如果需要修改 `sampling/sampling_core.py`，必须保留第 5 点的完整 id 组读取语义；相关回归测试为 `SamplingCoreWriteTests.test_read_sample_rows_by_ids_reads_complete_id_groups`。
 
 ## 打包和测试
 
@@ -56,8 +81,11 @@ py -3 formation_tool\build_formation_exe.py --clean
 | --- | --- |
 | `formation_tool_settings.json` | 上次选择配置。 |
 | `formation_tool_settings/` | 按厂商和游戏编号保存的房间配置。 |
+| `formation_sampling_tasks/` | 直接采样任务状态，记录临时表、已完成 rebate 和追加模式 id 映射，用于失败后恢复。 |
 | `dist_encrypted/db_config.json` | exe 同目录外部数据库配置，优先用于打包程序运行。 |
 | `dist_encrypted/db_config.example.json` | 示例数据库配置。 |
+
+源码运行时，上述设置和任务状态默认保存在 `formation_tool/` 下；打包运行时默认保存在 exe 所在目录。可通过环境变量 `FORMATION_TOOL_SETTINGS_DIR` 覆盖保存目录。
 
 ## 维护建议
 

@@ -19,6 +19,7 @@ print = log_utils.emit
 SAMPLE_ID_RANDOM_RANGE_ATTEMPTS = 8
 SAMPLE_ID_RANDOM_RANGE_MAX_CANDIDATES_PER_QUERY = 20000
 SAMPLE_ROW_WRITE_CHUNK_SIZE = 500
+SLOW_REBATE_SUMMARY_LIMIT = 5
 SAMPLING_TIMING_KEYS = (
     'id_query_seconds',
     'row_read_seconds',
@@ -33,6 +34,7 @@ def new_sampling_timing():
     timing.update({
         'rebate_count': 0,
         'row_count': 0,
+        'rebate_details': [],
     })
     return timing
 
@@ -52,14 +54,46 @@ def print_sampling_timing_summary(timing):
     print(f"  写入临时表耗时: {timing.get('row_write_seconds', 0.0):.2f} 秒")
     print(f"  append冲突ID处理耗时: {timing.get('id_remap_seconds', 0.0):.2f} 秒")
     print(f"  rebate循环总耗时: {timing.get('rebate_seconds', 0.0):.2f} 秒")
+    details = sorted(
+        timing.get('rebate_details') or [],
+        key=lambda item: item.get('total_seconds', 0.0),
+        reverse=True,
+    )
+    if details:
+        print(f"  最慢rebate Top {min(len(details), SLOW_REBATE_SUMMARY_LIMIT)}：")
+        for item in details[:SLOW_REBATE_SUMMARY_LIMIT]:
+            print(
+                f"    rebate={item.get('rebate')} 总耗时 {item.get('total_seconds', 0.0):.2f} 秒，"
+                f"行数={int(item.get('row_count', 0))}，"
+                f"查ID={item.get('id_query_seconds', 0.0):.2f}，"
+                f"读行={item.get('row_read_seconds', 0.0):.2f}，"
+                f"写入={item.get('row_write_seconds', 0.0):.2f}，"
+                f"改ID={item.get('id_remap_seconds', 0.0):.2f}"
+            )
 
 
-def record_rebate_timing(timing, start, row_count=0):
+def snapshot_sampling_timing(timing):
+    if timing is None:
+        return {}
+    return {key: float(timing.get(key, 0.0)) for key in SAMPLING_TIMING_KEYS}
+
+
+def record_rebate_timing(timing, start, row_count=0, target_rebate=None, before=None):
     if timing is None:
         return
-    add_sampling_timing(timing, 'rebate_seconds', time.perf_counter() - start)
+    total_seconds = time.perf_counter() - start
+    add_sampling_timing(timing, 'rebate_seconds', total_seconds)
     timing['rebate_count'] = int(timing.get('rebate_count', 0)) + 1
     timing['row_count'] = int(timing.get('row_count', 0)) + int(row_count or 0)
+    before = before or {}
+    detail = {
+        'rebate': target_rebate,
+        'row_count': int(row_count or 0),
+        'total_seconds': total_seconds,
+    }
+    for key in ('id_query_seconds', 'row_read_seconds', 'row_write_seconds', 'id_remap_seconds'):
+        detail[key] = float(timing.get(key, 0.0)) - float(before.get(key, 0.0))
+    timing.setdefault('rebate_details', []).append(detail)
 
 
 def configure(**values):
@@ -150,6 +184,57 @@ def resolve_direct_sample_conditions(source_conn, table_config, sample_condition
     return {**sample_conditions, 'where_clause': where_tpl}
 
 
+def _preview_values(values, limit=5):
+    values = list(values)
+    items = [repr(value) for value in values[:limit]]
+    if len(values) > limit:
+        items.append('...')
+    return ', '.join(items)
+
+
+def _sampling_config_label(config_db_name, rebate_config_table_name):
+    if config_db_name:
+        return f"{config_db_name}.{rebate_config_table_name}"
+    return str(rebate_config_table_name)
+
+
+def _coerce_sampling_config_int_column(config_df, column, table_label):
+    numeric = pd.to_numeric(config_df[column], errors='coerce')
+    bool_mask = config_df[column].map(lambda value: isinstance(value, bool))
+    invalid_mask = numeric.isna() | bool_mask | (numeric % 1 != 0)
+    if invalid_mask.any():
+        bad_values = config_df.loc[invalid_mask, column].tolist()
+        raise ValueError(f"{table_label} 采样配置字段 {column} 必须是整数，异常值：{_preview_values(bad_values)}")
+    return numeric.astype('int64')
+
+
+def normalize_sampling_config_df(config_df, config_db_name=None, rebate_config_table_name='rebate_count'):
+    """Validate and normalize rebate/count sampling config rows before sampling."""
+    table_label = _sampling_config_label(config_db_name, rebate_config_table_name)
+    required_columns = {'rebate', 'count'}
+    missing = sorted(required_columns - set(config_df.columns))
+    if missing:
+        raise ValueError(f"{table_label} 采样配置缺少字段：{', '.join(missing)}")
+
+    normalized = config_df[['rebate', 'count']].copy()
+    normalized['rebate'] = _coerce_sampling_config_int_column(normalized, 'rebate', table_label)
+    normalized['count'] = _coerce_sampling_config_int_column(normalized, 'count', table_label)
+
+    negative_rebates = normalized.loc[normalized['rebate'] < 0, 'rebate'].tolist()
+    if negative_rebates:
+        raise ValueError(f"{table_label} 采样配置 rebate 不能小于 0：{_preview_values(negative_rebates)}")
+
+    non_positive_counts = normalized.loc[normalized['count'] <= 0, 'count'].tolist()
+    if non_positive_counts:
+        raise ValueError(f"{table_label} 采样配置 count 必须大于 0：{_preview_values(non_positive_counts)}")
+
+    duplicate_rebates = sorted(set(normalized.loc[normalized['rebate'].duplicated(keep=False), 'rebate'].tolist()))
+    if duplicate_rebates:
+        raise ValueError(f"{table_label} 采样配置 rebate 重复：{_preview_values(duplicate_rebates)}")
+
+    return normalized
+
+
 def load_sampling_config_df(config_engine, config_db_name, rebate_config_table_name):
     """读取 rebate_count 采样配置。"""
     print(f"正在从 {config_db_name}.{rebate_config_table_name} 加载采样配置...")
@@ -162,7 +247,7 @@ def load_sampling_config_df(config_engine, config_db_name, rebate_config_table_n
     if config_df.empty:
         print(f"{config_db_name}.{rebate_config_table_name} 没有采样配置数据，目标表未替换")
         return None
-    return config_df
+    return normalize_sampling_config_df(config_df, config_db_name, rebate_config_table_name)
 
 
 def _cursor_rows_as_dicts(cur):
@@ -208,31 +293,40 @@ def warn_sampling_read_index(source_conn, source_table_name, sample_conditions):
         for name, columns in index_columns.items()
     }
     has_id_index = any(columns[:1] == ['id'] for columns in lower_indexes.values())
-    expected_prefix = [end_field, 'rebate', 'id'] if end_field else ['rebate', 'id']
-    has_composite_index = any(
-        columns[:len(expected_prefix)] == expected_prefix
+    id_select_prefixes = [['rebate', 'id']]
+    if end_field:
+        id_select_prefixes.insert(0, [end_field, 'rebate', 'id'])
+    has_id_select_index = any(
+        any(columns[:len(prefix)] == prefix for prefix in id_select_prefixes)
         for columns in lower_indexes.values()
     )
-    if has_id_index or has_composite_index:
+    if has_id_index and has_id_select_index:
         used = [
             f"{name}({', '.join(index_columns[name])})"
             for name, columns in lower_indexes.items()
-            if columns[:1] == ['id'] or columns[:len(expected_prefix)] == expected_prefix
+            if columns[:1] == ['id']
+            or any(columns[:len(prefix)] == prefix for prefix in id_select_prefixes)
         ]
         print(f"实际采样读取索引检查通过：{source_table_name}，可用索引：{'; '.join(used)}")
         return
 
-    print(f"实际采样读取索引风险：{source_table_name} 未检测到适合读取完整行的索引。")
-    print("  当前读取完整行会使用：原采样条件 AND id IN (...)")
-    if end_field:
+    print(f"实际采样读取索引风险：{source_table_name} 索引不完整。")
+    print("  当前流程会先按 rebate/结束条件挑选ID，再使用 id IN (...) 读取完整ID组。")
+    if not has_id_select_index and end_field:
         print(
-            f"  建议添加复合索引：ALTER TABLE {source_table_name} "
+            f"  建议添加挑ID复合索引：ALTER TABLE {source_table_name} "
             f"ADD INDEX idx_{end_field}_rebate_id (`{end_field}`, `rebate`, `id`);"
         )
-    print(
-        f"  或添加单列id索引：ALTER TABLE {source_table_name} "
-        "ADD INDEX idx_id (`id`);"
-    )
+    if not has_id_select_index:
+        print(
+            f"  或添加挑ID复合索引：ALTER TABLE {source_table_name} "
+            "ADD INDEX idx_rebate_id (`rebate`, `id`);"
+        )
+    if not has_id_index:
+        print(
+            f"  建议添加完整组读取索引：ALTER TABLE {source_table_name} "
+            "ADD INDEX idx_id (`id`);"
+        )
 
 
 def _sample_ids_from_candidates(candidate_ids, sample_size, random_seed):
@@ -482,20 +576,13 @@ def select_sample_ids_for_rebate(
     return [int(value) for value in sampled_ids]
 
 
-def read_sample_rows_by_ids(source_engine, source_table_ref, id_batch, target_rebate, sample_conditions=None, *, timing=None):
-    """按 id 分块读取源表完整行。"""
+def read_sample_rows_by_ids(source_engine, source_table_ref, id_batch, target_rebate, *, timing=None):
+    """按 id 读取源表全部行（不叠加采样条件，确保取到一个 id 下的所有数据）。"""
     id_text = ','.join(str(int(value)) for value in id_batch)
-    where_parts = [f"`id` IN ({id_text})"]
-    if sample_conditions is not None:
-        where_parts.insert(
-            0,
-            f"({sample_conditions['where_clause'].format(target_rebate=target_rebate)})",
-        )
-    where_clause = " AND ".join(where_parts)
     query = f"""
     SELECT *
     FROM {source_table_ref}
-    WHERE {where_clause}
+    WHERE `id` IN ({id_text})
     """
     start = time.perf_counter()
     df = sql_with_retry(
@@ -576,7 +663,6 @@ def fetch_and_write_sample_rows_in_chunks(
     source_db_name,
     source_table_ref,
     target_rebate,
-    sample_conditions,
     append_mode,
     id_mapping,
     next_id_state,
@@ -596,7 +682,6 @@ def fetch_and_write_sample_rows_in_chunks(
             source_table_ref,
             id_batch,
             target_rebate,
-            sample_conditions,
             timing=timing,
         )
         check_cancelled()
@@ -661,6 +746,7 @@ def sample_rebate_to_staging(
     total_start = time.perf_counter()
     target_rebate = row['rebate']
     sample_size = int(row['count'])
+    timing_before = snapshot_sampling_timing(timing)
 
     print(f"\n处理 rebate={target_rebate}, 采样数量={sample_size}...")
     print(get_sample_description(target_rebate, sample_conditions))
@@ -678,7 +764,7 @@ def sample_rebate_to_staging(
     )
     if not sampled_ids:
         print(f"没有找到 rebate={target_rebate} 的数据")
-        record_rebate_timing(timing, total_start)
+        record_rebate_timing(timing, total_start, target_rebate=target_rebate, before=timing_before)
         return 0, 0, 0, final_conn
 
     totals, final_conn = fetch_and_write_sample_rows_in_chunks(
@@ -691,7 +777,6 @@ def sample_rebate_to_staging(
         source_db_name=source_db_name,
         source_table_ref=source_table_ref,
         target_rebate=target_rebate,
-        sample_conditions=sample_conditions,
         append_mode=append_mode,
         id_mapping=id_mapping,
         next_id_state=next_id_state,
@@ -699,12 +784,18 @@ def sample_rebate_to_staging(
     )
     if totals['row_count'] <= 0:
         print(f"没有提取到 rebate={target_rebate} 的数据")
-        record_rebate_timing(timing, total_start)
+        record_rebate_timing(timing, total_start, target_rebate=target_rebate, before=timing_before)
         return 0, totals['changed_pair_count'], totals['changed_row_count'], final_conn
 
     print(f"成功写入 {totals['row_count']} 条数据到临时表 {final_db_name}.{staging_table_name} (rebate={target_rebate})")
     print(f"rebate={target_rebate} 单项采样总耗时：{time.perf_counter() - total_start:.2f} 秒")
-    record_rebate_timing(timing, total_start, totals['row_count'])
+    record_rebate_timing(
+        timing,
+        total_start,
+        totals['row_count'],
+        target_rebate=target_rebate,
+        before=timing_before,
+    )
     return totals['row_count'], totals['changed_pair_count'], totals['changed_row_count'], final_conn
 
 
@@ -818,6 +909,11 @@ def sample_config_rows_to_staging(
     initial_totals=None,
 ):
     """执行 rebate_count 采样循环并写入临时表。"""
+    config_df = normalize_sampling_config_df(
+        config_df,
+        names.get('config_db_name'),
+        names.get('rebate_config_table_name', 'rebate_count'),
+    )
     totals = dict(initial_totals or {
         'sampled_count': 0,
         'remapped_id_count': 0,
