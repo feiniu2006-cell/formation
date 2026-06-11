@@ -17,6 +17,7 @@ from formation_tool.utils.task_utils import TaskCancelled
 print = log_utils.emit
 
 SAMPLE_ID_RANDOM_RANGE_ATTEMPTS = 8
+SAMPLE_ID_RANDOM_RANGE_MAX_ATTEMPTS = 20
 SAMPLE_ID_RANDOM_RANGE_MAX_CANDIDATES_PER_QUERY = 20000
 SAMPLE_ROW_WRITE_CHUNK_SIZE = 500
 SLOW_REBATE_SUMMARY_LIMIT = 5
@@ -27,14 +28,24 @@ SAMPLING_TIMING_KEYS = (
     'id_remap_seconds',
     'rebate_seconds',
 )
+SAMPLING_COUNTER_KEYS = (
+    'random_range_attempts',
+    'random_range_returned_ids',
+    'random_range_added_ids',
+    'random_range_duplicate_ids',
+    'full_scan_fallback_count',
+    'sparse_shortcut_count',
+)
 
 
 def new_sampling_timing():
     timing = {key: 0.0 for key in SAMPLING_TIMING_KEYS}
+    timing.update({key: 0 for key in SAMPLING_COUNTER_KEYS})
     timing.update({
         'rebate_count': 0,
         'row_count': 0,
         'rebate_details': [],
+        'full_scan_fallback_rebates': [],
     })
     return timing
 
@@ -42,6 +53,11 @@ def new_sampling_timing():
 def add_sampling_timing(timing, key, elapsed):
     if timing is not None:
         timing[key] = float(timing.get(key, 0.0)) + float(elapsed)
+
+
+def add_sampling_counter(timing, key, value=1):
+    if timing is not None:
+        timing[key] = int(timing.get(key, 0)) + int(value)
 
 
 def print_sampling_timing_summary(timing):
@@ -54,6 +70,23 @@ def print_sampling_timing_summary(timing):
     print(f"  写入临时表耗时: {timing.get('row_write_seconds', 0.0):.2f} 秒")
     print(f"  append冲突ID处理耗时: {timing.get('id_remap_seconds', 0.0):.2f} 秒")
     print(f"  rebate循环总耗时: {timing.get('rebate_seconds', 0.0):.2f} 秒")
+    random_returned = int(timing.get('random_range_returned_ids', 0))
+    random_added = int(timing.get('random_range_added_ids', 0))
+    random_duplicates = int(timing.get('random_range_duplicate_ids', 0))
+    hit_rate = (random_added / random_returned * 100.0) if random_returned else 0.0
+    print(
+        f"  随机范围候选：尝试 {int(timing.get('random_range_attempts', 0))} 次，"
+        f"返回 {random_returned} 个，新增 {random_added} 个，"
+        f"重复 {random_duplicates} 个，新增率 {hit_rate:.1f}%"
+    )
+    fallback_rebates = timing.get('full_scan_fallback_rebates') or []
+    if fallback_rebates:
+        preview = ', '.join(str(value) for value in fallback_rebates[:8])
+        if len(fallback_rebates) > 8:
+            preview += ', ...'
+        print(f"  全量 DISTINCT fallback：{len(fallback_rebates)} 个 rebate ({preview})")
+    else:
+        print("  全量 DISTINCT fallback：0 个 rebate")
     details = sorted(
         timing.get('rebate_details') or [],
         key=lambda item: item.get('total_seconds', 0.0),
@@ -68,14 +101,18 @@ def print_sampling_timing_summary(timing):
                 f"查ID={item.get('id_query_seconds', 0.0):.2f}，"
                 f"读行={item.get('row_read_seconds', 0.0):.2f}，"
                 f"写入={item.get('row_write_seconds', 0.0):.2f}，"
-                f"改ID={item.get('id_remap_seconds', 0.0):.2f}"
+                f"改ID={item.get('id_remap_seconds', 0.0):.2f}，"
+                f"随机尝试={int(item.get('random_range_attempts', 0))}，"
+                f"fallback={'是' if int(item.get('full_scan_fallback_count', 0)) else '否'}"
             )
 
 
 def snapshot_sampling_timing(timing):
     if timing is None:
         return {}
-    return {key: float(timing.get(key, 0.0)) for key in SAMPLING_TIMING_KEYS}
+    snapshot = {key: float(timing.get(key, 0.0)) for key in SAMPLING_TIMING_KEYS}
+    snapshot.update({key: int(timing.get(key, 0)) for key in SAMPLING_COUNTER_KEYS})
+    return snapshot
 
 
 def record_rebate_timing(timing, start, row_count=0, target_rebate=None, before=None):
@@ -93,6 +130,8 @@ def record_rebate_timing(timing, start, row_count=0, target_rebate=None, before=
     }
     for key in ('id_query_seconds', 'row_read_seconds', 'row_write_seconds', 'id_remap_seconds'):
         detail[key] = float(timing.get(key, 0.0)) - float(before.get(key, 0.0))
+    for key in SAMPLING_COUNTER_KEYS:
+        detail[key] = int(timing.get(key, 0)) - int(before.get(key, 0))
     timing.setdefault('rebate_details', []).append(detail)
 
 
@@ -361,6 +400,9 @@ def _select_sample_ids_with_full_scan(
     timing=None,
 ):
     """Fallback: query all matching distinct ids and sample in Python."""
+    add_sampling_counter(timing, 'full_scan_fallback_count')
+    if timing is not None:
+        timing.setdefault('full_scan_fallback_rebates', []).append(int(target_rebate))
     start = time.perf_counter()
     id_query = f"""
     SELECT DISTINCT `id`
@@ -438,6 +480,25 @@ def _query_sample_id_range(source_engine, source_table_ref, where_clause, target
     return min_id, max_id
 
 
+def _random_range_attempt_limit(sample_size):
+    sample_size = int(sample_size)
+    if sample_size <= 200:
+        return SAMPLE_ID_RANDOM_RANGE_ATTEMPTS
+    if sample_size <= 1000:
+        return 10
+    if sample_size <= 5000:
+        return 12
+    if sample_size <= 20000:
+        return 16
+    return SAMPLE_ID_RANDOM_RANGE_MAX_ATTEMPTS
+
+
+def _random_range_per_query_limit(sample_size, attempt):
+    base_limit = max(int(sample_size) * 3, 500)
+    scale = 1 + max(0, int(attempt) - SAMPLE_ID_RANDOM_RANGE_ATTEMPTS) // 4
+    return min(base_limit * scale, SAMPLE_ID_RANDOM_RANGE_MAX_CANDIDATES_PER_QUERY)
+
+
 def _query_candidate_ids_from_random_ranges(
     *,
     source_engine,
@@ -454,16 +515,16 @@ def _query_candidate_ids_from_random_ranges(
         return []
 
     rng = random.Random(f"{random_seed}:{target_rebate}:{sample_size}")
-    per_query_limit = min(
-        max(sample_size * 3, 500),
-        SAMPLE_ID_RANDOM_RANGE_MAX_CANDIDATES_PER_QUERY,
-    )
+    attempt_limit = _random_range_attempt_limit(sample_size)
     candidate_ids = set()
+    returned_total = 0
+    duplicate_total = 0
     total_start = time.perf_counter()
 
-    for attempt in range(1, SAMPLE_ID_RANDOM_RANGE_ATTEMPTS + 1):
+    for attempt in range(1, attempt_limit + 1):
         check_cancelled()
         start_id = rng.randint(int(min_id), int(max_id))
+        per_query_limit = _random_range_per_query_limit(sample_size, attempt)
         query = f"""
         SELECT DISTINCT `id`
         FROM {source_table_ref}
@@ -481,17 +542,28 @@ def _query_candidate_ids_from_random_ranges(
         before = len(candidate_ids)
         candidate_ids.update(ids)
         added = len(candidate_ids) - before
+        duplicates = max(len(ids) - added, 0)
+        returned_total += len(ids)
+        duplicate_total += duplicates
+        add_sampling_counter(timing, 'random_range_attempts')
+        add_sampling_counter(timing, 'random_range_returned_ids', len(ids))
+        add_sampling_counter(timing, 'random_range_added_ids', added)
+        add_sampling_counter(timing, 'random_range_duplicate_ids', duplicates)
         print(
-            f"  随机范围第 {attempt}/{SAMPLE_ID_RANDOM_RANGE_ATTEMPTS} 次："
+            f"  随机范围第 {attempt}/{attempt_limit} 次："
             f"起点id={start_id}，返回 {len(ids)} 个，新增 {added} 个，"
-            f"累计 {len(candidate_ids)} 个，耗时 {elapsed:.2f} 秒"
+            f"重复 {duplicates} 个，累计 {len(candidate_ids)} 个，"
+            f"limit={per_query_limit}，耗时 {elapsed:.2f} 秒"
         )
         if len(candidate_ids) >= sample_size:
             break
 
+    added_total = len(candidate_ids)
+    hit_rate = (added_total / returned_total * 100.0) if returned_total else 0.0
     print(
         f"随机范围候选ID查询总耗时：{time.perf_counter() - total_start:.2f} 秒，"
-        f"候选 {len(candidate_ids)} 个"
+        f"返回 {returned_total} 个，候选 {added_total} 个，"
+        f"重复 {duplicate_total} 个，新增率 {hit_rate:.1f}%"
     )
     return list(candidate_ids)
 
@@ -524,6 +596,7 @@ def select_sample_ids_for_rebate(
         timing=timing,
     )
     if len(sparse_probe_ids) <= sample_size:
+        add_sampling_counter(timing, 'sparse_shortcut_count')
         print(
             f"rebate={target_rebate} 可用ID数量不超过采样数，"
             f"直接使用全部 {len(sparse_probe_ids)} 个ID"

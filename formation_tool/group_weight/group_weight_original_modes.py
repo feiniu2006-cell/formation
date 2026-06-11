@@ -19,9 +19,9 @@ def configure(**values):
 
 def prepare_original_trigger_rtp_context(rebates_by_mode, mode_exists, mode_pairs):
     """准备原模式普通局反推需要的特殊/免费局 RTP 和触发状态。"""
+    special_has_zero = group_weight_row_helpers.has_rebate_zero(rebates_by_mode['2'])
     special_enabled = mode_exists['2'] and bool(mode_pairs['2'])
     free_enabled = mode_exists['3'] and bool(mode_pairs['3'])
-    special_has_zero = group_weight_row_helpers.has_rebate_zero(rebates_by_mode['2'])
     special_zero_weight, special_actual_rtp = infer_special_zero_weight(
         mode_pairs['2'],
         special_has_zero,

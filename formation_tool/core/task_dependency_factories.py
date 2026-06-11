@@ -49,6 +49,7 @@ def build_task_preflight_deps(module):
         get_database_configs=lambda: runtime_state.database_configs,
         get_trigger_weights=runtime_state.trigger_weights_dict,
         get_rebate_rules=module.get_runtime_rebate_rules,
+        get_rebate_config_index_warnings=module.get_rebate_config_index_warnings,
         validate_rebate_rules=module.validate_runtime_rebate_rules,
         get_group_weight_rules=lambda: runtime_state.group_weight_rules,
         validate_group_weight_rules=module.validate_group_weight_rules,

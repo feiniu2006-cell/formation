@@ -70,6 +70,52 @@ class TaskEntrypointDepsTests(unittest.TestCase):
         self.assertFalse(report.ok)
         self.assertTrue(any("jili_49_special_formation" in msg for msg in report.fatal_errors))
 
+    def test_rebate_config_preflight_checks_source_indexes(self):
+        calls = []
+
+        def index_warnings(rules_by_mode):
+            calls.append(rules_by_mode)
+            return [{
+                "mode": "1",
+                "name": "普通局",
+                "source_db": "SRC",
+                "source_table": "jili_49_formation",
+                "warning": "EXPLAIN 未使用索引",
+            }]
+
+        deps = self._build_sampling_preflight_deps(
+            formation_exists={"1": True},
+            config_tables={},
+            rebate_rules={"1": [{"rebate": 0, "count": 10}]},
+            index_warnings=index_warnings,
+        )
+        report = task_preflight.PreflightReport("生成采样配置")
+
+        task_preflight.preflight_rebate_config(report, {"modes": ["1"]}, deps)
+
+        self.assertTrue(report.ok)
+        self.assertEqual(calls, [{"1": [{"rebate": 0, "count": 10}]}])
+        self.assertTrue(any("源表统计索引风险" in msg for msg in report.warnings))
+
+    def test_rebate_config_preflight_can_reuse_dialog_index_check(self):
+        calls = []
+        deps = self._build_sampling_preflight_deps(
+            formation_exists={"1": True},
+            config_tables={},
+            index_warnings=lambda _rules: calls.append("unexpected"),
+        )
+        report = task_preflight.PreflightReport("生成采样配置")
+
+        task_preflight.preflight_rebate_config(
+            report,
+            {"modes": ["1"], "index_checked": True},
+            deps,
+        )
+
+        self.assertTrue(report.ok)
+        self.assertEqual(calls, [])
+        self.assertTrue(any("索引已在启动前检查" in msg for msg in report.info))
+
     def test_task_dependency_factories_build_sampling_deps_from_module_namespace(self):
         module = SimpleNamespace(
             get_runtime_game_configs=lambda: {"1": {}},
@@ -105,7 +151,14 @@ class TaskEntrypointDepsTests(unittest.TestCase):
         self.assertIsInstance(deps, task_entrypoints.RebateConfigGenerationDeps)
         self.assertEqual(deps.max_rebate, 500000)
 
-    def _build_sampling_preflight_deps(self, *, formation_exists, config_tables):
+    def _build_sampling_preflight_deps(
+        self,
+        *,
+        formation_exists,
+        config_tables,
+        rebate_rules=None,
+        index_warnings=None,
+    ):
         game_configs = {
             "1": {
                 "name": "普通局",
@@ -127,6 +180,8 @@ class TaskEntrypointDepsTests(unittest.TestCase):
             get_game_configs=lambda: game_configs,
             get_sampling_formation_exists=lambda: formation_exists,
             get_source_formation_check_error=lambda _mode: None,
+            get_rebate_rules=lambda: rebate_rules or {"1": [{"rebate": 0, "count": 10}]},
+            get_rebate_config_index_warnings=index_warnings or (lambda _rules: []),
             get_table_database=lambda key, table_config: table_config[key]["database"],
             get_table_name=lambda key, table_config: table_config[key]["table"],
             connect_to_database=lambda db_name: db_name,

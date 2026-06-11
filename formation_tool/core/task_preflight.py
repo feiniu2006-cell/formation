@@ -388,6 +388,36 @@ def _check_sampling_source_indexes(report, modes, game_configs, connections, dep
             report.add_info(f"{config['name']} 源表采样读取索引已检查：{source_db}.{source_table}")
 
 
+def _check_rebate_config_source_indexes(report, modes, deps):
+    index_warnings_loader = getattr(deps, "get_rebate_config_index_warnings", None)
+    if index_warnings_loader is None:
+        report.add_warning("未配置采样配置生成索引检查入口，已跳过源表统计索引检查")
+        return
+
+    rules_by_mode = deps.get_rebate_rules()
+    visible_rules = {
+        mode: rules_by_mode[mode]
+        for mode in modes
+        if mode in rules_by_mode
+    }
+    if not visible_rules:
+        return
+    try:
+        warnings = list(index_warnings_loader(visible_rules) or [])
+    except Exception as exc:
+        report.add_fatal(f"采样配置生成索引检查失败：{exc}")
+        return
+
+    if not warnings:
+        report.add_info("采样配置生成源表统计索引已检查")
+        return
+    for item in warnings:
+        report.add_warning(
+            f"{item.get('name', item.get('mode', '局类型'))} 源表统计索引风险："
+            f"{item.get('source_db')}.{item.get('source_table')}，{item.get('warning')}"
+        )
+
+
 def _check_group_weight_rebate_tables(report, active_modes, context, connections, deps):
     config_db = context["read_db_name"]
     conn = connections.get(config_db)
@@ -421,6 +451,11 @@ def preflight_rebate_config(report, metadata, deps):
     try:
         formation_exists = deps.get_sampling_formation_exists()
         _check_source_tables(report, modes, game_configs, formation_exists, deps)
+        existing_modes = [mode for mode in modes if formation_exists.get(mode, False)]
+        if metadata.get("index_checked"):
+            report.add_info("采样配置生成源表统计索引已在启动前检查")
+        else:
+            _check_rebate_config_source_indexes(report, existing_modes, deps)
     finally:
         _close_connections(connections, deps)
 

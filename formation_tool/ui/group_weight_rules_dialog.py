@@ -310,6 +310,9 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             )
         except ValueError as e:
             current_rtp_text = str(e)
+        except Exception as e:
+            print(f"[WARN] group_weight preview failed: {e}")
+            current_rtp_text = f"\u9884\u89c8\u751f\u6210\u5931\u8d25\uff1a{e}"
 
         self.rtp_info_var.set(
             group_weight_ui_text.build_rtp_info_text(

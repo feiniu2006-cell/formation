@@ -10,6 +10,7 @@ from formation_tool.group_weight import group_weight_preview
 from formation_tool.group_weight import group_weight_row_helpers
 from formation_tool.group_weight.group_weight_logic import (
     build_rebate_weight_pairs,
+    build_zero_weight_rebate_pairs,
     format_weighted_rtp,
 )
 from formation_tool.core import runtime_context_sync
@@ -69,6 +70,42 @@ def build_group_weight_pairs_for_modes(active_modes, rebates_by_mode):
             + (f"，{mode_name}暂不使用配置中的 rebate=0 {skipped_rebate_zero} 个" if exclude_zero else "")
         )
     return mode_pairs
+
+
+def get_group_weight_rules_for_mode(game_type):
+    if is_extra_buy_mode(game_type):
+        extra_group = get_extra_buy_group_by_mode(game_type) or {}
+        return extra_group.get('rules', GROUP_WEIGHT_RULES.get(BUY_GROUP_MODE, []))
+    return GROUP_WEIGHT_RULES.get(game_type, [])
+
+
+def build_group_weight_zero_weight_write_rows(active_modes, rebates_by_mode, mode_exists, existing_rows):
+    """Build supplemental weight=0 rows for the final database write only."""
+    seen = {
+        (int(game_type), int(group_id), int(rebate))
+        for game_type, group_id, rebate, _weight in existing_rows
+    }
+    supplemental_rows = []
+    for game_type in active_modes:
+        if not mode_exists.get(game_type, False) or not rebates_by_mode.get(game_type):
+            continue
+        write_game_type = int(get_group_weight_write_game_type(game_type))
+        zero_pairs = build_zero_weight_rebate_pairs(
+            rebates_by_mode[game_type],
+            get_group_weight_rules_for_mode(game_type),
+        )
+        for group_id in WEIGHT_GROUP_IDS:
+            group_id = int(group_id)
+            for rebate, weight in zero_pairs:
+                key = (write_game_type, group_id, int(rebate))
+                if key in seen:
+                    continue
+                supplemental_rows.append((write_game_type, group_id, int(rebate), int(weight)))
+                seen.add(key)
+    if supplemental_rows:
+        print(f"\n[最终写入] 附带写入 weight=0 的 rebate {len(supplemental_rows)} 行")
+    return supplemental_rows
+
 
 def build_group_weight_preview_text(*args, **kwargs):
     """Delegate preview text calculation to the preview module."""

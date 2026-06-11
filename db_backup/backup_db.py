@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import os
 import queue
 import re
@@ -30,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -42,18 +44,16 @@ from sqlalchemy.sql.schema import Table
 
 try:
     import tkinter as tk
-    from tkinter import filedialog, messagebox, scrolledtext, ttk
+    from tkinter import messagebox, scrolledtext, ttk
 except ImportError:
     tk = None
-    filedialog = None
     messagebox = None
     scrolledtext = None
     ttk = None
 
 BACKUP_KEEP_COUNT = 5
-
-import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from db_config import DATABASE_CONFIGS
+CONFIG_FILE_NAME = "db_config.example.json"
+CANCELLED_EXIT_CODE = 130
 
 # ── 备份配置：修改这两行即可 ──────────────────────────────────
 SOURCE_KEY = 'DB1'   # 源库（被备份的数据库）
@@ -61,8 +61,94 @@ TARGET_KEY = 'MY'   # 目标库（备份写入的服务器）
 # ────────────────────────────────────────────────────────────
 
 
+class BackupCancelled(RuntimeError):
+    """Raised when the user requests that the current backup stop."""
+
+
+def _is_cancel_requested(cancel_event: threading.Event | None) -> bool:
+    return cancel_event is not None and cancel_event.is_set()
+
+
+def _check_cancelled(cancel_event: threading.Event | None) -> None:
+    if _is_cancel_requested(cancel_event):
+        raise BackupCancelled("备份已被用户中断。")
+
+
+def _terminate_process(process: subprocess.Popen | None, label: str) -> None:
+    if process is None or process.poll() is not None:
+        return
+
+    print(f"[中断] 正在终止 {label}...")
+    try:
+        process.terminate()
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        print(f"[中断] {label} 未及时退出，强制结束。")
+        process.kill()
+        process.wait(timeout=5)
+    except OSError:
+        pass
+
+
+def _wait_process_with_cancel(
+    process: subprocess.Popen,
+    label: str,
+    cancel_event: threading.Event | None,
+    related_processes: tuple[tuple[subprocess.Popen | None, str], ...] = (),
+) -> int:
+    while True:
+        return_code = process.poll()
+        if return_code is not None:
+            return return_code
+        if _is_cancel_requested(cancel_event):
+            for related_process, related_label in related_processes:
+                _terminate_process(related_process, related_label)
+            _terminate_process(process, label)
+            raise BackupCancelled("备份已被用户中断。")
+        time.sleep(0.2)
+
+
+def get_app_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def get_config_path() -> Path:
+    return get_app_dir() / CONFIG_FILE_NAME
+
+
+def load_database_configs() -> dict:
+    config_path = get_config_path()
+    if not config_path.is_file():
+        raise RuntimeError(
+            f"找不到数据库配置文件：{config_path}\n"
+            f"请确认 {CONFIG_FILE_NAME} 与程序在同一目录。"
+        )
+
+    try:
+        raw_config = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"数据库配置文件不是有效 JSON：{config_path}\n{exc}") from exc
+    except OSError as exc:
+        raise RuntimeError(f"无法读取数据库配置文件：{config_path}\n{exc}") from exc
+
+    if not isinstance(raw_config, dict):
+        raise RuntimeError(f"数据库配置文件格式错误：{config_path} 顶层必须是对象。")
+
+    configs = raw_config.get("DATABASE_CONFIGS", raw_config)
+    if not isinstance(configs, dict) or not configs:
+        raise RuntimeError(f"数据库配置文件缺少 DATABASE_CONFIGS：{config_path}")
+
+    for config_name, config in configs.items():
+        if not isinstance(config_name, str) or not isinstance(config, dict):
+            raise RuntimeError(f"数据库配置文件格式错误：{config_path} 中的配置项必须是对象。")
+
+    return configs
+
+
 def get_db_config(config_name: str) -> dict:
-    config = DATABASE_CONFIGS.get(config_name)
+    config = load_database_configs().get(config_name)
     if not config:
         raise RuntimeError(f"数据库配置不存在：{config_name}")
     return config
@@ -287,6 +373,85 @@ def _mysql_params_from_sqlalchemy_url(url_str: str) -> dict[str, str | int]:
     }
 
 
+def _mysql_engine_from_params(params: dict[str, str | int], database: str | None = None) -> Engine:
+    url = URL.create(
+        drivername="mysql+pymysql",
+        username=str(params["user"]),
+        password=str(params["password"]),
+        host=str(params["host"]),
+        port=int(params["port"]),
+        database=database if database is not None else str(params["database"]),
+    )
+    return create_engine(url)
+
+
+def _fetch_source_objects_for_log(source_params: dict[str, str | int]) -> list[tuple[str, str]]:
+    engine = _mysql_engine_from_params(source_params, database="information_schema")
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT TABLE_NAME, TABLE_TYPE
+                    FROM information_schema.TABLES
+                    WHERE TABLE_SCHEMA = :database
+                    ORDER BY TABLE_NAME
+                    """
+                ),
+                {"database": str(source_params["database"])},
+            ).mappings().all()
+        return [(str(row["TABLE_NAME"]), str(row["TABLE_TYPE"])) for row in rows]
+    finally:
+        engine.dispose()
+
+
+def _print_dump_source_object_plan(
+    source_params: dict[str, str | int],
+    cancel_event: threading.Event | None,
+) -> None:
+    _check_cancelled(cancel_event)
+    database_name = str(source_params["database"])
+    print(f"[进度] 正在读取源库 `{database_name}` 的表清单...")
+    try:
+        objects = _fetch_source_objects_for_log(source_params)
+    except Exception as exc:
+        print(f"[提示] 无法读取源库表清单，仍将继续执行 dump：{str(exc)[:300]}")
+        return
+
+    if not objects:
+        print(f"[进度] 源库 `{database_name}` 未读取到表或视图，mysqldump 将继续尝试导出整个库。")
+        return
+
+    table_count = sum(1 for _, object_type in objects if object_type.upper() == "BASE TABLE")
+    view_count = sum(1 for _, object_type in objects if object_type.upper() == "VIEW")
+    print(
+        f"[进度] 源库 `{database_name}` 发现 {len(objects)} 个对象："
+        f"{table_count} 张表，{view_count} 个视图。"
+    )
+    for index, (object_name, object_type) in enumerate(objects, start=1):
+        _check_cancelled(cancel_event)
+        label = "视图" if object_type.upper() == "VIEW" else "表"
+        print(f"[进度] [{index}/{len(objects)}] 将复制{label}: {object_name}")
+
+
+def _read_stderr_lines_for_log(pipe, buffer: list[bytes], label: str) -> None:
+    if pipe is None:
+        return
+    for line in pipe:
+        buffer.append(line)
+        message = line.decode("utf-8", errors="replace").strip()
+        if not message:
+            continue
+        if message.startswith("-- "):
+            message = message[3:].strip()
+        print(f"[进度] {label}: {message}")
+
+
+def _read_pipe_bytes(pipe, buffer: list[bytes]) -> None:
+    if pipe is not None:
+        buffer.append(pipe.read())
+
+
 def backup_via_mysqldump(
     *,
     source_params: dict[str, str | int],
@@ -295,6 +460,7 @@ def backup_via_mysqldump(
     dump_file: Path | None,
     mysqldump_bin: str,
     mysql_bin: str,
+    cancel_event: threading.Event | None = None,
 ) -> None:
     """
     使用 mysqldump + mysql 备份，避免 Python 逐行插入导致长时间无输出或事务过大。
@@ -307,6 +473,7 @@ def backup_via_mysqldump(
     src_cnf = Path(src_cnf_str)
     dst_cnf = Path(dst_cnf_str)
     try:
+        _check_cancelled(cancel_event)
         _write_client_defaults(
             src_cnf,
             str(source_params["host"]),
@@ -333,6 +500,7 @@ def backup_via_mysqldump(
         dump_base = [
             dump_bin,
             f"--defaults-extra-file={src_cnf}",
+            "--verbose",
             "--single-transaction",
             "--quick",
             "--routines",
@@ -351,9 +519,11 @@ def backup_via_mysqldump(
         # DEFINER 子句过滤：源库 DEFINER 用户在目标库不存在时需要 SUPER/SET_USER_ID，
         # 直接剥除可避免权限报错，导入后对象以导入用户身份生效。
         _definer_re = re.compile(rb"DEFINER=`[^`]*`@`[^`]*`\s*")
+        _print_dump_source_object_plan(source_params, cancel_event)
 
         # 导入含存储函数/触发器时，需要 log_bin_trust_function_creators=1（binlog 开启时）
         # 尝试在导入前临时设置，完成后重置；若权限不足则提示用户手动配置。
+        _check_cancelled(cancel_event)
         _trust_url = (
             f"mysql+pymysql://{target_params['user']}:{target_params['password']}"
             f"@{target_params['host']}:{int(target_params['port'])}/{target_database}"
@@ -382,16 +552,24 @@ def backup_via_mysqldump(
                 dump_path = dump_file.resolve()
                 print(f"[阶段] mysqldump 导出到文件: {dump_path}")
                 dump_path.parent.mkdir(parents=True, exist_ok=True)
+                dump_stderr_buf: list[bytes] = []
                 with dump_path.open("wb") as out_f:
-                    r_dump = subprocess.run(
+                    p_dump = subprocess.Popen(
                         dump_base,
                         stdout=out_f,
                         stderr=subprocess.PIPE,
-                        check=False,
                     )
-                if r_dump.returncode != 0:
-                    err = r_dump.stderr.decode("utf-8", errors="replace")
-                    raise RuntimeError(f"mysqldump 失败 (code={r_dump.returncode}): {err[:2000]}")
+                    dump_stderr_thread = threading.Thread(
+                        target=_read_stderr_lines_for_log,
+                        args=(p_dump.stderr, dump_stderr_buf, "mysqldump"),
+                        daemon=True,
+                    )
+                    dump_stderr_thread.start()
+                    rc_dump = _wait_process_with_cancel(p_dump, "mysqldump", cancel_event)
+                    dump_stderr_thread.join()
+                if rc_dump != 0:
+                    err = b"".join(dump_stderr_buf).decode("utf-8", errors="replace")
+                    raise RuntimeError(f"mysqldump 失败 (code={rc_dump}): {err[:2000]}")
                 size_mb = dump_path.stat().st_size / (1024 * 1024)
                 print(f"[阶段] 导出完成，约 {size_mb:.2f} MB，正在剥除 DEFINER 子句...")
                 tmp_path = dump_path.with_suffix(".tmp")
@@ -403,19 +581,38 @@ def backup_via_mysqldump(
 
                 print(f"[阶段] mysql 从文件导入到库 `{target_database}`")
                 with dump_path.open("rb") as in_f:
-                    r_mysql = subprocess.run(
+                    mysql_stdout_buf: list[bytes] = []
+                    mysql_stderr_buf: list[bytes] = []
+                    p_mysql_file = subprocess.Popen(
                         mysql_base,
                         stdin=in_f,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
-                        check=False,
                     )
-                if r_mysql.returncode != 0:
-                    err = r_mysql.stderr.decode("utf-8", errors="replace")
-                    raise RuntimeError(f"mysql 导入失败 (code={r_mysql.returncode}): {err[:2000]}")
+                    mysql_stdout_thread = threading.Thread(
+                        target=_read_pipe_bytes,
+                        args=(p_mysql_file.stdout, mysql_stdout_buf),
+                        daemon=True,
+                    )
+                    mysql_stderr_thread = threading.Thread(
+                        target=_read_pipe_bytes,
+                        args=(p_mysql_file.stderr, mysql_stderr_buf),
+                        daemon=True,
+                    )
+                    mysql_stdout_thread.start()
+                    mysql_stderr_thread.start()
+                    try:
+                        rc_mysql_file = _wait_process_with_cancel(p_mysql_file, "mysql", cancel_event)
+                    finally:
+                        mysql_stdout_thread.join(timeout=5)
+                        mysql_stderr_thread.join(timeout=5)
+                if rc_mysql_file != 0:
+                    err = b"".join(mysql_stderr_buf).decode("utf-8", errors="replace")
+                    raise RuntimeError(f"mysql 导入失败 (code={rc_mysql_file}): {err[:2000]}")
                 print("[阶段] 导入完成")
                 return
 
+            _check_cancelled(cancel_event)
             print("[阶段] mysqldump 流式管道导入目标库（无中间大文件，过滤 DEFINER）")
             p_dump = subprocess.Popen(
                 dump_base,
@@ -435,8 +632,7 @@ def backup_via_mysqldump(
             mysql_stderr_buf: list[bytes] = []
 
             def _read_dump_stderr():
-                if p_dump.stderr:
-                    dump_stderr_buf.append(p_dump.stderr.read())
+                _read_stderr_lines_for_log(p_dump.stderr, dump_stderr_buf, "mysqldump")
 
             def _read_mysql_stderr():
                 if p_mysql.stderr:
@@ -450,6 +646,8 @@ def backup_via_mysqldump(
             def _pipe_filter():
                 try:
                     for line in p_dump.stdout:
+                        if _is_cancel_requested(cancel_event):
+                            break
                         try:
                             p_mysql.stdin.write(_definer_re.sub(b"", line))
                         except (BrokenPipeError, ValueError, OSError):
@@ -472,16 +670,24 @@ def backup_via_mysqldump(
             mysql_stderr_thread.start()
             mysql_stdout_thread.start()
 
-            # filter_thread 负责关闭 mysql stdin；其他线程随各自管道 EOF 自然结束
-            filter_thread.join()
-            mysql_stderr_thread.join()
-            mysql_stdout_thread.join()
-            dump_stderr_thread.join()
+            try:
+                while p_dump.poll() is None or p_mysql.poll() is None:
+                    if _is_cancel_requested(cancel_event):
+                        _terminate_process(p_dump, "mysqldump")
+                        _terminate_process(p_mysql, "mysql")
+                        raise BackupCancelled("备份已被用户中断。")
+                    time.sleep(0.2)
+            finally:
+                # filter_thread 负责关闭 mysql stdin；其他线程随各自管道 EOF 自然结束
+                filter_thread.join(timeout=5)
+                mysql_stderr_thread.join(timeout=5)
+                mysql_stdout_thread.join(timeout=5)
+                dump_stderr_thread.join(timeout=5)
 
             rc_mysql = p_mysql.wait()
             rc_dump  = p_dump.wait()
-            err_dump_b  = dump_stderr_buf[0]  if dump_stderr_buf  else b""
-            err_mysql_b = mysql_stderr_buf[0] if mysql_stderr_buf else b""
+            err_dump_b  = b"".join(dump_stderr_buf)
+            err_mysql_b = b"".join(mysql_stderr_buf)
 
             # 优先报 mysql 端错误：mysql 提前退出会导致管道断裂，
             # mysqldump 写入时得到 errno 22，掩盖真正的根因
@@ -720,13 +926,16 @@ def backup_all_tables(
     tables: list[Table],
     mode: str,
     batch_size: int,
+    cancel_event: threading.Event | None = None,
 ) -> None:
     total_rows = 0
+    total_tables = len(tables)
 
     with source_engine.connect() as source_conn:
-        for table in tables:
+        for table_index, table in enumerate(tables, start=1):
+            _check_cancelled(cancel_event)
             table_name = table.fullname
-            print(f"\n[开始] 处理表: {table_name}")
+            print(f"\n[进度] [{table_index}/{total_tables}] 正在复制表: {table_name}")
 
             if mode in {"replace", "fail"}:
                 existing_count = count_rows(target_engine, table)
@@ -746,16 +955,17 @@ def backup_all_tables(
                 inserted = 0
 
                 for batch in iter_batches(result, batch_size):
+                    _check_cancelled(cancel_event)
                     target_conn.execute(table.insert(), batch)
                     inserted += len(batch)
                     total_rows += len(batch)
 
-                print(f"  - 写入 {inserted} 条")
+                print(f"[进度] [{table_index}/{total_tables}] 表 {table_name} 复制完成，写入 {inserted} 条")
 
     print(f"\n[完成] 全部表备份完成，总写入行数: {total_rows}")
 
 
-def run_backup(args: argparse.Namespace) -> int:
+def run_backup(args: argparse.Namespace, cancel_event: threading.Event | None = None) -> int:
     print("[开始] 数据库备份任务启动")
     print(
         f"[参数] method={args.method}, source_key={args.source_key}, "
@@ -769,6 +979,7 @@ def run_backup(args: argparse.Namespace) -> int:
         return 2
 
     try:
+        _check_cancelled(cancel_event)
         if args.method == "dump":
             resolved_dump, resolved_mysql = verify_mysql_client_tools(
                 args.mysqldump_bin,
@@ -788,6 +999,7 @@ def run_backup(args: argparse.Namespace) -> int:
             else:
                 source_params = _mysql_params_from_config(args.source_key, need_database=True)
 
+            _check_cancelled(cancel_event)
             backup_database_name: str | None
             if args.target_url:
                 target_params = _mysql_params_from_sqlalchemy_url(args.target_url)
@@ -812,6 +1024,7 @@ def run_backup(args: argparse.Namespace) -> int:
             )
 
             dump_path = Path(args.dump_file).expanduser() if args.dump_file else None
+            _check_cancelled(cancel_event)
             backup_via_mysqldump(
                 source_params=source_params,
                 target_params=target_params,
@@ -819,6 +1032,7 @@ def run_backup(args: argparse.Namespace) -> int:
                 dump_file=dump_path,
                 mysqldump_bin=args.mysqldump_bin,
                 mysql_bin=args.mysql_bin,
+                cancel_event=cancel_event,
             )
             print(f"备份完成，备份库名：{backup_database_name}")
             if dump_path is not None:
@@ -832,6 +1046,7 @@ def run_backup(args: argparse.Namespace) -> int:
 
         source_url = args.source_url or build_mysql_url(args.source_key, args.driver)
         print(f"[连接] 源库连接: {safe_url_for_log(source_url)}")
+        _check_cancelled(cancel_event)
         if args.target_url:
             target_url = args.target_url
             backup_database_name = None
@@ -850,6 +1065,7 @@ def run_backup(args: argparse.Namespace) -> int:
         target_engine = create_engine(target_url)
         print("[阶段] 连接引擎创建完成")
 
+        _check_cancelled(cancel_event)
         if backup_database_name:
             print(f"已创建备份库：{backup_database_name}")
 
@@ -869,6 +1085,7 @@ def run_backup(args: argparse.Namespace) -> int:
             print("源数据库没有可备份的数据表。")
             return 0
 
+        _check_cancelled(cancel_event)
         metadata = reflect_source_tables(source_engine)
         tables = metadata.sorted_tables
         print(f"[阶段] 已读取源表结构，共 {len(tables)} 张表")
@@ -884,10 +1101,17 @@ def run_backup(args: argparse.Namespace) -> int:
             tables=tables,
             mode=args.mode,
             batch_size=args.batch_size,
+            cancel_event=cancel_event,
         )
         if backup_database_name:
             print(f"备份完成，备份库名：{backup_database_name}")
         return 0
+    except BackupCancelled as exc:
+        print(f"备份已中断：{exc}", file=sys.stderr)
+        return CANCELLED_EXIT_CODE
+    except KeyboardInterrupt:
+        print("备份已中断：收到键盘中断。", file=sys.stderr)
+        return CANCELLED_EXIT_CODE
     except (SQLAlchemyError, RuntimeError, subprocess.SubprocessError, OSError) as exc:
         print(f"备份失败：{exc}", file=sys.stderr)
         return 1
@@ -915,12 +1139,13 @@ class BackupDbApp:
         self.root = root
         self.initial_args = initial_args
         self.worker_thread = None
+        self.cancel_event: threading.Event | None = None
         self.log_queue = queue.Queue()
         self.ui_queue = queue.Queue()
         self.normal_controls = []
         self.combo_controls = []
 
-        config_keys = sorted(DATABASE_CONFIGS.keys())
+        config_keys = sorted(load_database_configs().keys())
         self.source_key_var = tk.StringVar(value=initial_args.source_key)
         self.target_key_var = tk.StringVar(value=initial_args.target_key)
         self.source_url_var = tk.StringVar(value=initial_args.source_url or "")
@@ -929,9 +1154,6 @@ class BackupDbApp:
         self.method_var = tk.StringVar(value=initial_args.method)
         self.mode_var = tk.StringVar(value=initial_args.mode)
         self.batch_size_var = tk.StringVar(value=str(initial_args.batch_size))
-        self.dump_file_var = tk.StringVar(value=initial_args.dump_file or "")
-        self.mysqldump_bin_var = tk.StringVar(value=initial_args.mysqldump_bin or "")
-        self.mysql_bin_var = tk.StringVar(value=initial_args.mysql_bin or "")
         self.skip_dump_env_check_var = tk.BooleanVar(value=initial_args.skip_dump_env_check)
         self.source_info_var = tk.StringVar()
         self.target_info_var = tk.StringVar()
@@ -1041,44 +1263,12 @@ class BackupDbApp:
         batch_entry.grid(row=1, column=3, sticky="w", padx=(8, 0), pady=(8, 0))
         self.normal_controls.append(batch_entry)
 
-        ttk.Label(option_frame, text="SQL 文件").grid(row=2, column=0, sticky="w", pady=(8, 0))
-        dump_entry = ttk.Entry(option_frame, textvariable=self.dump_file_var)
-        dump_entry.grid(row=2, column=1, columnspan=2, sticky="ew", padx=(8, 8), pady=(8, 0))
-        self.normal_controls.append(dump_entry)
-        dump_button = ttk.Button(option_frame, text="浏览...", command=self._choose_dump_file)
-        dump_button.grid(row=2, column=3, sticky="w", padx=(8, 0), pady=(8, 0))
-        self.normal_controls.append(dump_button)
-
-        ttk.Label(option_frame, text="mysqldump").grid(row=3, column=0, sticky="w", pady=(8, 0))
-        dump_bin_entry = ttk.Entry(option_frame, textvariable=self.mysqldump_bin_var)
-        dump_bin_entry.grid(row=3, column=1, sticky="ew", padx=(8, 8), pady=(8, 0))
-        self.normal_controls.append(dump_bin_entry)
-        dump_bin_button = ttk.Button(
-            option_frame,
-            text="选择...",
-            command=lambda: self._choose_binary(self.mysqldump_bin_var, "选择 mysqldump"),
-        )
-        dump_bin_button.grid(row=3, column=2, sticky="w", pady=(8, 0))
-        self.normal_controls.append(dump_bin_button)
-
-        ttk.Label(option_frame, text="mysql").grid(row=4, column=0, sticky="w", pady=(8, 0))
-        mysql_bin_entry = ttk.Entry(option_frame, textvariable=self.mysql_bin_var)
-        mysql_bin_entry.grid(row=4, column=1, sticky="ew", padx=(8, 8), pady=(8, 0))
-        self.normal_controls.append(mysql_bin_entry)
-        mysql_bin_button = ttk.Button(
-            option_frame,
-            text="选择...",
-            command=lambda: self._choose_binary(self.mysql_bin_var, "选择 mysql"),
-        )
-        mysql_bin_button.grid(row=4, column=2, sticky="w", pady=(8, 0))
-        self.normal_controls.append(mysql_bin_button)
-
         skip_check = ttk.Checkbutton(
             option_frame,
             text="跳过 dump 环境自检",
             variable=self.skip_dump_env_check_var,
         )
-        skip_check.grid(row=4, column=3, sticky="w", padx=(8, 0), pady=(8, 0))
+        skip_check.grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
         self.normal_controls.append(skip_check)
 
         action_frame = ttk.Frame(main)
@@ -1090,10 +1280,12 @@ class BackupDbApp:
         button_bar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self.start_button = ttk.Button(button_bar, text="开始备份", command=self._start_backup)
         self.start_button.grid(row=0, column=0, sticky="w")
+        self.cancel_button = ttk.Button(button_bar, text="中断备份", command=self._cancel_backup, state="disabled")
+        self.cancel_button.grid(row=0, column=1, sticky="w", padx=(8, 0))
         clear_button = ttk.Button(button_bar, text="清空日志", command=self._clear_log)
-        clear_button.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        clear_button.grid(row=0, column=2, sticky="w", padx=(8, 0))
         self.progress = ttk.Progressbar(button_bar, mode="indeterminate", length=180)
-        self.progress.grid(row=0, column=2, sticky="w", padx=(16, 0))
+        self.progress.grid(row=0, column=3, sticky="w", padx=(16, 0))
 
         log_frame = ttk.LabelFrame(action_frame, text="执行日志", padding=8)
         log_frame.grid(row=1, column=0, sticky="nsew")
@@ -1112,7 +1304,7 @@ class BackupDbApp:
         status_bar.grid(row=4, column=0, sticky="ew", pady=(8, 0))
 
     def _config_summary(self, config_name: str) -> str:
-        config = DATABASE_CONFIGS.get(config_name)
+        config = load_database_configs().get(config_name)
         if not config:
             return "未找到配置"
         host = config.get("host", "")
@@ -1124,23 +1316,6 @@ class BackupDbApp:
     def _update_config_info(self) -> None:
         self.source_info_var.set(self._config_summary(self.source_key_var.get()))
         self.target_info_var.set(self._config_summary(self.target_key_var.get()))
-
-    def _choose_dump_file(self) -> None:
-        file_path = filedialog.asksaveasfilename(
-            title="选择 SQL 文件",
-            defaultextension=".sql",
-            filetypes=[("SQL 文件", "*.sql"), ("所有文件", "*.*")],
-        )
-        if file_path:
-            self.dump_file_var.set(file_path)
-
-    def _choose_binary(self, target_var: tk.StringVar, title: str) -> None:
-        file_path = filedialog.askopenfilename(
-            title=title,
-            filetypes=[("可执行文件", "*.exe"), ("所有文件", "*.*")],
-        )
-        if file_path:
-            target_var.set(file_path)
 
     def _optional_text(self, value: str) -> str | None:
         value = value.strip()
@@ -1166,9 +1341,9 @@ class BackupDbApp:
         args.batch_size = batch_size
         args.method = self.method_var.get().strip() or "dump"
         args.skip_dump_env_check = bool(self.skip_dump_env_check_var.get())
-        args.dump_file = self._optional_text(self.dump_file_var.get())
-        args.mysqldump_bin = self._optional_text(self.mysqldump_bin_var.get())
-        args.mysql_bin = self._optional_text(self.mysql_bin_var.get())
+        args.dump_file = None
+        args.mysqldump_bin = None
+        args.mysql_bin = None
         args.gui = False
         args.cli = True
         return args
@@ -1186,6 +1361,7 @@ class BackupDbApp:
 
     def _set_busy(self, busy: bool) -> None:
         self.start_button.configure(state="disabled" if busy else "normal")
+        self.cancel_button.configure(state="normal" if busy else "disabled")
         for widget in self.normal_controls:
             widget.configure(state="disabled" if busy else "normal")
         for widget in self.combo_controls:
@@ -1195,6 +1371,7 @@ class BackupDbApp:
             self.status_var.set("正在备份...")
         else:
             self.progress.stop()
+            self.cancel_event = None
 
     def _process_queues(self) -> None:
         while True:
@@ -1216,6 +1393,9 @@ class BackupDbApp:
                 if return_code == 0:
                     self.status_var.set("备份完成")
                     messagebox.showinfo("备份完成", "数据库备份已完成。")
+                elif return_code == CANCELLED_EXIT_CODE:
+                    self.status_var.set("备份已中断")
+                    messagebox.showwarning("备份已中断", "数据库备份已中断，请查看执行日志确认目标库状态。")
                 else:
                     self.status_var.set("备份失败")
                     messagebox.showerror("备份失败", "数据库备份失败，请查看执行日志。")
@@ -1241,17 +1421,42 @@ class BackupDbApp:
         if not messagebox.askyesno("确认备份", warning, icon="warning"):
             return
 
+        self.cancel_event = threading.Event()
         self._set_busy(True)
-        self.worker_thread = threading.Thread(target=self._run_backup_worker, args=(args,), daemon=True)
+        self.worker_thread = threading.Thread(
+            target=self._run_backup_worker,
+            args=(args, self.cancel_event),
+            daemon=True,
+        )
         self.worker_thread.start()
 
-    def _run_backup_worker(self, args: argparse.Namespace) -> None:
+    def _cancel_backup(self) -> None:
+        if not self.worker_thread or not self.worker_thread.is_alive():
+            return
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            messagebox.showinfo("正在中断", "已发送中断请求，请等待当前步骤退出。")
+            return
+
+        if not messagebox.askyesno(
+            "确认中断",
+            "确定要中断当前备份吗？\n\n目标库可能已经创建或导入了一部分数据。",
+            icon="warning",
+        ):
+            return
+
+        if self.cancel_event is not None:
+            self.cancel_event.set()
+        self.cancel_button.configure(state="disabled")
+        self.status_var.set("正在中断...")
+        self.log_queue.put("\n[中断] 用户请求中断备份，正在停止当前任务...\n")
+
+    def _run_backup_worker(self, args: argparse.Namespace, cancel_event: threading.Event | None) -> None:
         writer = QueueWriter(self.log_queue)
         return_code = 1
         try:
             with contextlib.redirect_stdout(writer), contextlib.redirect_stderr(writer):
                 print("\n=== GUI backup started ===")
-                return_code = run_backup(args)
+                return_code = run_backup(args, cancel_event=cancel_event)
                 print(f"=== GUI backup finished, code={return_code} ===\n")
         except Exception as exc:
             self.log_queue.put(f"\nGUI backup failed: {exc}\n")
@@ -1261,7 +1466,15 @@ class BackupDbApp:
 
     def _on_close(self) -> None:
         if self.worker_thread and self.worker_thread.is_alive():
-            messagebox.showwarning("任务正在执行", "备份任务正在执行，请等待完成后再关闭窗口。")
+            if self.cancel_event is not None and self.cancel_event.is_set():
+                messagebox.showwarning("正在中断", "备份任务正在中断，请等待完成后再关闭窗口。")
+                return
+            if messagebox.askyesno("任务正在执行", "备份任务正在执行，是否请求中断？", icon="warning"):
+                if self.cancel_event is not None:
+                    self.cancel_event.set()
+                self.cancel_button.configure(state="disabled")
+                self.status_var.set("正在中断...")
+                self.log_queue.put("\n[中断] 用户关闭窗口时请求中断备份，正在停止当前任务...\n")
             return
         self.root.destroy()
 
@@ -1272,7 +1485,12 @@ def run_gui(initial_args: argparse.Namespace) -> int:
         return run_backup(initial_args)
 
     root = tk.Tk()
-    BackupDbApp(root, initial_args)
+    try:
+        BackupDbApp(root, initial_args)
+    except RuntimeError as exc:
+        messagebox.showerror("配置错误", str(exc))
+        root.destroy()
+        return 1
     root.mainloop()
     return 0
 

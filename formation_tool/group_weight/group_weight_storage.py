@@ -95,7 +95,7 @@ def verify_group_weight_zero_rebate_rows(write_conn, table_name, rows, *, deps):
         for check_type in zero_check_types:
             expected_rows = sum(
                 1 for game_type, _group_id, rebate, weight in rows
-                if game_type == check_type and rebate == 0 and weight > 0
+                if game_type == check_type and rebate == 0
             )
             cur.execute(
                 f"SELECT COUNT(*) FROM {table_ref} WHERE `game_type` = %s AND `rebate` = 0",

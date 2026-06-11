@@ -56,6 +56,15 @@ def build_rebate_weight_pairs(rebates, rules, *, exclude_rebate_zero=False):
     return pairs, skipped_zero_weight, skipped_rebate_zero
 
 
+def build_zero_weight_rebate_pairs(rebates, rules):
+    pairs = []
+    for rebate in sorted({int(value) for value in rebates}):
+        weight = get_group_weight_for_rebate(rebate, rules)
+        if weight == 0:
+            pairs.append((rebate, 0))
+    return pairs
+
+
 def infer_zero_rebate_weight(nonzero_pairs, target_rtp):
     """Infer rebate=0 weight with ceiling rounding."""
     if target_rtp <= 0:
@@ -66,7 +75,12 @@ def infer_zero_rebate_weight(nonzero_pairs, target_rtp):
     return max(0, math.ceil(weighted_sum / target_rtp - total_weight))
 
 
-def build_special_group_weight_rows_for_group(group_id, special_pairs, zero_weight, game_type=2):
+def build_special_group_weight_rows_for_group(
+    group_id,
+    special_pairs,
+    zero_weight,
+    game_type=2,
+):
     group_id = int(group_id)
     game_type = int(game_type)
     rows = []

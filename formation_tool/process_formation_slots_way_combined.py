@@ -1849,6 +1849,10 @@ def build_group_weight_rows_from_loaded_data(*args, **kwargs):
     return _call_group_weight_builder('build_group_weight_rows_from_loaded_data', *args, **kwargs)
 
 
+def build_group_weight_zero_weight_write_rows(*args, **kwargs):
+    return _call_group_weight_builder('build_group_weight_zero_weight_write_rows', *args, **kwargs)
+
+
 def _call_group_weight_builder(func_name, *args, **kwargs):
     return group_weight_entrypoints.call_builder_function(
         _sync_group_weight_builder_context,
@@ -2010,6 +2014,7 @@ def build_group_weight_runner_deps():
             load_group_weight_generation_data=load_group_weight_generation_data,
             load_group_weight_rebates_for_modes=load_group_weight_rebates_for_modes,
             build_group_weight_pairs_for_modes=build_group_weight_pairs_for_modes,
+            build_group_weight_zero_weight_write_rows=build_group_weight_zero_weight_write_rows,
             build_normalized_group_weight_generation_rows=build_normalized_group_weight_generation_rows,
             build_group_weight_rows_from_loaded_data=build_group_weight_rows_from_loaded_data,
             normalize_group_weight_rows=normalize_group_weight_rows,

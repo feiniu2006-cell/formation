@@ -16,6 +16,13 @@ def configure(**values):
     runtime_context_sync.configure_module_globals(globals(), values)
 
 
+def count_preview_write_rows(group_rows, skipped_zero, skipped_rebate_zero):
+    row_count = len(group_rows) + int(skipped_zero)
+    if skipped_rebate_zero > 0 and not any(int(row[2]) == 0 for row in group_rows):
+        row_count += 1
+    return row_count
+
+
 def collect_group_weight_preview_warnings(displayed_modes, preview_rebates, preview_status):
     """返回 group_weight 弹窗中需要提示的缺表/空表信息，并按源采样表去重。"""
     warnings = []
@@ -91,11 +98,12 @@ def build_original_normal_group_weight_preview(
         )
     except ValueError as e:
         return str(e)
+    row_count = count_preview_write_rows(group_rows, skipped_zero, skipped_rebate_zero)
     return (
         f"普通目标={format_weighted_rtp(group_info['normal_target_rtp'])}，"
         f"反推0权重={group_info['zero_weight']}，"
         f"实际={format_weighted_rtp(group_info['actual_normal_rtp'])}，"
-        f"将写入 {len(group_rows)} 行"
+        f"将写入 {row_count} 行"
         f"（非0参与 {len(normal_pairs)} 个，跳过0权重 {skipped_zero} 个"
         f"，采样表0 {skipped_rebate_zero} 个）"
     )
@@ -163,13 +171,14 @@ def build_ex_normal_group_weight_preview(
         )
     except ValueError as e:
         return str(e)
+    row_count = count_preview_write_rows(group_rows, skipped_zero, skipped_rebate_zero)
     return (
         f"ex普通目标={format_weighted_rtp(group_info['normal_target_rtp'])}，"
         f"ex倍数={format_weighted_rtp(ex_multiplier)}，"
         f"反推0权重={group_info['zero_weight']}，"
         f"实际={format_weighted_rtp(group_info['actual_normal_rtp'])}，"
         f"最终RTP={format_weighted_rtp(group_info['display_rtp'])}，"
-        f"将写入 {len(group_rows)} 行"
+        f"将写入 {row_count} 行"
         f"（非0参与 {len(normal_pairs)} 个，跳过0权重 {skipped_zero} 个"
         f"，采样表0 {skipped_rebate_zero} 个）"
     )
@@ -194,7 +203,15 @@ def build_special_group_weight_preview(
         special_has_zero,
         special_target_rtp if special_has_zero else None,
     )
-    row_count = len(build_special_group_weight_rows_for_group(group_id, rtp_pairs, zero_weight))
+    row_count = count_preview_write_rows(
+        build_special_group_weight_rows_for_group(
+            group_id,
+            rtp_pairs,
+            zero_weight,
+        ),
+        skipped_zero,
+        skipped_rebate_zero,
+    )
     return (
         f"{format_weighted_rtp(current_rtp)}，反推0权重={zero_weight}，将写入 {row_count} 行"
         f"（已选rebate {len(sampled_rebates)} 个，非0参与 {len(rtp_pairs)} 个，"
@@ -221,6 +238,7 @@ def build_ex_independent_group_weight_preview(
         target_rtp,
         display_divisor=ex_multiplier,
     )
+    row_count = count_preview_write_rows(group_rows, skipped_zero, skipped_rebate_zero)
     return (
         f"目标={format_weighted_rtp(get_group_target_rtp_ratio(group_id))}，"
         f"反推目标={format_weighted_rtp(target_rtp)}，"
@@ -228,7 +246,7 @@ def build_ex_independent_group_weight_preview(
         f"反推0权重={ex_info['zero_weight']}，"
         f"实际={format_weighted_rtp(ex_info['actual_rtp'])}，"
         f"最终RTP={format_weighted_rtp(ex_info['display_rtp'])}，"
-        f"将写入 {len(group_rows)} 行"
+        f"将写入 {row_count} 行"
         f"（已选rebate {len(sampled_rebates)} 个，非0参与 {len(rtp_pairs)} 个，"
         f"跳过0权重 {skipped_zero} 个，采样表0 {skipped_rebate_zero} 个）"
     )

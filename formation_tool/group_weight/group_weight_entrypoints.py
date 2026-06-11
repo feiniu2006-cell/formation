@@ -39,6 +39,7 @@ class RunnerDeps:
     load_group_weight_generation_data: Callable[[Any, dict], tuple]
     load_group_weight_rebates_for_modes: Callable[[Any, list, str], tuple]
     build_group_weight_pairs_for_modes: Callable[[list, dict], dict]
+    build_group_weight_zero_weight_write_rows: Callable[..., list]
     build_normalized_group_weight_generation_rows: Callable[..., Any]
     build_group_weight_rows_from_loaded_data: Callable[..., Any]
     normalize_group_weight_rows: Callable[[list], list]
@@ -195,6 +196,7 @@ def build_runner_deps(callbacks, constants, runtime_getters, log_callbacks):
         load_group_weight_generation_data=callbacks.load_group_weight_generation_data,
         load_group_weight_rebates_for_modes=callbacks.load_group_weight_rebates_for_modes,
         build_group_weight_pairs_for_modes=callbacks.build_group_weight_pairs_for_modes,
+        build_group_weight_zero_weight_write_rows=callbacks.build_group_weight_zero_weight_write_rows,
         build_normalized_group_weight_generation_rows=callbacks.build_normalized_group_weight_generation_rows,
         build_group_weight_rows_from_loaded_data=callbacks.build_group_weight_rows_from_loaded_data,
         normalize_group_weight_rows=callbacks.normalize_group_weight_rows,

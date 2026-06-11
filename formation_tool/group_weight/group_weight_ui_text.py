@@ -2,7 +2,7 @@
 
 DIALOG_TITLE = "group_weight 权重配置"
 LOADING_TEXT = "正在检测源表和采样配置，请稍候..."
-RULE_HELP_TEXT = "按 rebate 下限配置 weight；区间为当前下限 <= rebate < 下一下限。weight=0 的 rebate 不写入表。"
+RULE_HELP_TEXT = "按 rebate 下限配置 weight；区间为当前下限 <= rebate < 下一下限。weight=0 的 rebate 也会写入表，但不参与 RTP 权重计算。"
 MISSING_CONFIG_TITLE = "采样配置提示"
 CONFIRM_BUTTON_TEXT = "确认并开始"
 CANCEL_BUTTON_TEXT = "取消"

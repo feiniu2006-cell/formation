@@ -194,8 +194,192 @@ class GroupWeightLogicTests(unittest.TestCase):
         self.assertEqual(skipped_zero, 0)
         self.assertEqual(skipped_rebate_zero, 1)
 
+        pairs, skipped_zero, skipped_rebate_zero = group_weight_logic.build_rebate_weight_pairs(
+            [0, 5000, 6000, 10000, 20000],
+            [
+                {"rebate_min": 0, "weight": 0},
+                {"rebate_min": 10000, "weight": 5},
+                {"rebate_min": 20000, "weight": 0},
+            ],
+        )
+        self.assertEqual(pairs, [(10000, 5)])
+        self.assertEqual(skipped_zero, 4)
+        self.assertEqual(skipped_rebate_zero, 0)
+        self.assertEqual(
+            group_weight_logic.build_zero_weight_rebate_pairs(
+                [0, 5000, 6000, 10000, 20000],
+                [
+                    {"rebate_min": 0, "weight": 0},
+                    {"rebate_min": 10000, "weight": 5},
+                    {"rebate_min": 20000, "weight": 0},
+                ],
+            ),
+            [(0, 0), (5000, 0), (6000, 0), (20000, 0)],
+        )
+
         zero_weight = group_weight_logic.infer_zero_rebate_weight([(1000, 10)], 0.5)
         self.assertEqual(zero_weight, 10)
+
+    def test_zero_weight_pairs_do_not_change_rtp_calculation(self):
+        base_rows, base_info = group_weight_logic.build_normal_group_weight_rows_for_group(
+            9000,
+            [(1000, 10)],
+            free_rtp=0,
+            free_enabled=False,
+            special_rtp=0,
+            special_enabled=False,
+            free_rate_getter=lambda _group_id, _enabled: 0,
+            special_rate_getter=lambda _group_id, _enabled: 0,
+            target_rtp_getter=lambda _group_id: 1,
+        )
+        zero_rows, zero_info = group_weight_logic.build_normal_group_weight_rows_for_group(
+            9000,
+            [(1000, 10), (2000, 0)],
+            free_rtp=0,
+            free_enabled=False,
+            special_rtp=0,
+            special_enabled=False,
+            free_rate_getter=lambda _group_id, _enabled: 0,
+            special_rate_getter=lambda _group_id, _enabled: 0,
+            target_rtp_getter=lambda _group_id: 1,
+        )
+
+        self.assertEqual(base_info["normal_target_rtp"], zero_info["normal_target_rtp"])
+        self.assertEqual(base_info["zero_weight"], zero_info["zero_weight"])
+        self.assertEqual(base_info["actual_normal_rtp"], zero_info["actual_normal_rtp"])
+        self.assertEqual(base_rows, [(1, 9000, 1000, 10)])
+        self.assertEqual(zero_rows, [(1, 9000, 1000, 10), (1, 9000, 2000, 0)])
+
+    def test_zero_weight_trigger_modes_do_not_enable_trigger_rtp(self):
+        original_modes = group_weight_builder.group_weight_original_modes
+        missing = object()
+        old_target = getattr(original_modes, "SPECIAL_GROUP_TARGET_RTP", missing)
+        original_modes.SPECIAL_GROUP_TARGET_RTP = 1
+        try:
+            context = original_modes.prepare_original_trigger_rtp_context(
+                rebates_by_mode={"2": [1000], "3": [5000]},
+                mode_exists={"2": True, "3": True},
+                mode_pairs={"2": [], "3": []},
+            )
+        finally:
+            if old_target is missing:
+                delattr(original_modes, "SPECIAL_GROUP_TARGET_RTP")
+            else:
+                original_modes.SPECIAL_GROUP_TARGET_RTP = old_target
+
+        self.assertFalse(context["special_enabled"])
+        self.assertFalse(context["free_enabled"])
+        self.assertEqual(context["special_rtp"], 0)
+        self.assertEqual(context["free_rtp"], 0)
+
+    def test_zero_weight_rows_are_built_for_final_write_only(self):
+        names = (
+            "WEIGHT_GROUP_IDS",
+            "GROUP_WEIGHT_RULES",
+            "BUY_GROUP_MODE",
+            "get_group_weight_write_game_type",
+            "is_extra_buy_mode",
+            "get_extra_buy_group_by_mode",
+        )
+        missing = object()
+        old_values = {
+            name: getattr(group_weight_builder, name, missing)
+            for name in names
+        }
+        try:
+            group_weight_builder.WEIGHT_GROUP_IDS = (9000, 9001)
+            group_weight_builder.GROUP_WEIGHT_RULES = {
+                "1": [
+                    {"rebate_min": 0, "weight": 0},
+                    {"rebate_min": 1000, "weight": 5},
+                    {"rebate_min": 5000, "weight": 0},
+                ]
+            }
+            group_weight_builder.BUY_GROUP_MODE = "99"
+            group_weight_builder.get_group_weight_write_game_type = lambda mode: int(mode)
+            group_weight_builder.is_extra_buy_mode = lambda _mode: False
+            group_weight_builder.get_extra_buy_group_by_mode = lambda _mode: None
+
+            existing_rows = [(1, 9000, 0, 12), (1, 9000, 1000, 5)]
+            with contextlib.redirect_stdout(io.StringIO()):
+                rows = group_weight_builder.build_group_weight_zero_weight_write_rows(
+                    ["1"],
+                    rebates_by_mode={"1": [0, 1000, 5000]},
+                    mode_exists={"1": True},
+                    existing_rows=existing_rows,
+                )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(group_weight_builder, name):
+                        delattr(group_weight_builder, name)
+                else:
+                    setattr(group_weight_builder, name, value)
+
+        self.assertEqual(
+            rows,
+            [
+                (1, 9000, 5000, 0),
+                (1, 9001, 0, 0),
+                (1, 9001, 5000, 0),
+            ],
+        )
+
+    def test_original_normal_generation_does_not_add_zero_write_rows(self):
+        original_modes = group_weight_builder.group_weight_original_modes
+        names = (
+            "WEIGHT_GROUP_IDS",
+            "build_normal_group_weight_rows_for_group",
+            "check_cancelled",
+            "get_group_weight_write_game_type",
+            "get_group_target_rtp_ratio",
+        )
+        old_values = {name: getattr(original_modes, name, None) for name in names}
+        had_values = {name: hasattr(original_modes, name) for name in names}
+        calls = []
+
+        def fake_normal_builder(group_id, normal_pairs, free_rtp, free_enabled, special_rtp, special_enabled):
+            calls.append((group_id, tuple(normal_pairs), free_rtp, free_enabled, special_rtp, special_enabled))
+            return [(1, int(group_id), 1000, 10)], {
+                "group_id": int(group_id),
+                "free_rate": 0,
+                "special_rate": 0,
+                "normal_target_rtp": 1,
+                "zero_weight": 0,
+                "actual_normal_rtp": 1,
+            }
+
+        try:
+            original_modes.WEIGHT_GROUP_IDS = (9000,)
+            original_modes.build_normal_group_weight_rows_for_group = fake_normal_builder
+            original_modes.check_cancelled = lambda: None
+            original_modes.get_group_weight_write_game_type = lambda game_type: int(game_type)
+            original_modes.get_group_target_rtp_ratio = lambda _group_id: 1
+
+            rows = []
+            with contextlib.redirect_stdout(io.StringIO()):
+                row_count = original_modes.append_original_normal_group_weight_rows(
+                    rows,
+                    rebates_by_mode={"1": [0, 1000]},
+                    mode_exists={"1": True},
+                    mode_pairs={"1": [(1000, 10)]},
+                    trigger_context={
+                        "free_rtp": 0,
+                        "free_enabled": False,
+                        "special_rtp": 0,
+                        "special_enabled": False,
+                    },
+                )
+        finally:
+            for name in names:
+                if had_values[name]:
+                    setattr(original_modes, name, old_values[name])
+                elif hasattr(original_modes, name):
+                    delattr(original_modes, name)
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(row_count, 1)
+        self.assertEqual(rows, [(1, 9000, 1000, 10)])
 
     def test_normal_rows_use_trigger_rates_and_target_getter(self):
         rows, info = group_weight_logic.build_normal_group_weight_rows_for_group(
@@ -253,7 +437,7 @@ class GroupWeightLogicTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 group_weight_builder.append_buy_group_weight_modes(
                     rows,
-                    rebates_by_mode={"99": [1000]},
+                    rebates_by_mode={"99": [0, 1000]},
                     mode_exists={"99": True},
                     mode_pairs={"99": [(1000, 2)]},
                 )
@@ -273,16 +457,27 @@ class GroupWeightRunnerWarningTests(unittest.TestCase):
     def test_collect_group_weight_generation_warnings_reports_runtime_risks(self):
         warnings = group_weight_runner.collect_group_weight_generation_warnings(
             {"active_modes": ["1", "2", "3"]},
-            rebates_by_mode={"1": [0, 1000], "2": [], "3": [5000]},
+            rebates_by_mode={"1": [1000], "2": [], "3": [5000]},
             mode_exists={"1": True, "2": True, "3": False},
             mode_pairs={"1": [], "2": [], "3": [(5000, 10)]},
             rows=[],
         )
 
         self.assertIn("没有可写入的 group_weight 行", warnings)
-        self.assertIn("模式 1 按当前权重规则匹配后没有可写入的非0权重 rebate", warnings)
+        self.assertIn("模式 1 按当前权重规则匹配后没有可写入的 rebate", warnings)
         self.assertIn("模式 2 的采样配置表为空或没有已选 rebate", warnings)
         self.assertIn("模式 3 对应的采样配置表不存在", warnings)
+
+    def test_group_weight_generation_warnings_allow_zero_weight_only_rows(self):
+        warnings = group_weight_runner.collect_group_weight_generation_warnings(
+            {"active_modes": ["1"]},
+            rebates_by_mode={"1": [0]},
+            mode_exists={"1": True},
+            mode_pairs={"1": []},
+            rows=[(1, 9000, 0, 0)],
+        )
+
+        self.assertEqual(warnings, [])
 
 
 class FakeCursor:
@@ -352,6 +547,7 @@ class GroupWeightStorageTests(unittest.TestCase):
             load_group_weight_generation_data=lambda *_args: ({}, {}, {}),
             load_group_weight_rebates_for_modes=lambda *_args: ({}, {}),
             build_group_weight_pairs_for_modes=lambda *_args: {},
+            build_group_weight_zero_weight_write_rows=lambda *_args: [],
             build_normalized_group_weight_generation_rows=lambda *_args: [],
             build_group_weight_rows_from_loaded_data=lambda *_args: [],
             normalize_group_weight_rows=lambda rows: rows,
@@ -1438,6 +1634,148 @@ class SamplingCoreWriteTests(unittest.TestCase):
         self.assertEqual(calls.count("connect"), 2)
         self.assertGreaterEqual(timing["id_query_seconds"], 0)
 
+    def test_random_range_candidate_stats_record_attempts(self):
+        calls = []
+
+        class FakeResult:
+            def __init__(self, rows):
+                self.rows = rows
+
+            def __iter__(self):
+                return iter(self.rows)
+
+        class FakeConnection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def exec_driver_sql(self, query):
+                calls.append(query)
+                attempt = len(calls)
+                return FakeResult([(attempt,), (attempt + 100,)])
+
+        class FakeEngine:
+            def connect(self):
+                return FakeConnection()
+
+        old_sql_with_retry = getattr(sampling_core, "sql_with_retry", None)
+        had_sql_with_retry = hasattr(sampling_core, "sql_with_retry")
+        old_check_cancelled = getattr(sampling_core, "check_cancelled", None)
+        had_check_cancelled = hasattr(sampling_core, "check_cancelled")
+        sampling_core.sql_with_retry = lambda fn, label: fn()
+        sampling_core.check_cancelled = lambda: None
+        timing = sampling_core.new_sampling_timing()
+        try:
+            ids = sampling_core._query_candidate_ids_from_random_ranges(
+                source_engine=FakeEngine(),
+                source_table_ref="`source_table`",
+                where_clause="`rebate` = 1000",
+                target_rebate=1000,
+                sample_size=5,
+                random_seed=123,
+                min_id=1,
+                max_id=100,
+                timing=timing,
+            )
+        finally:
+            if had_sql_with_retry:
+                sampling_core.sql_with_retry = old_sql_with_retry
+            else:
+                delattr(sampling_core, "sql_with_retry")
+            if had_check_cancelled:
+                sampling_core.check_cancelled = old_check_cancelled
+            else:
+                delattr(sampling_core, "check_cancelled")
+
+        self.assertGreaterEqual(len(ids), 5)
+        self.assertEqual(timing["random_range_attempts"], 3)
+        self.assertEqual(timing["random_range_returned_ids"], 6)
+        self.assertEqual(timing["random_range_added_ids"], 6)
+        self.assertEqual(timing["random_range_duplicate_ids"], 0)
+
+    def test_random_range_attempts_and_limits_scale_with_sample_size(self):
+        self.assertEqual(
+            sampling_core._random_range_attempt_limit(200),
+            sampling_core.SAMPLE_ID_RANDOM_RANGE_ATTEMPTS,
+        )
+        self.assertGreater(
+            sampling_core._random_range_attempt_limit(1000),
+            sampling_core.SAMPLE_ID_RANDOM_RANGE_ATTEMPTS,
+        )
+        self.assertGreater(
+            sampling_core._random_range_per_query_limit(1000, sampling_core.SAMPLE_ID_RANDOM_RANGE_ATTEMPTS + 4),
+            sampling_core._random_range_per_query_limit(1000, 1),
+        )
+
+    def test_select_sample_ids_records_full_scan_fallback(self):
+        class FakeResult:
+            def __init__(self, rows):
+                self.rows = rows
+
+            def __iter__(self):
+                return iter(self.rows)
+
+            def fetchone(self):
+                return self.rows[0] if self.rows else None
+
+        class FakeConnection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def exec_driver_sql(self, query):
+                if "MIN(`id`)" in query:
+                    return FakeResult([(1, 100)])
+                if "ORDER BY `id`" in query:
+                    return FakeResult([(1,)])
+                if "LIMIT" in query:
+                    return FakeResult([(1,), (2,), (3,)])
+                return FakeResult([(4,), (5,), (6,)])
+
+        class FakeEngine:
+            def connect(self):
+                return FakeConnection()
+
+        old_sql_with_retry = getattr(sampling_core, "sql_with_retry", None)
+        had_sql_with_retry = hasattr(sampling_core, "sql_with_retry")
+        old_check_cancelled = getattr(sampling_core, "check_cancelled", None)
+        had_check_cancelled = hasattr(sampling_core, "check_cancelled")
+        sampling_core.sql_with_retry = lambda fn, label: fn()
+        sampling_core.check_cancelled = lambda: None
+        timing = sampling_core.new_sampling_timing()
+        try:
+            ids = sampling_core.select_sample_ids_for_rebate(
+                source_engine=FakeEngine(),
+                source_db_name="SRC",
+                source_table_ref="`source_table`",
+                sample_conditions={
+                    "where_clause": "`rebate` = {target_rebate}",
+                    "random_seed": 123,
+                },
+                target_rebate=1000,
+                sample_size=2,
+                timing=timing,
+            )
+        finally:
+            if had_sql_with_retry:
+                sampling_core.sql_with_retry = old_sql_with_retry
+            else:
+                delattr(sampling_core, "sql_with_retry")
+            if had_check_cancelled:
+                sampling_core.check_cancelled = old_check_cancelled
+            else:
+                delattr(sampling_core, "check_cancelled")
+
+        self.assertEqual(len(ids), 2)
+        self.assertEqual(timing["full_scan_fallback_count"], 1)
+        self.assertEqual(timing["full_scan_fallback_rebates"], [1000])
+        self.assertEqual(timing["random_range_attempts"], sampling_core.SAMPLE_ID_RANDOM_RANGE_ATTEMPTS)
+        self.assertGreater(timing["random_range_duplicate_ids"], 0)
+
     def test_read_sample_rows_by_ids_reads_complete_id_groups(self):
         calls = []
 
@@ -2474,11 +2812,23 @@ class BuildFormationExeTests(unittest.TestCase):
             self.assertIn("def _install_encrypted_importer", text)
             self.assertIn("_install_encrypted_importer(base_dir)", text)
             self.assertIn("decode('utf-8-sig')", text)
+            self.assertIn("from tkinter import filedialog, messagebox, scrolledtext, ttk", text)
             self.assertIn("formation_tool.rebate.rebate_config_storage", text)
             self.assertIn("formation_tool.common.common_config_runner", text)
         finally:
             build_formation_exe.cleanup_temp_launcher()
         self.assertFalse(launcher.exists())
+
+    def test_build_spec_includes_tkinter_hiddenimports(self):
+        spec_path = build_formation_exe.build_spec()
+        try:
+            text = spec_path.read_text(encoding="utf-8")
+            for module_name in build_formation_exe.TKINTER_HIDDENIMPORTS:
+                self.assertIn(repr(module_name), text)
+            self.assertIn("collect_submodules('mysql.connector')", text)
+        finally:
+            spec_path.unlink(missing_ok=True)
+        self.assertFalse(spec_path.exists())
 
     def test_generated_importer_executes_dependent_encrypted_modules(self):
         launcher = build_formation_exe.build_launcher()
@@ -2537,6 +2887,23 @@ with tempfile.TemporaryDirectory() as base_dir:
         finally:
             path.unlink(missing_ok=True)
         self.assertEqual(encrypted, b"print('ok')\n")
+
+    def test_stage_existing_output_exe_can_restore_previous_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            exe_path = Path(temp_dir) / "formation.exe"
+            exe_path.write_text("old exe", encoding="utf-8")
+
+            staged_path = build_formation_exe.stage_existing_output_exe(exe_path)
+
+            self.assertFalse(exe_path.exists())
+            self.assertTrue(staged_path.exists())
+            self.assertEqual(staged_path.read_text(encoding="utf-8"), "old exe")
+
+            build_formation_exe.restore_staged_output_exe(staged_path, exe_path)
+
+            self.assertTrue(exe_path.exists())
+            self.assertEqual(exe_path.read_text(encoding="utf-8"), "old exe")
+            self.assertFalse(staged_path.exists())
 
 
 class UiLayoutDefaultsTests(unittest.TestCase):
@@ -2718,6 +3085,42 @@ class GuiDialogSmokeTests(unittest.TestCase):
 
 
 class GroupWeightRulesDialogTests(unittest.TestCase):
+    def test_update_rtp_info_shows_preview_failure_without_raising(self):
+        class FakeRuleEditor:
+            def get_rows(self, _mode):
+                return []
+
+        master = tk.Tcl()
+        dialog = group_weight_rules_dialog.GroupWeightRulesDialog.__new__(
+            group_weight_rules_dialog.GroupWeightRulesDialog
+        )
+        dialog.deps = SimpleNamespace(
+            rule_fields=(),
+            rule_field_labels={},
+            build_preview_text=lambda *_args, **_kwargs: (_ for _ in ()).throw(TypeError("bad preview")),
+            buy_multiplier=1,
+            ex_multiplier=1,
+            buy_enabled=False,
+            has_extra_buy_groups=lambda: False,
+            buy_group_mode="99",
+            get_group_target_rtp_value=lambda _group_id: 100.0,
+            get_mode_name=lambda mode: f"mode {mode}",
+        )
+        dialog.rule_editor = FakeRuleEditor()
+        dialog.dialog_modes = ["1"]
+        dialog.displayed_modes = ["1"]
+        dialog.preview_rebates = {}
+        dialog.preview_status = {}
+        dialog.formation_exists = {}
+        dialog.special_has_zero_for_config = False
+        dialog.current_group_var = tk.StringVar(master=master, value="9000 - target")
+        dialog.rtp_info_var = tk.StringVar(master=master)
+        dialog.notebook = SimpleNamespace(index=lambda _name: 0)
+
+        dialog.update_rtp_info()
+
+        self.assertIn("预览生成失败：bad preview", dialog.rtp_info_var.get())
+
     def test_restore_defaults_resets_visible_rules_and_special_target(self):
         class FakeRuleEditor:
             def __init__(self):

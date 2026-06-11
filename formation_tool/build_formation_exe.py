@@ -45,6 +45,12 @@ REQUIRED_MODULES = (
     'sqlalchemy',
     'tkinter',
 )
+TKINTER_HIDDENIMPORTS = (
+    'tkinter.filedialog',
+    'tkinter.messagebox',
+    'tkinter.scrolledtext',
+    'tkinter.ttk',
+)
 PRODUCTION_EXCLUDED_NAMES = {
     'build_formation_exe.py',
     'process_formation_slots_way_combined.py',
@@ -297,7 +303,7 @@ import threading  # noqa: F401
 import time  # noqa: F401
 import traceback  # noqa: F401
 import tkinter as tk  # noqa: F401
-from tkinter import messagebox, scrolledtext, ttk  # noqa: F401
+from tkinter import filedialog, messagebox, scrolledtext, ttk  # noqa: F401
 import mysql.connector  # noqa: F401
 import pandas as pd  # noqa: F401
 from sqlalchemy import create_engine  # noqa: F401
@@ -435,6 +441,7 @@ PROJECT_ROOT = TOOL_ROOT.parent
 
 hiddenimports = [
     'sqlalchemy.dialects.mysql.mysqlconnector',
+{chr(10).join(f"    {module_name!r}," for module_name in TKINTER_HIDDENIMPORTS)}
 ]
 hiddenimports += collect_submodules('mysql.connector')
 
@@ -547,6 +554,71 @@ def clean_build_artifacts(*, include_spec=False):
             cleaned += int(remove_path(path))
     if cleaned == 0:
         log_utils.emit("No temporary build artifacts found")
+
+
+def next_staged_output_exe_path(path):
+    timestamp = int(time.time())
+    base_name = f".{path.name}.previous.{timestamp}"
+    candidate = path.with_name(base_name)
+    suffix = 1
+    while candidate.exists():
+        candidate = path.with_name(f"{base_name}.{suffix}")
+        suffix += 1
+    return candidate
+
+
+def stage_existing_output_exe(path=EXE_PATH):
+    """Move an existing exe away before PyInstaller writes the replacement."""
+    path = Path(path)
+    if not path.exists():
+        return None
+
+    staged_path = next_staged_output_exe_path(path)
+    try:
+        path.rename(staged_path)
+    except PermissionError as exc:
+        raise RuntimeError(
+            f"Cannot move existing {path}; close any running {path.name} windows/processes and retry."
+        ) from exc
+    log_utils.emit(f"Moved existing exe aside: {path} -> {staged_path}")
+    return staged_path
+
+
+def restore_staged_output_exe(staged_path, path=EXE_PATH):
+    """Restore the previous exe if the build failed before creating a replacement."""
+    if not staged_path:
+        return
+    staged_path = Path(staged_path)
+    path = Path(path)
+    if not staged_path.exists():
+        return
+    if path.exists():
+        log_utils.emit(f"Kept previous exe backup after failed build: {staged_path}")
+        return
+    try:
+        staged_path.rename(path)
+    except PermissionError as exc:
+        raise RuntimeError(
+            f"Cannot restore previous exe from {staged_path}; close any running {path.name} processes and retry."
+        ) from exc
+    log_utils.emit(f"Restored previous exe after failed build: {path}")
+
+
+def cleanup_staged_output_exe(staged_path):
+    """Remove the previous exe after a successful build, if Windows allows it."""
+    if not staged_path:
+        return
+    staged_path = Path(staged_path)
+    if not staged_path.exists():
+        return
+    try:
+        unlink_file_with_retry(staged_path, attempts=3)
+    except PermissionError:
+        log_utils.emit(
+            f"Previous exe is still locked; close old formation.exe windows and remove later: {staged_path}"
+        )
+        return
+    log_utils.emit(f"Removed previous exe backup: {staged_path}")
 
 
 def ensure_external_db_config_hint():
@@ -665,19 +737,24 @@ def main(argv=None):
     run_preflight_checks()
     if args.test:
         run_test_suite()
-    clean_build_artifacts(include_spec=False)
-    spec_path = build_spec()
-    log_utils.emit(f"Generated build spec: {spec_path}")
+    staged_exe_path = stage_existing_output_exe()
     launcher_created = False
     try:
+        clean_build_artifacts(include_spec=False)
+        spec_path = build_spec()
+        log_utils.emit(f"Generated build spec: {spec_path}")
         launcher_path = build_launcher()
         launcher_created = True
         log_utils.emit(f"Generated encrypted launcher: {launcher_path}")
         run_pyinstaller()
+        cleanup_staged_output_exe(staged_exe_path)
+        staged_exe_path = None
         ensure_external_db_config_hint()
     finally:
         if launcher_created:
             cleanup_temp_launcher()
+        if staged_exe_path is not None:
+            restore_staged_output_exe(staged_exe_path)
     log_utils.emit(f"Build completed: {EXE_PATH}")
 
 

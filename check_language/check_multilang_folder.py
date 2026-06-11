@@ -73,6 +73,125 @@ LANG_CODE_MAP = {
     "khm": "km",  "lao": "lo",  "tgl": "tl",  "jpn": "ja",  "kor": "ko",
 }
 
+# 术语/特殊短语专用翻译配置。源文命中这些固定短语时，优先使用这里的译法。
+# 如果所有语言译法都与英文相同，则表示该术语允许保留英文，不视为未翻译。
+SPECIAL_PHRASE_TRANSLATIONS: dict[str, dict[str, str]] = {
+    "Wild": {
+        "eng": "Wild",
+        "ind": "Wild",
+        "por": "Wild",
+        "spa": "Wild",
+        "tha": "Wild",
+        "vie": "Wild",
+        "sch": "Wild",
+        "tch": "Wild",
+        "hin": "Wild",
+        "ben": "Wild",
+        "msa": "Wild",
+        "mya": "Wild",
+        "khm": "Wild",
+        "lao": "Wild",
+        "tgl": "Wild",
+        "jpn": "Wild",
+        "kor": "Wild",
+    },
+    "Scatter": {
+        "eng": "Scatter",
+        "ind": "Scatter",
+        "por": "Scatter",
+        "spa": "Scatter",
+        "tha": "Scatter",
+        "vie": "Scatter",
+        "sch": "Scatter",
+        "tch": "Scatter",
+        "hin": "Scatter",
+        "ben": "Scatter",
+        "msa": "Scatter",
+        "mya": "Scatter",
+        "khm": "Scatter",
+        "lao": "Scatter",
+        "tgl": "Scatter",
+        "jpn": "Scatter",
+        "kor": "Scatter",
+    },
+    "multiplier": {
+        "eng": "multiplier",
+        "ind": "multiplier",
+        "por": "multiplier",
+        "spa": "multiplier",
+        "tha": "multiplier",
+        "vie": "multiplier",
+        "sch": "multiplier",
+        "tch": "multiplier",
+        "hin": "multiplier",
+        "ben": "multiplier",
+        "msa": "multiplier",
+        "mya": "multiplier",
+        "khm": "multiplier",
+        "lao": "multiplier",
+        "tgl": "multiplier",
+        "jpn": "multiplier",
+        "kor": "multiplier",
+    },
+    "Bonus": {
+        "eng": "Bonus",
+        "ind": "Bonus",
+        "por": "Bonus",
+        "spa": "Bonus",
+        "tha": "Bonus",
+        "vie": "Bonus",
+        "sch": "Bonus",
+        "tch": "Bonus",
+        "hin": "Bonus",
+        "ben": "Bonus",
+        "msa": "Bonus",
+        "mya": "Bonus",
+        "khm": "Bonus",
+        "lao": "Bonus",
+        "tgl": "Bonus",
+        "jpn": "Bonus",
+        "kor": "Bonus",
+    },
+    "Wilds-on-the-Way": {
+        "eng": "Wilds-on-the-Way",
+        "ind": "Wild Beruntun Multi-Jalur",
+        "por": "Wilds em Cascata Multivias",
+        "spa": "Wilds en Cascada Multivía",
+        "tha": "ไวลด์หลายทางแบบต่อเนื่อง",
+        "vie": "Wild Nhiều Đường Liên Hoàn",
+        "sch": "多路连消百搭",
+        "tch": "多路連消百搭",
+        "hin": "मल्टी-वे कैस्केडिंग वाइल्ड्स",
+        "ben": "মাল্টি-ওয়ে ধারাবাহিক ওয়াইল্ডস",
+        "msa": "Wild Berantai Berbilang Laluan",
+        "mya": "လမ်းကြောင်းများစွာ ဆက်တိုက် Wilds",
+        "khm": "Wilds ច្រើនផ្លូវបំបែកបន្ត",
+        "lao": "Wilds ຫຼາຍເສັ້ນທາງແບບຕໍ່ເນື່ອງ",
+        "tgl": "Multi-way Cascading Wilds",
+        "jpn": "マルチウェイ連鎖ワイルド",
+        "kor": "멀티웨이 연쇄 와일드",
+    },
+    "Ante Bet": {
+        "eng": "Ante Bet",
+        "ind": "Taruhan Ante",
+        "por": "Aposta Ante",
+        "spa": "Apuesta Ante",
+        "tha": "เดิมพันแอนที",
+        "vie": "Cược Ante",
+        "sch": "前注",
+        "tch": "前注",
+        "hin": "एंटी बेट",
+        "ben": "অ্যান্টে বাজি",
+        "msa": "Pertaruhan Ante",
+        "mya": "Ante လောင်းကြေး",
+        "khm": "ការភ្នាល់ Ante",
+        "lao": "ການເດີມພັນ Ante",
+        "tgl": "Ante Bet",
+        "jpn": "アンティベット",
+        "kor": "앤티 베팅",
+    },
+}
+
 NO_TRANSLATE_KEYS: set[str] = {        # 这些 key 的值保留英文原文，翻译和检测均跳过
     # "MultiplierTitle",
     # "WildSymbolTitle",
@@ -82,8 +201,12 @@ NO_TRANSLATE_KEYS: set[str] = {        # 这些 key 的值保留英文原文，�
     # "PayoutMainTitle",
 }
 
-# 所有语言均可保留英文的游戏专有名词（不视为"未翻译"）
-UNIVERSAL_ENGLISH_TERMS: set[str] = {"Wild", "Scatter", "multiplier", "Bonus"}
+# 所有语言均可保留英文的游戏专有名词（由特殊短语表派生，不视为"未翻译"）
+UNIVERSAL_ENGLISH_TERMS: set[str] = {
+    source
+    for source, targets in SPECIAL_PHRASE_TRANSLATIONS.items()
+    if all(targets.get(lang) == source for lang in REQUIRED_LANGS)
+}
 
 SOURCE_LANG        = "eng"
 PLACEHOLDER_RE     = re.compile(r"%\{[^}]+\}")
@@ -189,7 +312,126 @@ def _find_untranslated_paths(src, tgt, path: str = "") -> list[str]:
     return []
 
 
-def check_translation_ok(json_path: Path, eng_data) -> bool | list[str] | None:
+def _has_english_intro_copula(text: str, source_name: str | None) -> bool:
+    if not source_name:
+        return False
+    return bool(re.match(
+        r'^\s*' + re.escape(source_name.strip()) + r'\s+is\s+an?\s+',
+        text.strip(),
+        flags=re.IGNORECASE,
+    ))
+
+
+def _zh_intro_missing_copula(src: str, tgt: str, source_name: str | None,
+                             target_name: str | None, lang: str | None) -> bool:
+    if lang not in {"sch", "tch"}:
+        return False
+    if not _has_english_intro_copula(src, source_name):
+        return False
+    if not target_name:
+        return False
+    text = tgt.strip()
+    name = target_name.strip()
+    if not text.startswith(name):
+        return False
+    rest = text[len(name):].lstrip(" \t，,、:：-—")
+    if not rest:
+        return False
+    return not rest.startswith(("是", "为", "為", "系", "乃"))
+
+
+def _find_zh_intro_copula_issues(src, tgt, source_name: str | None,
+                                 target_name: str | None, lang: str | None,
+                                 path: str = "") -> list[str]:
+    if isinstance(src, dict) and isinstance(tgt, dict):
+        r = []
+        for k in src:
+            if k in NO_TRANSLATE_KEYS:
+                continue
+            if k in tgt:
+                child = f"{path}.{k}" if path else k
+                r.extend(_find_zh_intro_copula_issues(
+                    src[k], tgt[k], source_name, target_name, lang, child
+                ))
+        return r
+    if isinstance(src, list) and isinstance(tgt, list):
+        r = []
+        for i, (s, t) in enumerate(zip(src, tgt)):
+            r.extend(_find_zh_intro_copula_issues(
+                s, t, source_name, target_name, lang, f"{path}[{i}]"
+            ))
+        return r
+    if isinstance(src, str) and isinstance(tgt, str):
+        if _zh_intro_missing_copula(src, tgt, source_name, target_name, lang):
+            preview = (tgt[:40] + "...") if len(tgt) > 40 else tgt
+            return [f"{path}  (疑似漏译 is a/an：\"{preview}\")"]
+    return []
+
+
+def _configured_special_terms(lang: str | None) -> list[tuple[str, str]]:
+    if not lang:
+        return []
+    terms = [
+        (source, targets[lang])
+        for source, targets in SPECIAL_PHRASE_TRANSLATIONS.items()
+        if targets.get(lang)
+    ]
+    return sorted(terms, key=lambda item: len(item[0]), reverse=True)
+
+
+def _special_source_pattern(source: str):
+    return re.compile(
+        r'(?<![A-Za-z0-9])' + re.escape(source) + r'(?![A-Za-z0-9])',
+        flags=re.IGNORECASE,
+    )
+
+
+def _contains_special_source(text: str, source: str) -> bool:
+    return bool(_special_source_pattern(source).search(text))
+
+
+def _replace_special_source(text: str, source: str, replacement: str) -> str:
+    return _special_source_pattern(source).sub(replacement, text)
+
+
+def _exact_special_translation(text: str, lang: str | None) -> str | None:
+    stripped = text.strip()
+    for source, target in _configured_special_terms(lang):
+        if stripped.lower() == source.lower():
+            prefix = text[:len(text) - len(text.lstrip())]
+            suffix = text[len(text.rstrip()):]
+            return f"{prefix}{target}{suffix}"
+    return None
+
+
+def _find_special_phrase_issues(src, tgt, lang: str | None,
+                                path: str = "") -> list[str]:
+    if isinstance(src, dict) and isinstance(tgt, dict):
+        r = []
+        for k in src:
+            if k in NO_TRANSLATE_KEYS:
+                continue
+            if k in tgt:
+                child = f"{path}.{k}" if path else k
+                r.extend(_find_special_phrase_issues(src[k], tgt[k], lang, child))
+        return r
+    if isinstance(src, list) and isinstance(tgt, list):
+        r = []
+        for i, (s, t) in enumerate(zip(src, tgt)):
+            r.extend(_find_special_phrase_issues(s, t, lang, f"{path}[{i}]"))
+        return r
+    if isinstance(src, str) and isinstance(tgt, str):
+        issues = []
+        for source, target in _configured_special_terms(lang):
+            if source in UNIVERSAL_ENGLISH_TERMS:
+                continue
+            if _contains_special_source(src, source) and target not in tgt:
+                issues.append(f"{path}  (特殊短语未使用配置翻译：\"{source}\" → \"{target}\")")
+        return issues
+    return []
+
+
+def check_translation_ok(json_path: Path, eng_data, lang: str | None = None) -> bool | list[str] | None:
     """True=完整, False=完全未翻译/占位符丢失, list=部分未翻译(含路径), None=无法判断"""
     if eng_data is None:
         return None
@@ -202,7 +444,33 @@ def check_translation_ok(json_path: Path, eng_data) -> bool | list[str] | None:
     if _collect_strings(eng_data) == _collect_strings(tgt):
         return False
     untranslated = _find_untranslated_paths(eng_data, tgt)
-    return untranslated if untranslated else True
+    source_name = _extract_name(eng_data)
+    target_name = _extract_name(tgt)
+    intro_issues = _find_zh_intro_copula_issues(
+        eng_data, tgt, source_name, target_name, lang
+    )
+    special_issues = _find_special_phrase_issues(eng_data, tgt, lang)
+    issues = untranslated + intro_issues + special_issues
+    return issues if issues else True
+
+
+def _add_trans_issue(trans_ok, issue: str):
+    if isinstance(trans_ok, list):
+        return [issue] + [item for item in trans_ok if item != issue]
+    if trans_ok is False:
+        return [issue, "内容未翻译或占位符丢失"]
+    if trans_ok is None:
+        return [issue, "无法验证翻译"]
+    return [issue]
+
+
+def _is_db_name_issue(issue: str) -> bool:
+    return (
+        issue.startswith("名称不匹配：")
+        or issue.startswith("名称缺失：")
+        or issue.startswith("DB名称缺失：")
+        or issue.startswith("名称检查失败：")
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -226,10 +494,13 @@ def check_multilang(game_dir: Path, check_trans: bool = True):
 
     # 查询 DB 中该游戏各语言的名称，用于检测时比对
     db_names: dict = {}
+    room_id = None
+    require_db_names = False
     if check_trans:
         room_id = extract_room_id(game_dir.name)
         if room_id:
             db_names = query_room_names(room_id)
+            require_db_names = bool(DB_CONFIG)
 
     results = []
     for lang in REQUIRED_LANGS:
@@ -244,10 +515,17 @@ def check_multilang(game_dir: Path, check_trans: bool = True):
         if not check_trans or lang == SOURCE_LANG:
             trans_ok = True if lang == SOURCE_LANG else None
         else:
-            trans_ok = check_translation_ok(json_path, eng_data)
-            # 与 DB 中的名称做比对（DB 有值时才检查）
+            trans_ok = check_translation_ok(json_path, eng_data, lang)
+
+        # 与 DB 中的名称做比对（DB 有值时才检查）。eng 也是业务数据，必须与 DB 一致。
+        if check_trans:
             db_name = db_names.get(lang)
-            if db_name:
+            if require_db_names and not db_name:
+                trans_ok = _add_trans_issue(
+                    trans_ok,
+                    f"DB名称缺失：room_id={room_id} lang={lang} 无名称，无法确认文件 Name 与 DB 一致",
+                )
+            elif db_name:
                 try:
                     tgt_data  = json.loads(json_path.read_text(encoding="utf-8"))
                     file_name = _extract_name(tgt_data)
@@ -258,14 +536,15 @@ def check_multilang(game_dir: Path, check_trans: bool = True):
                                         if not re.search(r'\.Name\b', item)]
                             if not trans_ok:
                                 trans_ok = True
-                    elif file_name and file_name.strip() != db_name.strip():
-                        issue = f"名称不匹配：文件=\"{file_name}\"  DB=\"{db_name}\""
-                        if trans_ok is True:
-                            trans_ok = [issue]
-                        elif isinstance(trans_ok, list):
-                            trans_ok = [issue] + trans_ok
-                except Exception:
-                    pass
+                    else:
+                        issue = (
+                            f"名称不匹配：文件=\"{file_name}\"  DB=\"{db_name}\""
+                            if file_name
+                            else f"名称缺失：DB=\"{db_name}\""
+                        )
+                        trans_ok = _add_trans_issue(trans_ok, issue)
+                except Exception as e:
+                    trans_ok = _add_trans_issue(trans_ok, f"名称检查失败：{e}")
         results.append((lang, True, True, trans_ok))
 
     return results
@@ -297,7 +576,7 @@ def check_common_multilang(common_dir: Path, check_trans: bool = True):
         if not check_trans or lang == SOURCE_LANG:
           trans_ok = True if lang == SOURCE_LANG else None
         else:
-            trans_ok = check_translation_ok(json_path, eng_data)
+            trans_ok = check_translation_ok(json_path, eng_data, lang)
         results.append((lang, True, True, trans_ok))
 
     return results
@@ -319,7 +598,7 @@ def _has_trans_issues(lang_results: list) -> bool:
     return any(
         trans_ok is not True
         for lang, folder_ok, json_ok, trans_ok in lang_results
-        if folder_ok and json_ok and lang != SOURCE_LANG
+        if folder_ok and json_ok
     )
 
 
@@ -540,6 +819,26 @@ def _restore(text: str, holders: list[str]) -> str:
     return text
 
 
+def _special_term_token(i: int) -> str:
+    return f"{_PH_KEY}TERM{i}{_PH_KEY}"
+
+
+def _protect_special_phrases(text: str, lang: str | None) -> tuple[str, list[tuple[int, str]]]:
+    holders: list[tuple[int, str]] = []
+    for i, (source, target) in enumerate(_configured_special_terms(lang)):
+        if _contains_special_source(text, source):
+            text = _replace_special_source(text, source, _special_term_token(i))
+            holders.append((i, target))
+    return text, holders
+
+
+def _restore_special_phrases(text: str, holders: list[tuple[int, str]]) -> str:
+    for i, target in holders:
+        pattern = re.escape(_PH_KEY) + r'\s*TERM\s*' + re.escape(str(i)) + r'\s*' + re.escape(_PH_KEY)
+        text = re.sub(pattern, target, text, flags=re.IGNORECASE)
+    return text
+
+
 def _gcloud_translate_html(protected_text: str, to_lang: str) -> str:
     """
     使用 HTML 格式调用 Google Cloud Translation API。
@@ -578,10 +877,14 @@ def _gcloud_translate_html(protected_text: str, to_lang: str) -> str:
     return result
 
 
-def _translate_str(text: str, to_lang: str) -> str:
+def _translate_str(text: str, to_lang: str, lang: str | None = None) -> str:
     global _active_engine, _free_apis_decision
     import translators as ts
+    exact = _exact_special_translation(text, lang)
+    if exact is not None:
+        return exact
     protected, holders = _protect(text)
+    protected, special_holders = _protect_special_phrases(protected, lang)
     errors   = {}
     fallback = None   # 引擎成功但返回与原文相同时的候补结果
     for engine in TRANSLATOR_FALLBACK:
@@ -632,13 +935,16 @@ def _translate_str(text: str, to_lang: str) -> str:
                       end=" ", flush=True)
                 raise RuntimeError(f"超时（>{TRANSLATE_TIMEOUT}s）")
             restored = _restore(result, holders)
+            restored = _restore_special_phrases(restored, special_holders)
             # 只检查 %{xxx} 对应的数字 token 是否还原
             # NAME_TOKEN（_PH_KEY+GAMENAME+_PH_KEY）由 _restore_name_token 单独处理，不在此检查
             _digit_tok_re = re.escape(_PH_KEY) + r'\d+' + re.escape(_PH_KEY)
             if holders and re.search(_digit_tok_re, restored, re.IGNORECASE):
                 raise RuntimeError(f"占位符还原失败（token 残留）")
+            if special_holders and re.search(re.escape(_PH_KEY) + r'\s*TERM', restored, re.IGNORECASE):
+                raise RuntimeError("特殊短语还原失败（token 残留）")
             # 优先返回真正翻译了（与原文不同）的结果
-            if restored != protected:
+            if result != protected:
                 return restored
             # 原文相同：记为候补，继续尝试下一引擎
             if fallback is None:
@@ -654,37 +960,37 @@ def _translate_str(text: str, to_lang: str) -> str:
     raise RuntimeError(f"全部引擎失败 → {detail}")
 
 
-def _translate_node(node, to_lang: str):
+def _translate_node(node, to_lang: str, lang: str | None = None):
     if isinstance(node, dict):
-        return {k: (node[k] if k in NO_TRANSLATE_KEYS else _translate_node(v, to_lang)) for k, v in node.items()}
+        return {k: (node[k] if k in NO_TRANSLATE_KEYS else _translate_node(v, to_lang, lang)) for k, v in node.items()}
     if isinstance(node, list):
-        return [_translate_node(item, to_lang) for item in node]
+        return [_translate_node(item, to_lang, lang) for item in node]
     if isinstance(node, str):
-        return _translate_str(node, to_lang)
+        return _translate_str(node, to_lang, lang)
     return node
 
 
-def _fix_remaining_english(translated, eng_ref, to_lang: str):
+def _fix_remaining_english(translated, eng_ref, to_lang: str, lang: str | None = None):
     """
     翻译完成后的修复通道：对值仍与英文相同的叶子字符串，
     改用句子包裹方式再次尝试翻译，帮助解决 API 拒绝翻译短词的问题。
     """
     if isinstance(eng_ref, dict) and isinstance(translated, dict):
         return {
-            k: (_fix_remaining_english(translated[k], eng_ref.get(k), to_lang)
+            k: (_fix_remaining_english(translated[k], eng_ref.get(k), to_lang, lang)
                 if k not in NO_TRANSLATE_KEYS and k in eng_ref
                 else translated[k])
             for k in translated
         }
     if isinstance(eng_ref, list) and isinstance(translated, list):
-        return [_fix_remaining_english(t, e, to_lang)
+        return [_fix_remaining_english(t, e, to_lang, lang)
                 for t, e in zip(translated, eng_ref)]
     if isinstance(eng_ref, str) and isinstance(translated, str):
         if translated == eng_ref and _is_translatable(eng_ref):
             try:
                 # 用句子包裹，迫使引擎真正翻译
                 wrapped   = f"Game feature name: {eng_ref}."
-                w_result  = _translate_str(wrapped, to_lang)
+                w_result  = _translate_str(wrapped, to_lang, lang)
                 # 从翻译结果里提取术语部分（去掉可能保留的英文引导词）
                 if w_result != wrapped:
                     # 简单策略：取冒号后面的部分（如果有），否则取整个结果
@@ -694,6 +1000,29 @@ def _fix_remaining_english(translated, eng_ref, to_lang: str):
                         return candidate
             except Exception:
                 pass
+    return translated
+
+
+def _fix_zh_intro_copula(translated, eng_ref, source_name: str | None,
+                         target_name: str | None, lang: str | None):
+    if isinstance(eng_ref, dict) and isinstance(translated, dict):
+        return {
+            k: (_fix_zh_intro_copula(translated[k], eng_ref.get(k), source_name, target_name, lang)
+                if k not in NO_TRANSLATE_KEYS and k in eng_ref
+                else translated[k])
+            for k in translated
+        }
+    if isinstance(eng_ref, list) and isinstance(translated, list):
+        return [_fix_zh_intro_copula(t, e, source_name, target_name, lang)
+                for t, e in zip(translated, eng_ref)]
+    if isinstance(eng_ref, str) and isinstance(translated, str):
+        if _zh_intro_missing_copula(eng_ref, translated, source_name, target_name, lang):
+            name = target_name.strip()
+            m = re.match(r'^(\s*)(' + re.escape(name) + r')([\s，,、:：\-—]*)', translated)
+            if m:
+                rest = translated[m.end():].lstrip()
+                link = "是" if rest.startswith(("一款", "一个", "一個", "一种", "一種")) else "是一款"
+                return f"{m.group(1)}{m.group(2)}{link}{rest}"
     return translated
 
 
@@ -898,6 +1227,26 @@ def fix_game(game_dir: Path, lang_results: list, mode: str):
 
     for lang, folder_ok, json_ok, trans_ok in lang_results:
         if lang == SOURCE_LANG:
+            if (mode != MODE_FILES
+                    and isinstance(trans_ok, list) and trans_ok
+                    and all(_is_db_name_issue(item) for item in trans_ok)):
+                db_canonical = db_names.get(lang)
+                if db_canonical:
+                    try:
+                        existing = json.loads(source_json.read_text(encoding="utf-8"))
+                        old_name = _extract_name(existing)
+                        if not old_name:
+                            print(f"  {game_dir.name} → {lang}  [跳过] 文件中没有 Name 字段，无法自动修正")
+                        else:
+                            patched = _patch_name(existing, db_canonical)
+                            if old_name != db_canonical:
+                                patched = _replace_in_strings(patched, old_name, db_canonical)
+                            _atomic_write_json(source_json, patched)
+                            print(f"  {game_dir.name} → {lang}  名称已修正为 \"{db_canonical}\" ✅")
+                    except Exception as e:
+                        print(f"  {game_dir.name} → {lang}  名称修正失败：{e}")
+                else:
+                    print(f"  {game_dir.name} → {lang}  [跳过] DB 无名称可用")
             continue
 
         if mode == MODE_FILES:
@@ -923,19 +1272,22 @@ def fix_game(game_dir: Path, lang_results: list, mode: str):
 
         # 仅名称与 DB 不匹配（无其它翻译问题）：直接用 DB 值修正，不重新翻译
         if (isinstance(trans_ok, list) and trans_ok
-                and all(item.startswith("名称不匹配：") for item in trans_ok)):
+                and all(_is_db_name_issue(item) for item in trans_ok)):
             db_canonical = db_names.get(lang)
             if db_canonical:
                 try:
                     existing = json.loads(target_json.read_text(encoding="utf-8"))
                     old_name = _extract_name(existing)
-                    # 先修正 Name 字段
-                    patched  = _patch_name(existing, db_canonical)
-                    # 再把正文里所有出现的旧游戏名（如 Rule1 等）一并替换
-                    if old_name and old_name != db_canonical:
-                        patched = _replace_in_strings(patched, old_name, db_canonical)
-                    _atomic_write_json(target_json, patched)
-                    print(f"  {game_dir.name} → {lang}  名称已修正为 \"{db_canonical}\" ✅")
+                    if not old_name:
+                        print(f"  {game_dir.name} → {lang}  [跳过] 文件中没有 Name 字段，无法自动修正")
+                    else:
+                        # 先修正 Name 字段
+                        patched  = _patch_name(existing, db_canonical)
+                        # 再把正文里所有出现的旧游戏名（如 Rule1 等）一并替换
+                        if old_name != db_canonical:
+                            patched = _replace_in_strings(patched, old_name, db_canonical)
+                        _atomic_write_json(target_json, patched)
+                        print(f"  {game_dir.name} → {lang}  名称已修正为 \"{db_canonical}\" ✅")
                 except Exception as e:
                     print(f"  {game_dir.name} → {lang}  名称修正失败：{e}")
             else:
@@ -965,7 +1317,7 @@ def fix_game(game_dir: Path, lang_results: list, mode: str):
                     final_name      = db_name
                     _name_candidate = None          # DB 已有，无需回写
                 elif eng_name:
-                    fn              = _translate_str(eng_name, to_lang)
+                    fn              = _translate_str(eng_name, to_lang, lang)
                     final_name      = fn if (fn and fn.strip()) else eng_name
                     _name_candidate = final_name    # DB 为 NULL 时始终回写，即使与英文相同
                 else:
@@ -978,7 +1330,7 @@ def fix_game(game_dir: Path, lang_results: list, mode: str):
                     if eng_name and final_name else source_data
                 )
 
-                translated = _translate_node(protected_source, to_lang)
+                translated = _translate_node(protected_source, to_lang, lang)
 
                 # 还原游戏名（模糊匹配，允许 API 修改 token 内部字符）
                 if eng_name and final_name:
@@ -989,7 +1341,8 @@ def fix_game(game_dir: Path, lang_results: list, mode: str):
                 # 用原始英文 source_data 做对比基准：
                 #   Name 字段已由 _restore_name_token 设为 final_name（目标语言），
                 #   与英文 eng_name 不同 → 不会被误判为"未翻译"再次包裹重译
-                translated = _fix_remaining_english(translated, source_data, to_lang)
+                translated = _fix_remaining_english(translated, source_data, to_lang, lang)
+                translated = _fix_zh_intro_copula(translated, source_data, eng_name, final_name, lang)
 
                 # 翻译成功：确认候选回写值
                 name_for_db = _name_candidate
@@ -1460,7 +1813,7 @@ class MultilangCheckerApp:
         return sum(
             1
             for lang, folder_ok, json_ok, trans_ok in lang_results
-            if folder_ok and json_ok and lang != SOURCE_LANG and trans_ok is not True
+            if folder_ok and json_ok and trans_ok is not True
         )
 
     def _scan_job(self, roots: list[tuple[str, Path]], auto_update: bool) -> None:

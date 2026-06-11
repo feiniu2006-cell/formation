@@ -68,11 +68,25 @@ def build_normalized_group_weight_generation_rows(
     )
     if rows is None:
         return None
-    if not rows:
-        deps.print_no_group_weight_rows()
-        return []
     try:
         return deps.normalize_group_weight_rows(rows)
+    except ValueError as exc:
+        deps.print_group_weight_validation_failed(exc)
+        return None
+
+
+def build_group_weight_rows_for_write(context, rebates_by_mode, mode_exists, rows, *, deps):
+    """Merge final weight=0 write-only rows right before replacing the table."""
+    supplemental_rows = deps.build_group_weight_zero_weight_write_rows(
+        context.get('active_modes') or [],
+        rebates_by_mode,
+        mode_exists,
+        rows,
+    )
+    if not supplemental_rows:
+        return rows
+    try:
+        return deps.normalize_group_weight_rows(list(rows) + list(supplemental_rows))
     except ValueError as exc:
         deps.print_group_weight_validation_failed(exc)
         return None
@@ -91,8 +105,8 @@ def collect_group_weight_generation_warnings(context, rebates_by_mode, mode_exis
         if not rebates_by_mode.get(mode):
             warnings.append(f"模式 {mode} 的采样配置表为空或没有已选 rebate")
             continue
-        if not mode_pairs.get(mode):
-            warnings.append(f"模式 {mode} 按当前权重规则匹配后没有可写入的非0权重 rebate")
+        if not mode_pairs.get(mode) and not rows:
+            warnings.append(f"模式 {mode} 按当前权重规则匹配后没有可写入的 rebate")
     return warnings
 
 
@@ -146,6 +160,17 @@ def generate_group_weight_config(*, deps):
         )
         if rows is None:
             return False
+        rows = build_group_weight_rows_for_write(
+            context,
+            rebates_by_mode,
+            mode_exists,
+            rows,
+            deps=deps,
+        )
+        if rows is None:
+            return False
+        if not rows:
+            deps.print_no_group_weight_rows()
 
         print_group_weight_generation_warnings(
             collect_group_weight_generation_warnings(

@@ -335,7 +335,7 @@ class RebateRulesDialog(LoadingDialogBase):
         self.app.run_task(
             "生成采样配置",
             self.generate_configs,
-            preflight={"kind": "rebate_config", "modes": list(self.mode_names)},
+            preflight={"kind": "rebate_config", "modes": list(self.mode_names), "index_checked": True},
         )
 
     def finish_index_check(self, rules, direct_count_tiers, warnings=None, error=None):
