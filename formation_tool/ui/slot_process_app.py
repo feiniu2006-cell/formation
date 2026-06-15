@@ -50,6 +50,11 @@ class SlotProcessApp(SlotAppUiMixin, SlotAppSettingsMixin, SlotAppTaskMixin, Slo
         self.buy_multiplier_var = tk.StringVar(value=str(app_deps.get_buy_group_multiplier()))
         self.buy_source_suffix_var = tk.StringVar(value=str(app_deps.get_buy_group_source_suffix()))
         self.ex_multiplier_var = tk.StringVar(value=str(app_deps.get_ex_group_multiplier()))
+        ex_source_suffixes = app_deps.get_ex_source_suffixes()
+        self.ex_source_suffix_vars = {
+            str(mode): tk.StringVar(value=str(ex_source_suffixes.get(str(mode), "")))
+            for mode in app_deps.ex_group_modes
+        }
 
         self.root.title("游戏阵型数据处理系统")
         ui_layout_defaults.apply_window_layout(self.root, ui_layout_defaults.MAIN_WINDOW)

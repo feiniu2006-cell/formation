@@ -2,6 +2,7 @@
 
 from formation_tool.group_weight.group_weight_logic import (
     build_normal_group_weight_rows_for_group,
+    calculate_weighted_rtp,
     format_weighted_rtp,
 )
 from formation_tool.group_weight import group_weight_row_helpers
@@ -45,7 +46,7 @@ def log_ex_independent_group_weight_result(game_type, mode_infos, has_zero, mode
 
 
 def append_ex_independent_group_weight_modes(rows, formation_exists, rebates_by_mode, mode_exists, mode_pairs):
-    """写入 ex特殊/ex免费，并返回每个 group_id 的 RTP 信息。"""
+    """写入需要独立目标反推的 ex 模式，并返回每个 group_id 的 RTP 信息。"""
     ex_info_by_mode = {mode: {} for mode in EX_INDEPENDENT_GROUP_WEIGHT_MODES}
     for game_type in EX_INDEPENDENT_GROUP_WEIGHT_MODES:
         if not formation_exists.get(game_type, False):
@@ -67,6 +68,36 @@ def append_ex_independent_group_weight_modes(rows, formation_exists, rebates_by_
             mode_rows,
         )
     return ex_info_by_mode
+
+
+def append_ex_free_group_weight_mode(rows, formation_exists, rebates_by_mode, mode_exists, mode_pairs, ex_info_by_mode):
+    """写入 ex免费局；和普通免费局一样按配置静态写入，不反推 rebate=0。"""
+    game_type = '8'
+    ex_info_by_mode.setdefault(game_type, {})
+    if not formation_exists.get(game_type, False):
+        return
+    if should_skip_group_weight_mode_data(game_type, mode_exists, rebates_by_mode):
+        return
+
+    mode_rows = group_weight_row_helpers.append_static_group_weight_rows(
+        rows,
+        get_group_weight_write_game_type(game_type),
+        mode_pairs[game_type],
+    )
+    game_rtp = calculate_weighted_rtp(mode_pairs[game_type])
+    display_rtp = None if game_rtp is None else game_rtp / float(EX_GROUP_MULTIPLIER)
+    for group_id in WEIGHT_GROUP_IDS:
+        ex_info_by_mode[game_type][int(group_id)] = {
+            'actual_rtp': game_rtp,
+            'display_rtp': display_rtp,
+            'zero_weight': 0,
+        }
+    print(
+        f"\n[{GAME_TYPE_NAMES[game_type]}] RTP={format_weighted_rtp(game_rtp)}，"
+        f"最终RTP={format_weighted_rtp(display_rtp)}，"
+        f"ex倍数={format_weighted_rtp(EX_GROUP_MULTIPLIER)}，"
+        f"按静态权重写入，不反推 rebate=0，准备写入 {mode_rows} 行"
+    )
 
 
 def append_ex_normal_group_weight_mode(rows, formation_exists, rebates_by_mode, mode_exists, mode_pairs, ex_info_by_mode):
@@ -148,6 +179,14 @@ def append_ex_group_weight_modes(rows, formation_exists, rebates_by_mode, mode_e
         rebates_by_mode,
         mode_exists,
         mode_pairs,
+    )
+    append_ex_free_group_weight_mode(
+        rows,
+        formation_exists,
+        rebates_by_mode,
+        mode_exists,
+        mode_pairs,
+        ex_info_by_mode,
     )
     append_ex_normal_group_weight_mode(
         rows,

@@ -58,6 +58,7 @@ class RuleTableEditor:
             'frame': row_frame,
             'number_label': ttk.Label(row_frame, width=4, anchor="center"),
             'vars': {},
+            'entries': {},
         }
         row_info['number_label'].grid(row=0, column=0, sticky="ew", padx=(0, 4))
         for col, field in enumerate(self.fields, start=1):
@@ -66,6 +67,7 @@ class RuleTableEditor:
             entry = ttk.Entry(row_frame, textvariable=variable, width=self.row_width)
             entry.grid(row=0, column=col, sticky="ew", padx=2)
             row_info['vars'][field] = variable
+            row_info['entries'][field] = entry
             row_frame.columnconfigure(col, weight=1)
             if self.on_change:
                 variable.trace_add("write", lambda *_args: self._emit_change())

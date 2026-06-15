@@ -143,6 +143,8 @@ def build_cli_settings_deps():
         apply_buy_group_multiplier=apply_buy_group_multiplier,
         apply_buy_group_source_suffix=apply_buy_group_source_suffix,
         apply_ex_group_multiplier=apply_ex_group_multiplier,
+        apply_ex_group_target_rtps_config=apply_ex_group_target_rtps_config,
+        apply_ex_source_suffixes_config=apply_ex_source_suffixes_config,
         apply_extra_buy_groups_config=apply_extra_buy_groups_config,
         apply_special_group_target_rtp=apply_special_group_target_rtp,
         apply_rebate_config_direct_count_modes=apply_rebate_config_direct_count_modes,
@@ -283,12 +285,14 @@ GROUP_WEIGHT_RULES = formation_defaults.clone_rule_map(formation_defaults.GROUP_
 
 # 特殊局存在 rebate=0 时，用这个手动目标 RTP 反推特殊局 rebate=0 的 weight。
 SPECIAL_GROUP_TARGET_RTP = formation_defaults.DEFAULT_SPECIAL_GROUP_TARGET_RTP
+EX_GROUP_TARGET_RTPS = formation_defaults.clone_ex_group_target_rtps()
 BUY_GROUP_ENABLED = formation_defaults.DEFAULT_BUY_GROUP_ENABLED
 EX_BUY_GROUP_ENABLED = formation_defaults.DEFAULT_EX_BUY_GROUP_ENABLED
 BUY_GROUP_GAME_TYPE = formation_defaults.DEFAULT_BUY_GROUP_GAME_TYPE
 BUY_GROUP_MULTIPLIER = formation_defaults.DEFAULT_BUY_GROUP_MULTIPLIER
 BUY_GROUP_SOURCE_SUFFIX = formation_defaults.DEFAULT_BUY_GROUP_SOURCE_SUFFIX
 EX_GROUP_MULTIPLIER = formation_defaults.DEFAULT_EX_GROUP_MULTIPLIER
+EX_SOURCE_SUFFIXES = formation_defaults.clone_ex_source_suffixes()
 EXTRA_BUY_GROUPS = formation_defaults.clone_extra_buy_groups()
 BUY_GROUPS = buy_group_config.build_buy_groups_from_legacy(
     buy_enabled=BUY_GROUP_ENABLED,
@@ -298,12 +302,14 @@ BUY_GROUPS = buy_group_config.build_buy_groups_from_legacy(
     extra_buy_groups=EXTRA_BUY_GROUPS,
 )
 DEFAULT_SPECIAL_GROUP_TARGET_RTP = formation_defaults.DEFAULT_SPECIAL_GROUP_TARGET_RTP
+DEFAULT_EX_GROUP_TARGET_RTPS = formation_defaults.clone_ex_group_target_rtps()
 DEFAULT_BUY_GROUP_ENABLED = formation_defaults.DEFAULT_BUY_GROUP_ENABLED
 DEFAULT_EX_BUY_GROUP_ENABLED = formation_defaults.DEFAULT_EX_BUY_GROUP_ENABLED
 DEFAULT_BUY_GROUP_GAME_TYPE = formation_defaults.DEFAULT_BUY_GROUP_GAME_TYPE
 DEFAULT_BUY_GROUP_MULTIPLIER = formation_defaults.DEFAULT_BUY_GROUP_MULTIPLIER
 DEFAULT_BUY_GROUP_SOURCE_SUFFIX = formation_defaults.DEFAULT_BUY_GROUP_SOURCE_SUFFIX
 DEFAULT_EX_GROUP_MULTIPLIER = formation_defaults.DEFAULT_EX_GROUP_MULTIPLIER
+DEFAULT_EX_SOURCE_SUFFIXES = formation_defaults.clone_ex_source_suffixes()
 DEFAULT_EXTRA_BUY_GROUPS = formation_defaults.clone_extra_buy_groups()
 DEFAULT_SAMPLING_APPEND_MODE = formation_defaults.DEFAULT_SAMPLING_APPEND_MODE
 
@@ -526,7 +532,9 @@ def _sync_globals_from_runtime_state():
     global SPECIAL_WEIGHT_BY_LAST_DIGIT, FREE_WEIGHT_BY_LAST_DIGIT
     global REBATE_RULES, GROUP_WEIGHT_RULES, SAMPLING_APPEND_MODE
     global REBATE_CONFIG_DIRECT_COUNT_MODES, SPECIAL_GROUP_TARGET_RTP
+    global EX_GROUP_TARGET_RTPS
     global BUY_GROUP_ENABLED, EX_BUY_GROUP_ENABLED, BUY_GROUP_GAME_TYPE, BUY_GROUP_MULTIPLIER, BUY_GROUP_SOURCE_SUFFIX, EX_GROUP_MULTIPLIER
+    global EX_SOURCE_SUFFIXES
     global EXTRA_BUY_GROUPS, BUY_GROUPS, EXTERNAL_CONFIG_SOURCE, EXTERNAL_CONFIG_LOAD_ERROR, CONFIG_WARNINGS
 
     target = runtime_state_sync.build_legacy_globals_snapshot(RUNTIME_STATE, _current_module_namespace)
@@ -550,12 +558,14 @@ def _sync_globals_from_runtime_state():
     SAMPLING_APPEND_MODE = target.SAMPLING_APPEND_MODE
     REBATE_CONFIG_DIRECT_COUNT_MODES = target.REBATE_CONFIG_DIRECT_COUNT_MODES
     SPECIAL_GROUP_TARGET_RTP = target.SPECIAL_GROUP_TARGET_RTP
+    EX_GROUP_TARGET_RTPS = target.EX_GROUP_TARGET_RTPS
     BUY_GROUP_ENABLED = target.BUY_GROUP_ENABLED
     EX_BUY_GROUP_ENABLED = target.EX_BUY_GROUP_ENABLED
     BUY_GROUP_GAME_TYPE = target.BUY_GROUP_GAME_TYPE
     BUY_GROUP_MULTIPLIER = target.BUY_GROUP_MULTIPLIER
     BUY_GROUP_SOURCE_SUFFIX = target.BUY_GROUP_SOURCE_SUFFIX
     EX_GROUP_MULTIPLIER = target.EX_GROUP_MULTIPLIER
+    EX_SOURCE_SUFFIXES = target.EX_SOURCE_SUFFIXES
     EXTRA_BUY_GROUPS = target.EXTRA_BUY_GROUPS
     BUY_GROUPS = target.BUY_GROUPS
     EXTERNAL_CONFIG_SOURCE = target.EXTERNAL_CONFIG_SOURCE
@@ -791,6 +801,34 @@ def apply_special_group_target_rtp(value):
     RUNTIME_STATE.special_group_target_rtp = SPECIAL_GROUP_TARGET_RTP
 
 
+def normalize_ex_group_target_rtps(values):
+    """Normalize manual display RTP targets for independent ex modes."""
+    normalized = {}
+    values = values or {}
+    for mode in EX_INDEPENDENT_GROUP_WEIGHT_MODES:
+        raw_value = values.get(str(mode), values.get(int(mode), None)) if isinstance(values, dict) else None
+        if raw_value is None or str(raw_value).strip() == "":
+            continue
+        normalized[str(mode)] = _parse_positive_float_text(
+            raw_value,
+            f"{GAME_TYPE_NAMES.get(str(mode), mode)}目标RTP",
+        )
+    return normalized
+
+
+def apply_ex_group_target_rtps_config(values):
+    """Apply manual display RTP targets for independent ex modes."""
+    global EX_GROUP_TARGET_RTPS
+    EX_GROUP_TARGET_RTPS = normalize_ex_group_target_rtps(values)
+    RUNTIME_STATE.ex_group_target_rtps = dict(EX_GROUP_TARGET_RTPS)
+    return dict(EX_GROUP_TARGET_RTPS)
+
+
+def get_ex_group_target_rtps():
+    _sync_group_weight_runtime_from_globals()
+    return dict(RUNTIME_STATE.ex_group_target_rtps)
+
+
 def apply_buy_group_multiplier(value):
     """Apply buy-group multiplier."""
     global BUY_GROUP_MULTIPLIER
@@ -839,6 +877,34 @@ def apply_ex_group_multiplier(value):
     global EX_GROUP_MULTIPLIER
     EX_GROUP_MULTIPLIER = _parse_positive_float_text(value, "ex倍数")
     RUNTIME_STATE.ex_group_multiplier = EX_GROUP_MULTIPLIER
+
+
+def normalize_ex_source_suffixes(values):
+    """Normalize manual ex source suffix overrides; blank values keep DB defaults."""
+    normalized = {}
+    values = values or {}
+    for mode in EX_GROUP_MODES:
+        raw_value = values.get(str(mode), values.get(int(mode), None)) if isinstance(values, dict) else None
+        if raw_value is None or str(raw_value).strip() == "":
+            continue
+        normalized[str(mode)] = rule_config_state.normalize_formation_suffix(
+            raw_value,
+            f"{GAME_TYPE_NAMES.get(str(mode), mode)}阵型表后缀",
+        )
+    return normalized
+
+
+def apply_ex_source_suffixes_config(values):
+    """Apply manual source suffix overrides for ex modes 6/7/8."""
+    global EX_SOURCE_SUFFIXES
+    EX_SOURCE_SUFFIXES = normalize_ex_source_suffixes(values)
+    RUNTIME_STATE.ex_source_suffixes = dict(EX_SOURCE_SUFFIXES)
+    return dict(EX_SOURCE_SUFFIXES)
+
+
+def get_ex_source_suffixes():
+    _sync_group_weight_runtime_from_globals()
+    return dict(RUNTIME_STATE.ex_source_suffixes)
 
 
 def normalize_extra_buy_groups(groups):
@@ -1661,6 +1727,29 @@ def get_buy_group_rebate_table_name(game_type):
     return f"{RUNTIME_STATE.game_table_prefix}{table_suffix}"
 
 
+def get_group_weight_manual_ex_source_suffix(mode):
+    """Return a manual ex source suffix used by group_weight only."""
+    source_mode = GROUP_WEIGHT_MODE_DEFS.get(str(mode), {}).get('source_mode', str(mode))
+    if source_mode in EX_GROUP_MODES:
+        return RUNTIME_STATE.ex_source_suffixes.get(str(source_mode))
+    return None
+
+
+def get_group_weight_manual_source_table_name(mode):
+    suffix = get_group_weight_manual_ex_source_suffix(mode)
+    if not suffix:
+        return None
+    return f"{RUNTIME_STATE.game_table_prefix}{suffix}"
+
+
+def get_group_weight_manual_rebate_table_name(mode):
+    suffix = get_group_weight_manual_ex_source_suffix(mode)
+    if not suffix:
+        return None
+    table_suffix = build_rebate_table_suffix_from_formation_suffix(suffix)
+    return f"{RUNTIME_STATE.game_table_prefix}{table_suffix}"
+
+
 def get_buy_source_rebate_game_configs():
     """Return dynamic sampling/rebate-count configs for custom buy source tables."""
     default_buy_entry, extra_buy_entries = _get_runtime_buy_group_entries_with_table_sources()
@@ -1689,6 +1778,9 @@ def get_group_weight_rebate_table_name(game_type):
     game_type = str(game_type)
     if game_type in (BUY_GROUP_MODE, EX_PURCHASE_MODE) or is_extra_buy_mode(game_type):
         return get_buy_group_rebate_table_name(game_type)
+    manual_table = get_group_weight_manual_rebate_table_name(game_type)
+    if manual_table:
+        return manual_table
     source_mode = get_group_weight_rebate_source_mode(game_type)
     return get_table_name(
         'REBATE_CONFIG_TABLE',
@@ -2165,6 +2257,20 @@ def check_buy_like_source_formation_status(source_mode):
     )
 
 
+def check_group_weight_manual_source_formation_status(mode):
+    """Check a manual ex source suffix used only by group_weight."""
+    source_mode = get_group_weight_formation_source_mode(mode)
+    source_table = get_group_weight_manual_source_table_name(mode)
+    if source_mode is None or not source_table:
+        return None
+    return formation_table_detection.check_physical_source_status(
+        source_mode,
+        RUNTIME_STATE.source_db,
+        source_table,
+        deps=build_source_formation_detection_deps(),
+    )
+
+
 def check_source_formation_status(source_mode):
     source_mode = str(source_mode)
     if source_mode in (BUY_GROUP_MODE, EX_PURCHASE_MODE) or is_extra_buy_mode(source_mode):
@@ -2186,12 +2292,16 @@ def check_group_weight_source_formation_exists(mode):
     source_mode = get_group_weight_formation_source_mode(mode)
     if source_mode is None:
         return False
+    manual_status = check_group_weight_manual_source_formation_status(mode)
+    if manual_status is not None:
+        SOURCE_FORMATION_CHECK_STATUSES[str(source_mode)] = manual_status
+        return manual_status.exists
     return check_source_formation_exists(source_mode)
 
 
 def get_group_weight_formation_exists():
     clear_source_formation_check_errors()
-    source_exists_cache = {}
+    mode_exists_cache = {}
     result = {}
     check_modes = list(GROUP_WEIGHT_MODES)
     check_modes.extend(make_extra_buy_mode(group['game_type']) for group in RUNTIME_STATE.extra_buy_groups)
@@ -2200,9 +2310,9 @@ def get_group_weight_formation_exists():
         if source_mode is None:
             result[mode] = False
             continue
-        if source_mode not in source_exists_cache:
-            source_exists_cache[source_mode] = check_source_formation_exists(source_mode)
-        result[mode] = source_exists_cache[source_mode]
+        if mode not in mode_exists_cache:
+            mode_exists_cache[mode] = check_group_weight_source_formation_exists(mode)
+        result[mode] = mode_exists_cache[mode]
     return result
 
 

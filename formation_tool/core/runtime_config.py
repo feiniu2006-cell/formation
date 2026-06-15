@@ -165,12 +165,14 @@ class RuntimeState:
         self.sampling_append_mode = formation_defaults.DEFAULT_SAMPLING_APPEND_MODE
         self.rebate_config_direct_count_modes = set(formation_defaults.DEFAULT_REBATE_CONFIG_DIRECT_COUNT_MODES)
         self.special_group_target_rtp = formation_defaults.DEFAULT_SPECIAL_GROUP_TARGET_RTP
+        self.ex_group_target_rtps = formation_defaults.clone_ex_group_target_rtps()
         self.buy_group_enabled = formation_defaults.DEFAULT_BUY_GROUP_ENABLED
         self.ex_buy_group_enabled = formation_defaults.DEFAULT_EX_BUY_GROUP_ENABLED
         self.buy_group_game_type = formation_defaults.DEFAULT_BUY_GROUP_GAME_TYPE
         self.buy_group_multiplier = formation_defaults.DEFAULT_BUY_GROUP_MULTIPLIER
         self.buy_group_source_suffix = formation_defaults.DEFAULT_BUY_GROUP_SOURCE_SUFFIX
         self.ex_group_multiplier = formation_defaults.DEFAULT_EX_GROUP_MULTIPLIER
+        self.ex_source_suffixes = formation_defaults.clone_ex_source_suffixes()
         self.extra_buy_groups = formation_defaults.clone_extra_buy_groups()
         self.buy_groups = self.build_buy_groups()
 
@@ -216,7 +218,9 @@ class RuntimeState:
     def sync_group_weight_runtime_from(self, namespace):
         self.group_weight_rules = _clone(_read(namespace, 'GROUP_WEIGHT_RULES', self.group_weight_rules))
         self.special_group_target_rtp = _read(namespace, 'SPECIAL_GROUP_TARGET_RTP', self.special_group_target_rtp)
+        self.ex_group_target_rtps = _clone(_read(namespace, 'EX_GROUP_TARGET_RTPS', self.ex_group_target_rtps))
         self.ex_group_multiplier = _read(namespace, 'EX_GROUP_MULTIPLIER', self.ex_group_multiplier)
+        self.ex_source_suffixes = _clone(_read(namespace, 'EX_SOURCE_SUFFIXES', self.ex_source_suffixes))
         self.ex_buy_group_enabled = bool(_read(namespace, 'EX_BUY_GROUP_ENABLED', self.ex_buy_group_enabled))
 
         buy_groups = _read(namespace, 'BUY_GROUPS', None)
@@ -310,12 +314,14 @@ class RuntimeState:
         _assign(namespace, 'SAMPLING_APPEND_MODE', self.sampling_append_mode)
         _assign(namespace, 'REBATE_CONFIG_DIRECT_COUNT_MODES', set(self.rebate_config_direct_count_modes))
         _assign(namespace, 'SPECIAL_GROUP_TARGET_RTP', self.special_group_target_rtp)
+        _assign(namespace, 'EX_GROUP_TARGET_RTPS', _clone(self.ex_group_target_rtps))
         _assign(namespace, 'BUY_GROUP_ENABLED', self.buy_group_enabled)
         _assign(namespace, 'EX_BUY_GROUP_ENABLED', self.ex_buy_group_enabled)
         _assign(namespace, 'BUY_GROUP_GAME_TYPE', self.buy_group_game_type)
         _assign(namespace, 'BUY_GROUP_MULTIPLIER', self.buy_group_multiplier)
         _assign(namespace, 'BUY_GROUP_SOURCE_SUFFIX', self.buy_group_source_suffix)
         _assign(namespace, 'EX_GROUP_MULTIPLIER', self.ex_group_multiplier)
+        _assign(namespace, 'EX_SOURCE_SUFFIXES', _clone(self.ex_source_suffixes))
         _assign(namespace, 'EXTRA_BUY_GROUPS', _clone(self.extra_buy_groups))
         _assign(namespace, 'BUY_GROUPS', _clone(self.buy_groups))
         _assign(namespace, 'EXTERNAL_CONFIG_SOURCE', self.external_config_source)

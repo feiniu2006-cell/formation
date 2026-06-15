@@ -272,6 +272,116 @@ class GroupWeightLogicTests(unittest.TestCase):
         self.assertEqual(context["special_rtp"], 0)
         self.assertEqual(context["free_rtp"], 0)
 
+    def test_ex_independent_target_rtp_uses_display_target_times_multiplier(self):
+        row_helpers = group_weight_builder.group_weight_row_helpers
+        names = (
+            "WEIGHT_GROUP_IDS",
+            "EX_GROUP_TARGET_RTPS",
+            "EX_GROUP_MULTIPLIER",
+            "get_group_target_rtp_ratio",
+        )
+        missing = object()
+        old_values = {name: getattr(row_helpers, name, missing) for name in names}
+        try:
+            row_helpers.WEIGHT_GROUP_IDS = (9000,)
+            row_helpers.EX_GROUP_TARGET_RTPS = {"7": 3}
+            row_helpers.EX_GROUP_MULTIPLIER = 2
+            row_helpers.get_group_target_rtp_ratio = lambda _group_id: 1
+
+            rows = []
+            _row_count, infos = row_helpers.append_independent_ex_group_rows(
+                rows,
+                "7",
+                [(100000, 10)],
+                has_zero=True,
+            )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(row_helpers, name):
+                        delattr(row_helpers, name)
+                else:
+                    setattr(row_helpers, name, value)
+
+        self.assertEqual(infos[9000]["base_target_rtp"], 3)
+        self.assertEqual(infos[9000]["target_rtp"], 6)
+        self.assertEqual(rows[0][:3], (7, 9000, 0))
+
+    def test_ex_free_mode_is_static_not_independent(self):
+        from formation_tool.core import formation_modes
+
+        self.assertEqual(formation_modes.get_group_weight_rtp_role("8"), "static")
+        self.assertEqual(formation_modes.EX_INDEPENDENT_GROUP_WEIGHT_MODES, ("7",))
+
+    def test_ex_free_generation_uses_static_rtp_without_zero_inference(self):
+        ex_modes = group_weight_builder.group_weight_ex_modes
+        row_helpers = group_weight_builder.group_weight_row_helpers
+        names = (
+            "WEIGHT_GROUP_IDS",
+            "GAME_TYPE_NAMES",
+            "EX_GROUP_MULTIPLIER",
+            "get_group_weight_write_game_type",
+        )
+        row_helper_names = ("WEIGHT_GROUP_IDS",)
+        missing = object()
+        old_values = {name: getattr(ex_modes, name, missing) for name in names}
+        old_row_helper_values = {name: getattr(row_helpers, name, missing) for name in row_helper_names}
+        try:
+            ex_modes.WEIGHT_GROUP_IDS = (9000, 9001)
+            ex_modes.GAME_TYPE_NAMES = {"8": "ex免费局"}
+            ex_modes.EX_GROUP_MULTIPLIER = 2
+            ex_modes.get_group_weight_write_game_type = lambda mode: int(mode)
+            row_helpers.WEIGHT_GROUP_IDS = (9000, 9001)
+
+            rows = []
+            ex_info_by_mode = {"7": {}}
+            ex_modes.append_ex_free_group_weight_mode(
+                rows,
+                formation_exists={"8": True},
+                rebates_by_mode={"8": [9000, 18000]},
+                mode_exists={"8": True},
+                mode_pairs={"8": [(9000, 2), (18000, 1)]},
+                ex_info_by_mode=ex_info_by_mode,
+            )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(ex_modes, name):
+                        delattr(ex_modes, name)
+                else:
+                    setattr(ex_modes, name, value)
+            for name, value in old_row_helper_values.items():
+                if value is missing:
+                    if hasattr(row_helpers, name):
+                        delattr(row_helpers, name)
+                else:
+                    setattr(row_helpers, name, value)
+
+        self.assertEqual(
+            rows,
+            [
+                (8, 9000, 9000, 2),
+                (8, 9000, 18000, 1),
+                (8, 9001, 9000, 2),
+                (8, 9001, 18000, 1),
+            ],
+        )
+        self.assertEqual(ex_info_by_mode["8"][9000]["zero_weight"], 0)
+        self.assertEqual(ex_info_by_mode["8"][9000]["actual_rtp"], 12)
+        self.assertEqual(ex_info_by_mode["8"][9000]["display_rtp"], 6)
+
+    def test_ex_static_preview_shows_final_rtp_after_ex_multiplier(self):
+        preview = group_weight_builder.group_weight_preview.build_ex_static_group_weight_preview(
+            sampled_rebates=[9000, 18000],
+            rtp_pairs=[(9000, 2), (18000, 1)],
+            skipped_zero=0,
+            ex_multiplier=2,
+        )
+
+        self.assertIn("12", preview)
+        self.assertIn("ex倍数=2", preview)
+        self.assertIn("最终RTP=6", preview)
+
     def test_zero_weight_rows_are_built_for_final_write_only(self):
         names = (
             "WEIGHT_GROUP_IDS",
@@ -1025,6 +1135,144 @@ class BuyGroupConfigTests(unittest.TestCase):
         self.assertNotIn("99", modes)
 
 
+class ExGroupWeightSourceOverrideTests(unittest.TestCase):
+    def test_manual_ex_suffix_affects_group_weight_only_not_sampling_configs(self):
+        module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
+        runtime = module.RUNTIME_STATE
+        saved_runtime = {
+            name: getattr(runtime, name)
+            for name in (
+                "vendor",
+                "game_id",
+                "source_db",
+                "final_db",
+                "config_db",
+                "game_table_prefix",
+                "game_defs",
+                "game_configs",
+                "ex_source_suffixes",
+                "buy_group_enabled",
+                "buy_group_game_type",
+                "buy_group_multiplier",
+                "buy_group_source_suffix",
+                "extra_buy_groups",
+                "buy_groups",
+            )
+        }
+        saved_loader = module.load_game_type_configs
+        try:
+            prefix, game_defs, game_configs = runtime_config.build_game_configs(
+                "jili",
+                "106",
+                "XP1",
+                "DB1",
+                "MY",
+                random_seed=108,
+            )
+            runtime.vendor = "jili"
+            runtime.game_id = "106"
+            runtime.source_db = "XP1"
+            runtime.final_db = "DB1"
+            runtime.config_db = "MY"
+            runtime.game_table_prefix = prefix
+            runtime.game_defs = game_defs
+            runtime.game_configs = game_configs
+            runtime.ex_source_suffixes = {"6": "formation"}
+            runtime.buy_group_enabled = False
+            runtime.buy_group_game_type = 99
+            runtime.buy_group_multiplier = 75
+            runtime.buy_group_source_suffix = "free_formation"
+            runtime.extra_buy_groups = []
+            runtime.buy_groups = runtime.build_buy_groups()
+
+            module.load_game_type_configs = lambda force=False: {
+                1: {"game_type": 1, "source_suffix": "formation", "is_buy": 0},
+                6: {"game_type": 6, "source_suffix": "db_ex_formation", "is_buy": 0},
+            }
+
+            configs = module.get_runtime_game_configs()
+
+            self.assertEqual(
+                configs["6"]["table_config"]["SOURCE_TABLE"]["name"],
+                "jili_106_db_ex_formation",
+            )
+            self.assertEqual(
+                configs["6"]["table_config"]["REBATE_CONFIG_TABLE"]["name"],
+                "jili_106_rebate_db_ex_count",
+            )
+            self.assertEqual(module.get_group_weight_rebate_table_name("6"), "jili_106_rebate_count")
+            self.assertEqual(module.get_group_weight_manual_source_table_name("6"), "jili_106_formation")
+        finally:
+            module.load_game_type_configs = saved_loader
+            for name, value in saved_runtime.items():
+                setattr(runtime, name, value)
+
+    def test_manual_ex_suffix_enables_group_weight_detection(self):
+        module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
+        runtime = module.RUNTIME_STATE
+        saved_runtime = {
+            name: getattr(runtime, name)
+            for name in (
+                "source_db",
+                "game_table_prefix",
+                "game_configs",
+                "ex_source_suffixes",
+                "extra_buy_groups",
+            )
+        }
+        saved_globals = {
+            "GROUP_WEIGHT_MODES": module.GROUP_WEIGHT_MODES,
+            "SOURCE_FORMATION_CHECK_STATUSES": dict(module.SOURCE_FORMATION_CHECK_STATUSES),
+        }
+        saved_funcs = {
+            "connect_to_database": module.connect_to_database,
+            "table_exists_exact": module.table_exists_exact,
+            "close_safely": module.close_safely,
+        }
+        checked_tables = []
+        try:
+            runtime.source_db = "XP1"
+            runtime.game_table_prefix = "jili_106_"
+            runtime.game_configs = {
+                "1": {
+                    "name": "normal",
+                    "table_config": {
+                        "SOURCE_TABLE": {"name": "jili_106_formation", "database": "XP1"},
+                    },
+                },
+                "6": {
+                    "name": "ex normal",
+                    "table_config": {
+                        "SOURCE_TABLE": {"name": "jili_106_ex_formation", "database": "XP1"},
+                    },
+                },
+            }
+            runtime.ex_source_suffixes = {"6": "formation"}
+            runtime.extra_buy_groups = []
+            module.GROUP_WEIGHT_MODES = ("6",)
+            module.connect_to_database = lambda db_name: object()
+
+            def fake_table_exists(_conn, table_name):
+                checked_tables.append(table_name)
+                return table_name == "jili_106_formation"
+
+            module.table_exists_exact = fake_table_exists
+            module.close_safely = lambda _conn: None
+
+            formation_exists = module.get_group_weight_formation_exists()
+
+            self.assertTrue(formation_exists["6"])
+            self.assertEqual(checked_tables, ["jili_106_formation"])
+        finally:
+            module.GROUP_WEIGHT_MODES = saved_globals["GROUP_WEIGHT_MODES"]
+            module.SOURCE_FORMATION_CHECK_STATUSES.clear()
+            module.SOURCE_FORMATION_CHECK_STATUSES.update(saved_globals["SOURCE_FORMATION_CHECK_STATUSES"])
+            for name, value in saved_funcs.items():
+                setattr(module, name, value)
+            for name, value in saved_runtime.items():
+                setattr(runtime, name, value)
+
+
 class RuntimeContextSyncTests(unittest.TestCase):
     def test_wrappers_install_on_module_like_namespace(self):
         module = SimpleNamespace(ping=lambda: "pong")
@@ -1450,6 +1698,22 @@ class DatabaseAccessTests(unittest.TestCase):
         finally:
             engine.dispose()
 
+    def test_default_db_timeouts_are_applied_without_overriding_custom_values(self):
+        defaulted = db_runtime.with_default_db_timeouts({})
+        self.assertEqual(defaulted["connection_timeout"], 10)
+        self.assertEqual(defaulted["read_timeout"], 300)
+        self.assertEqual(defaulted["write_timeout"], 300)
+
+        customized = db_runtime.with_default_db_timeouts({
+            "connect_timeout": 7,
+            "read_timeout": "30",
+            "write_timeout": 40,
+        })
+        self.assertNotIn("connection_timeout", customized)
+        self.assertEqual(customized["connect_timeout"], 7)
+        self.assertEqual(customized["read_timeout"], 30)
+        self.assertEqual(customized["write_timeout"], 40)
+
     def test_db_entrypoints_build_typed_database_access_callbacks(self):
         callbacks = db_entrypoints.DatabaseAccessCallbacks(
             get_database_configs=lambda: {"SRC": {"host": "127.0.0.1"}},
@@ -1811,7 +2075,7 @@ class SamplingCoreWriteTests(unittest.TestCase):
         self.assertNotIn("rebate", normalized_query.lower())
         self.assertNotIn("game_end", normalized_query.lower())
 
-    def test_write_sample_chunk_uses_batched_multi_insert(self):
+    def test_write_sample_chunk_uses_batched_progress_insert(self):
         calls = []
 
         class FakeFrame:
@@ -1837,7 +2101,50 @@ class SamplingCoreWriteTests(unittest.TestCase):
         self.assertEqual(to_sql_call[2]["if_exists"], "append")
         self.assertFalse(to_sql_call[2]["index"])
         self.assertEqual(to_sql_call[2]["chunksize"], sampling_core.SAMPLE_ROW_WRITE_CHUNK_SIZE)
-        self.assertEqual(to_sql_call[2]["method"], "multi")
+        self.assertTrue(callable(to_sql_call[2]["method"]))
+
+    def test_sample_row_write_method_reports_inserted_rows(self):
+        calls = []
+
+        class FakeResult:
+            rowcount = 2
+
+        class FakeSqlTable:
+            class table:
+                @staticmethod
+                def insert():
+                    return "insert-statement"
+
+        class FakeConn:
+            def execute(self, statement, rows):
+                calls.append(("execute", statement, rows))
+                return FakeResult()
+
+        old_check_cancelled = getattr(sampling_core, "check_cancelled", None)
+        had_check_cancelled = hasattr(sampling_core, "check_cancelled")
+        old_print = sampling_core.print
+        sampling_core.check_cancelled = lambda: calls.append(("check_cancelled",))
+        sampling_core.print = lambda message="": calls.append(("print", message))
+        try:
+            method = sampling_core._make_sample_row_write_method(3, 1000)
+            rowcount = method(
+                FakeSqlTable(),
+                FakeConn(),
+                ["id", "value"],
+                [(1, "a"), (2, "b")],
+            )
+        finally:
+            sampling_core.print = old_print
+            if had_check_cancelled:
+                sampling_core.check_cancelled = old_check_cancelled
+            else:
+                delattr(sampling_core, "check_cancelled")
+
+        self.assertEqual(rowcount, 2)
+        execute_call = next(item for item in calls if item[0] == "execute")
+        self.assertEqual(execute_call[1], "insert-statement")
+        self.assertEqual(execute_call[2], [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}])
+        self.assertTrue(any(item[0] == "check_cancelled" for item in calls))
 
 
 class DirectSamplingRunnerTests(unittest.TestCase):
@@ -2389,6 +2696,7 @@ class SlotAppDepsTests(unittest.TestCase):
         runtime.extra_buy_groups = []
         runtime.ex_buy_group_enabled = False
         runtime.ex_group_multiplier = 1.5
+        runtime.ex_source_suffixes = {}
         runtime.rebate_rules = {}
         runtime.sampling_append_mode = False
         runtime.group_weight_rules = {}
@@ -2429,6 +2737,7 @@ class SlotAppDepsTests(unittest.TestCase):
             "GROUP_WEIGHT_MODES": (),
             "GROUP_WEIGHT_UI_MODES": (),
             "EX_GROUP_MODES": (),
+            "EX_INDEPENDENT_GROUP_WEIGHT_MODES": (),
             "EX_PURCHASE_MODE": "98",
             "BUY_GROUP_MODE": "99",
             "GAME_TYPE_NAMES": {},
@@ -2461,6 +2770,7 @@ class SlotAppDepsTests(unittest.TestCase):
             group_weight_modes=("1", "99"),
             group_weight_ui_modes=("1", "99"),
             ex_group_modes=(),
+            ex_independent_group_weight_modes=(),
             ex_purchase_mode="98",
             buy_group_mode="99",
             game_type_names={"1": "普通局", "99": "购买局"},
@@ -2477,6 +2787,7 @@ class SlotAppDepsTests(unittest.TestCase):
             get_buy_group_multiplier=lambda: 75,
             get_buy_group_source_suffix=lambda: "free_formation",
             get_ex_group_multiplier=lambda: 1.5,
+            get_ex_source_suffixes=lambda: {},
             get_extra_buy_groups=lambda: [],
             clone_extra_buy_groups=lambda groups: list(groups),
             get_group_weight_formation_exists=lambda: {"1": True},
@@ -2540,6 +2851,11 @@ class FakeSettingsApp(SlotAppSettingsMixin):
         self.buy_multiplier_var = tk.StringVar(master=master, value="50")
         self.buy_source_suffix_var = tk.StringVar(master=master, value="free_formation")
         self.ex_multiplier_var = tk.StringVar(master=master, value="1.5")
+        self.ex_source_suffix_vars = {
+            "6": tk.StringVar(master=master, value=""),
+            "7": tk.StringVar(master=master, value=""),
+            "8": tk.StringVar(master=master, value=""),
+        }
         self.status_var = tk.StringVar(master=master, value="")
         self.extra_buy_rows = []
         self.apply_selected_config_called = False
@@ -2591,6 +2907,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             get_buy_group_multiplier=lambda: 50,
             get_buy_group_source_suffix=lambda: "free_formation",
             get_ex_group_multiplier=lambda: 1.5,
+            get_ex_source_suffixes=lambda: {"6": "manual_ex_formation"},
             get_extra_buy_groups=lambda: extra_groups,
             clone_extra_buy_groups=lambda groups: [dict(group) for group in groups],
             get_direct_count_modes=lambda: {"1", "6"},
@@ -2604,6 +2921,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertEqual(data["group_weight_options"]["buy_game_type"], 99)
         self.assertEqual(data["group_weight_options"]["buy_multiplier"], 50)
         self.assertEqual(data["group_weight_options"]["buy_source_suffix"], "free_formation")
+        self.assertEqual(data["group_weight_options"]["ex_source_suffixes"], {"6": "manual_ex_formation"})
         self.assertEqual(data["group_weight_options"]["extra_buy_groups"], extra_groups)
         self.assertEqual(data["group_weight_options"]["buy_groups"][0]["game_type"], 99)
         self.assertEqual(data["group_weight_options"]["buy_groups"][1]["game_type"], 120)
@@ -2623,6 +2941,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             get_buy_group_multiplier=lambda: 50,
             get_buy_group_source_suffix=lambda: "free_formation",
             get_ex_group_multiplier=lambda: 1.5,
+            get_ex_source_suffixes=lambda: {},
             get_extra_buy_groups=lambda: [],
             normalize_rebate_rules_for_load=lambda rules: {"normalized": rules},
             apply_rebate_rules_config=lambda rules: calls.append(("rebate", rules)),
@@ -2655,6 +2974,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
                 "buy_multiplier": 60,
                 "buy_source_suffix": "custom_free_formation",
                 "ex_multiplier": 1.6,
+                "ex_source_suffixes": {"6": "custom_ex_formation", "8": "custom_ex_free_formation"},
                 "extra_buy_groups": extra_groups,
             },
             direct_count_modes=["1", "6"],
@@ -2668,6 +2988,8 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertEqual(app.buy_game_type_var.get(), "120")
         self.assertEqual(app.buy_multiplier_var.get(), "60")
         self.assertEqual(app.buy_source_suffix_var.get(), "custom_free_formation")
+        self.assertEqual(app.ex_source_suffix_vars["6"].get(), "custom_ex_formation")
+        self.assertEqual(app.ex_source_suffix_vars["8"].get(), "custom_ex_free_formation")
         self.assertEqual(app.extra_buy_rows, extra_groups)
         self.assertTrue(app.apply_selected_config_called)
         self.assertIn(("special_rtp", 7.25), calls)
@@ -3085,6 +3407,52 @@ class GuiDialogSmokeTests(unittest.TestCase):
 
 
 class GroupWeightRulesDialogTests(unittest.TestCase):
+    def test_missing_zero_rebate_locks_zero_weight_entry_and_parses_as_zero(self):
+        class FakeEntry:
+            def __init__(self):
+                self.state = None
+
+            def configure(self, **kwargs):
+                self.state = kwargs.get("state", self.state)
+
+        master = tk.Tcl()
+        rebate_var = tk.StringVar(master=master, value="0")
+        weight_var = tk.StringVar(master=master, value="0")
+        weight_entry = FakeEntry()
+        row_info = {
+            "vars": {
+                "rebate_min": rebate_var,
+                "weight": weight_var,
+            },
+            "entries": {
+                "weight": weight_entry,
+            },
+        }
+        dialog = group_weight_rules_dialog.GroupWeightRulesDialog.__new__(
+            group_weight_rules_dialog.GroupWeightRulesDialog
+        )
+        dialog.preview_rebates = {"7": [1000, 2000]}
+        dialog.rule_editor = SimpleNamespace(
+            mode_rows={"7": [row_info]},
+            get_rows=lambda _mode: [row_info],
+        )
+        dialog.deps = SimpleNamespace(
+            rule_fields=("rebate_min", "weight"),
+            rule_field_labels={"rebate_min": "rebate下限", "weight": "权重"},
+            parse_non_negative_int_text=lambda text, _label: int(text),
+            get_mode_name=lambda mode: f"mode {mode}",
+        )
+
+        dialog.apply_zero_rebate_entry_states("7")
+        parsed, error = dialog.parse_dialog_rules("7")
+        rows = dialog.parse_group_weight_rule_rows("7", [row_info])
+
+        self.assertEqual(weight_var.get(), group_weight_rules_dialog.ZERO_REBATE_MISSING_TEXT)
+        self.assertEqual(weight_entry.state, "disabled")
+        self.assertIsNone(error)
+        self.assertEqual(parsed, [{"rebate_min": 0, "weight": 0}])
+        self.assertEqual(rows, [{"rebate_min": 0, "weight": 0}])
+
     def test_update_rtp_info_shows_preview_failure_without_raising(self):
         class FakeRuleEditor:
             def get_rows(self, _mode):

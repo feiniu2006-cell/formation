@@ -19,7 +19,7 @@ print = log_utils.emit
 SAMPLE_ID_RANDOM_RANGE_ATTEMPTS = 8
 SAMPLE_ID_RANDOM_RANGE_MAX_ATTEMPTS = 20
 SAMPLE_ID_RANDOM_RANGE_MAX_CANDIDATES_PER_QUERY = 20000
-SAMPLE_ROW_WRITE_CHUNK_SIZE = 500
+SAMPLE_ROW_WRITE_CHUNK_SIZE = 100
 SLOW_REBATE_SUMMARY_LIMIT = 5
 SAMPLING_TIMING_KEYS = (
     'id_query_seconds',
@@ -704,8 +704,51 @@ def remap_sample_chunk_for_append_mode(
     return current_df, len(changed_pairs), changed_row_count, final_conn
 
 
+def _make_sample_row_write_method(total_rows, target_rebate):
+    total_batches = max(1, (int(total_rows) + SAMPLE_ROW_WRITE_CHUNK_SIZE - 1) // SAMPLE_ROW_WRITE_CHUNK_SIZE)
+    state = {
+        'batch_index': 0,
+        'written_rows': 0,
+    }
+
+    def write_method(table, conn, keys, data_iter):
+        rows = [dict(zip(keys, row)) for row in data_iter]
+        if not rows:
+            return 0
+
+        state['batch_index'] += 1
+        batch_index = state['batch_index']
+        before_rows = state['written_rows']
+        print(
+            f"  开始写入临时表批次 {batch_index}/{total_batches}："
+            f"本批 {len(rows)} 行，已完成 {before_rows}/{total_rows} (rebate={target_rebate})"
+        )
+        start = time.perf_counter()
+        result = conn.execute(table.table.insert(), rows)
+        elapsed = time.perf_counter() - start
+        state['written_rows'] += len(rows)
+        print(
+            f"  完成写入临时表批次 {batch_index}/{total_batches}："
+            f"本批 {len(rows)} 行，累计 {state['written_rows']}/{total_rows}，耗时 {elapsed:.2f} 秒 "
+            f"(rebate={target_rebate})"
+        )
+        check_cancelled()
+        rowcount = getattr(result, 'rowcount', None)
+        if isinstance(rowcount, int) and rowcount >= 0:
+            return rowcount
+        return len(rows)
+
+    return write_method
+
+
 def write_sample_chunk_to_staging(current_df, final_engine, staging_table_name, target_rebate, *, timing=None):
     start = time.perf_counter()
+    row_count = len(current_df)
+    total_batches = max(1, (row_count + SAMPLE_ROW_WRITE_CHUNK_SIZE - 1) // SAMPLE_ROW_WRITE_CHUNK_SIZE)
+    print(
+        f"准备写入临时表：行数={row_count}，"
+        f"批次={total_batches}，每批最多 {SAMPLE_ROW_WRITE_CHUNK_SIZE} 行 (rebate={target_rebate})"
+    )
     sql_with_retry(
         lambda: current_df.to_sql(
             staging_table_name,
@@ -713,7 +756,7 @@ def write_sample_chunk_to_staging(current_df, final_engine, staging_table_name, 
             if_exists='append',
             index=False,
             chunksize=SAMPLE_ROW_WRITE_CHUNK_SIZE,
-            method='multi',
+            method=_make_sample_row_write_method(row_count, target_rebate),
         ),
         f"写入数据 (rebate={target_rebate})",
     )

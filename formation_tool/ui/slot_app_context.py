@@ -27,12 +27,14 @@ class SlotAppDepsContext:
     default_direct_count_tiers: Any
     default_group_weight_rules: Any
     default_special_group_target_rtp: Any
+    default_ex_group_target_rtps: Any
     get_runtime_state: Any
     get_trigger_weights: Any
     get_rebate_rules: Any
     get_sampling_append_mode: Any
     get_group_weight_rules: Any
     get_special_group_target_rtp: Any
+    get_ex_group_target_rtps: Any
     get_buy_group_enabled: Any
     get_ex_buy_group_enabled: Any
     get_buy_group_game_type: Any
@@ -40,6 +42,7 @@ class SlotAppDepsContext:
     get_buy_group_source_suffix: Any
     get_buy_groups: Any
     get_ex_group_multiplier: Any
+    get_ex_source_suffixes: Any
     get_extra_buy_groups: Any
     get_direct_count_modes: Any
     get_direct_count_tiers: Any
@@ -65,6 +68,7 @@ class SlotAppDepsContext:
     apply_rebate_rules_config: Any
     apply_group_weight_rules_config: Any
     apply_special_group_target_rtp: Any
+    apply_ex_group_target_rtps_config: Any
     apply_buy_group_multiplier: Any
     apply_buy_group_game_type: Any
     apply_buy_group_source_suffix: Any
@@ -72,6 +76,7 @@ class SlotAppDepsContext:
     apply_buy_group_enabled: Any
     apply_ex_buy_group_enabled: Any
     apply_ex_group_multiplier: Any
+    apply_ex_source_suffixes_config: Any
     apply_extra_buy_groups_config: Any
     load_buy_group_options_from_game_type_config: Any
     apply_rebate_config_direct_count_modes: Any
@@ -98,6 +103,7 @@ class SlotAppDepsContext:
     group_weight_modes: Any
     group_weight_ui_modes: Any
     ex_group_modes: Any
+    ex_independent_group_weight_modes: Any
     ex_purchase_mode: Any
     buy_group_mode: Any
     game_type_names: Any
@@ -140,6 +146,7 @@ REQUIRED_RUNTIME_ATTRS = (
     'buy_group_multiplier',
     'buy_group_source_suffix',
     'ex_group_multiplier',
+    'ex_source_suffixes',
     'extra_buy_groups',
     'buy_groups',
     'rebate_config_direct_count_modes',
@@ -169,6 +176,7 @@ REQUIRED_MODULE_ATTRS = (
     'DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIERS',
     'DEFAULT_GROUP_WEIGHT_RULES',
     'DEFAULT_SPECIAL_GROUP_TARGET_RTP',
+    'DEFAULT_EX_GROUP_TARGET_RTPS',
     'get_app_settings_path',
     'get_app_profile_settings_path',
     'clone_rebate_rules',
@@ -183,6 +191,7 @@ REQUIRED_MODULE_ATTRS = (
     'apply_rebate_rules_config',
     'apply_group_weight_rules_config',
     'apply_special_group_target_rtp',
+    'apply_ex_group_target_rtps_config',
     'apply_buy_group_multiplier',
     'apply_buy_group_game_type',
     'apply_buy_group_source_suffix',
@@ -190,6 +199,7 @@ REQUIRED_MODULE_ATTRS = (
     'apply_buy_group_enabled',
     'apply_ex_buy_group_enabled',
     'apply_ex_group_multiplier',
+    'apply_ex_source_suffixes_config',
     'apply_extra_buy_groups_config',
     'load_buy_group_options_from_game_type_config',
     'apply_rebate_config_direct_count_modes',
@@ -220,6 +230,7 @@ REQUIRED_MODULE_ATTRS = (
     'GROUP_WEIGHT_MODES',
     'GROUP_WEIGHT_UI_MODES',
     'EX_GROUP_MODES',
+    'EX_INDEPENDENT_GROUP_WEIGHT_MODES',
     'EX_PURCHASE_MODE',
     'BUY_GROUP_MODE',
     'GAME_TYPE_NAMES',
@@ -281,12 +292,14 @@ def build_slot_app_deps_context(runtime, module):
         default_direct_count_tiers=m.DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIERS,
         default_group_weight_rules=m.DEFAULT_GROUP_WEIGHT_RULES,
         default_special_group_target_rtp=m.DEFAULT_SPECIAL_GROUP_TARGET_RTP,
+        default_ex_group_target_rtps=m.DEFAULT_EX_GROUP_TARGET_RTPS,
         get_runtime_state=r.runtime_dict,
         get_trigger_weights=r.trigger_weights_dict,
         get_rebate_rules=lambda: runtime.rebate_rules,
         get_sampling_append_mode=lambda: runtime.sampling_append_mode,
         get_group_weight_rules=lambda: runtime.group_weight_rules,
         get_special_group_target_rtp=lambda: runtime.special_group_target_rtp,
+        get_ex_group_target_rtps=lambda: dict(getattr(runtime, 'ex_group_target_rtps', {})),
         get_buy_group_enabled=lambda: runtime.buy_group_enabled,
         get_ex_buy_group_enabled=lambda: runtime.ex_buy_group_enabled,
         get_buy_group_game_type=lambda: runtime.buy_group_game_type,
@@ -294,6 +307,7 @@ def build_slot_app_deps_context(runtime, module):
         get_buy_group_source_suffix=lambda: runtime.buy_group_source_suffix,
         get_buy_groups=lambda: runtime.buy_groups,
         get_ex_group_multiplier=lambda: runtime.ex_group_multiplier,
+        get_ex_source_suffixes=lambda: dict(runtime.ex_source_suffixes),
         get_extra_buy_groups=lambda: runtime.extra_buy_groups,
         get_direct_count_modes=lambda: runtime.rebate_config_direct_count_modes,
         get_direct_count_tiers=m.get_rebate_config_direct_count_tiers,
@@ -319,6 +333,7 @@ def build_slot_app_deps_context(runtime, module):
         apply_rebate_rules_config=m.apply_rebate_rules_config,
         apply_group_weight_rules_config=m.apply_group_weight_rules_config,
         apply_special_group_target_rtp=m.apply_special_group_target_rtp,
+        apply_ex_group_target_rtps_config=m.apply_ex_group_target_rtps_config,
         apply_buy_group_multiplier=m.apply_buy_group_multiplier,
         apply_buy_group_game_type=m.apply_buy_group_game_type,
         apply_buy_group_source_suffix=m.apply_buy_group_source_suffix,
@@ -326,6 +341,7 @@ def build_slot_app_deps_context(runtime, module):
         apply_buy_group_enabled=m.apply_buy_group_enabled,
         apply_ex_buy_group_enabled=m.apply_ex_buy_group_enabled,
         apply_ex_group_multiplier=m.apply_ex_group_multiplier,
+        apply_ex_source_suffixes_config=m.apply_ex_source_suffixes_config,
         apply_extra_buy_groups_config=m.apply_extra_buy_groups_config,
         load_buy_group_options_from_game_type_config=m.load_buy_group_options_from_game_type_config,
         apply_rebate_config_direct_count_modes=m.apply_rebate_config_direct_count_modes,
@@ -352,6 +368,7 @@ def build_slot_app_deps_context(runtime, module):
         group_weight_modes=m.GROUP_WEIGHT_MODES,
         group_weight_ui_modes=m.GROUP_WEIGHT_UI_MODES,
         ex_group_modes=m.EX_GROUP_MODES,
+        ex_independent_group_weight_modes=m.EX_INDEPENDENT_GROUP_WEIGHT_MODES,
         ex_purchase_mode=m.EX_PURCHASE_MODE,
         buy_group_mode=m.BUY_GROUP_MODE,
         game_type_names=m.GAME_TYPE_NAMES,

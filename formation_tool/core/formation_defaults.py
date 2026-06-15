@@ -4,7 +4,7 @@
 DEFAULT_RANDOM_SEED = 108
 DEFAULT_LOW_VOLUME_REBATE_COUNT_THRESHOLD = 200000
 DEFAULT_SAMPLE_ID_FETCH_CHUNK_SIZE = 500
-DEFAULT_REBATE_CONFIG_REBATE_ZERO_COUNT_LIMIT = 20000
+DEFAULT_REBATE_CONFIG_REBATE_ZERO_COUNT_LIMIT = 5000
 DEFAULT_REBATE_CONFIG_POSITIVE_REBATE_COUNT_LIMIT = 200
 DEFAULT_REBATE_CONFIG_MAX_REBATE = 1099999
 DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIER_LIMITS = (
@@ -49,6 +49,7 @@ DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT = {
 }
 
 DEFAULT_SPECIAL_GROUP_TARGET_RTP = 6
+DEFAULT_EX_GROUP_TARGET_RTPS = {}
 DEFAULT_BUY_GROUP_ENABLED = False
 DEFAULT_EX_BUY_GROUP_ENABLED = False
 DEFAULT_BUY_GROUP_GAME_TYPE = 99
@@ -56,6 +57,7 @@ DEFAULT_BUY_GROUP_MULTIPLIER = 75
 DEFAULT_BUY_GROUP_SOURCE_SUFFIX = 'free_formation'
 DEFAULT_EX_GROUP_MULTIPLIER = 1.5
 DEFAULT_EXTRA_BUY_GROUPS = []
+DEFAULT_EX_SOURCE_SUFFIXES = {}
 
 
 def clone_rule_map(rules):
@@ -89,6 +91,24 @@ def clone_direct_count_tiers(tiers=None):
 def clone_extra_buy_groups():
     """Return a mutable copy of default extra buy-group rows."""
     return [dict(group) for group in DEFAULT_EXTRA_BUY_GROUPS]
+
+
+def clone_ex_source_suffixes(value=None):
+    """Return a mutable copy of manual ex source suffix overrides."""
+    return {
+        str(mode): str(suffix)
+        for mode, suffix in (DEFAULT_EX_SOURCE_SUFFIXES if value is None else value).items()
+        if str(suffix or '').strip()
+    }
+
+
+def clone_ex_group_target_rtps(value=None):
+    """Return a mutable copy of manual ex special/free display RTP targets."""
+    return {
+        str(mode): float(target)
+        for mode, target in (DEFAULT_EX_GROUP_TARGET_RTPS if value is None else value).items()
+        if str(target or '').strip()
+    }
 
 
 # ==================  rebate 采样规则配置 ==================
@@ -232,8 +252,7 @@ GROUP_WEIGHT_RULES = {
     ],
     '3': [  # 免费局
         {'rebate_min': 0,        'weight': 0},
-        {'rebate_min': 1,       'weight': 3000},
-        {'rebate_min': 4000,    'weight': 3000},
+        {'rebate_min': 1,       'weight': 0},
         {'rebate_min': 5000,    'weight': 3000},
         {'rebate_min': 6000,    'weight': 3000},
         {'rebate_min': 7000,    'weight': 3000},
@@ -258,7 +277,7 @@ GROUP_WEIGHT_RULES = {
     '99': [  # 购买局，独立配置；界面中可单独调整
         {'rebate_min': 0,        'weight': 0},
         {'rebate_min': 5000,     'weight': 0},
-        {'rebate_min': 10000,    'weight': 30000},
+        {'rebate_min': 10000,    'weight': 0},
         {'rebate_min': 20000,    'weight': 30000},
         {'rebate_min': 30000,    'weight': 30000},
         {'rebate_min': 40000,    'weight': 25000},
@@ -337,8 +356,7 @@ GROUP_WEIGHT_RULES = {
     ],
     '8': [  # ex免费局
         {'rebate_min': 0,        'weight': 0},
-        {'rebate_min': 1,       'weight': 3000},
-        {'rebate_min': 4000,    'weight': 3000},
+        {'rebate_min': 1,       'weight': 0},
         {'rebate_min': 5000,    'weight': 3000},
         {'rebate_min': 6000,    'weight': 3000},
         {'rebate_min': 7000,    'weight': 3000},
@@ -363,7 +381,7 @@ GROUP_WEIGHT_RULES = {
     '98': [  # 购买局，独立配置；界面中可单独调整
         {'rebate_min': 0,        'weight': 0},
         {'rebate_min': 5000,     'weight': 0},
-        {'rebate_min': 10000,    'weight': 30000},
+        {'rebate_min': 10000,    'weight': 0},
         {'rebate_min': 20000,    'weight': 30000},
         {'rebate_min': 30000,    'weight': 30000},
         {'rebate_min': 40000,    'weight': 25000},

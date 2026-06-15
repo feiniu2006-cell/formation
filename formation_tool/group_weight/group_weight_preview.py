@@ -6,6 +6,7 @@ from formation_tool.group_weight.group_weight_logic import (
     build_special_group_weight_rows_for_group,
     calculate_weighted_rtp,
     format_weighted_rtp,
+    get_ex_display_target_rtp,
     infer_special_zero_weight,
 )
 from formation_tool.core import runtime_context_sync
@@ -118,8 +119,9 @@ def build_ex_normal_group_weight_preview(
     preview_rebates,
     formation_exists,
     ex_multiplier,
+    ex_target_rtps=None,
 ):
-    """ex普通局预览：先独立反推 ex特殊/ex免费，再反推 ex普通。"""
+    """ex普通局预览：ex特殊独立反推，ex免费静态计算，再反推 ex普通。"""
     normal_pairs, skipped_zero, skipped_rebate_zero = build_rebate_weight_pairs(
         sampled_rebates,
         current_rules,
@@ -133,35 +135,33 @@ def build_ex_normal_group_weight_preview(
         rules_by_mode.get('7', []),
         exclude_rebate_zero=True,
     )
-    ex_free_pairs, _, free_zero_count = build_rebate_weight_pairs(
+    ex_free_pairs, _, _free_zero_count = build_rebate_weight_pairs(
         preview_rebates.get('8', []),
         rules_by_mode.get('8', []),
-        exclude_rebate_zero=True,
+        exclude_rebate_zero=False,
     )
     ex_special_enabled = formation_exists.get('7', False) and bool(ex_special_pairs)
     ex_free_enabled = formation_exists.get('8', False) and bool(ex_free_pairs)
-    target_rtp = get_group_target_rtp_ratio(group_id) * ex_multiplier
+    special_display_target = get_ex_display_target_rtp(
+        group_id,
+        7,
+        ex_target_rtps,
+        target_rtp_getter=get_group_target_rtp_ratio,
+    )
     _special_rows, special_info = build_independent_group_weight_rows_for_group(
         group_id,
         7,
         ex_special_pairs,
         special_zero_count > 0,
-        target_rtp,
+        special_display_target * ex_multiplier,
         display_divisor=ex_multiplier,
     )
-    _free_rows, free_info = build_independent_group_weight_rows_for_group(
-        group_id,
-        8,
-        ex_free_pairs,
-        free_zero_count > 0,
-        target_rtp,
-        display_divisor=ex_multiplier,
-    )
+    ex_free_rtp = calculate_weighted_rtp(ex_free_pairs) or 0
     try:
         group_rows, group_info = build_normal_group_weight_rows_for_group(
             group_id,
             normal_pairs,
-            free_info['actual_rtp'] or 0,
+            ex_free_rtp,
             ex_free_enabled,
             special_info['actual_rtp'] or 0,
             ex_special_enabled,
@@ -227,9 +227,16 @@ def build_ex_independent_group_weight_preview(
     skipped_zero,
     skipped_rebate_zero,
     ex_multiplier,
+    ex_target_rtps=None,
 ):
-    """ex特殊/ex免费预览：每个 group_id 独立按目标 RTP * ex倍数反推。"""
-    target_rtp = get_group_target_rtp_ratio(group_id) * ex_multiplier
+    """独立 ex 模式预览：每个 group_id 独立按目标 RTP * ex倍数反推。"""
+    display_target = get_ex_display_target_rtp(
+        group_id,
+        current_mode,
+        ex_target_rtps,
+        target_rtp_getter=get_group_target_rtp_ratio,
+    )
+    target_rtp = display_target * ex_multiplier
     group_rows, ex_info = build_independent_group_weight_rows_for_group(
         group_id,
         int(current_mode),
@@ -240,7 +247,7 @@ def build_ex_independent_group_weight_preview(
     )
     row_count = count_preview_write_rows(group_rows, skipped_zero, skipped_rebate_zero)
     return (
-        f"目标={format_weighted_rtp(get_group_target_rtp_ratio(group_id))}，"
+        f"目标={format_weighted_rtp(display_target)}，"
         f"反推目标={format_weighted_rtp(target_rtp)}，"
         f"ex倍数={format_weighted_rtp(ex_multiplier)}，"
         f"反推0权重={ex_info['zero_weight']}，"
@@ -310,6 +317,19 @@ def build_static_group_weight_preview(sampled_rebates, rtp_pairs, skipped_zero):
     )
 
 
+def build_ex_static_group_weight_preview(sampled_rebates, rtp_pairs, skipped_zero, ex_multiplier):
+    """ex静态权重页签预览：显示配置 RTP 和按 ex 倍数折算后的最终 RTP。"""
+    current_rtp = calculate_weighted_rtp(rtp_pairs)
+    display_rtp = None if current_rtp is None else current_rtp / float(ex_multiplier)
+    return (
+        f"{format_weighted_rtp(current_rtp)}，"
+        f"ex倍数={format_weighted_rtp(ex_multiplier)}，"
+        f"最终RTP={format_weighted_rtp(display_rtp)}"
+        f"（已选rebate {len(sampled_rebates)} 个，参与 {len(rtp_pairs)} 个，"
+        f"跳过0权重 {skipped_zero} 个）"
+    )
+
+
 def get_group_weight_preview_source_mode(current_mode):
     """返回预览读取已采样 rebate 时使用的源模式。"""
     return get_group_weight_rebate_source_mode(current_mode)
@@ -329,6 +349,7 @@ def build_group_weight_preview_context(
     special_target_error=None,
     buy_multiplier=1,
     ex_multiplier=1,
+    ex_target_rtps=None,
     buy_enabled=True,
 ):
     """组装 group_weight 预览所需上下文；message 表示可直接返回的提示文案。"""
@@ -358,6 +379,7 @@ def build_group_weight_preview_context(
         'special_target_error': special_target_error,
         'buy_multiplier': buy_multiplier,
         'ex_multiplier': ex_multiplier,
+        'ex_target_rtps': dict(ex_target_rtps or {}),
     }
 
 
@@ -403,6 +425,7 @@ def build_ex_normal_preview_from_context(context):
         context['preview_rebates'],
         context['formation_exists'],
         context['ex_multiplier'],
+        context['ex_target_rtps'],
     )
 
 
@@ -427,6 +450,7 @@ def build_ex_independent_preview_from_context(context):
         context['skipped_zero'],
         context['skipped_rebate_zero'],
         context['ex_multiplier'],
+        context['ex_target_rtps'],
     )
 
 
@@ -442,6 +466,13 @@ def build_buy_preview_from_context(context):
 
 
 def build_static_preview_from_context(context):
+    if context['current_mode'] in EX_GROUP_MODES:
+        return build_ex_static_group_weight_preview(
+            context['sampled_rebates'],
+            context['rtp_pairs'],
+            context['skipped_zero'],
+            context['ex_multiplier'],
+        )
     return build_static_group_weight_preview(
         context['sampled_rebates'],
         context['rtp_pairs'],
@@ -481,6 +512,7 @@ def build_group_weight_preview_text(
     special_target_error=None,
     buy_multiplier=1,
     ex_multiplier=1,
+    ex_target_rtps=None,
     buy_enabled=True,
 ):
     """计算 group_weight 弹窗当前页的 RTP 预览文案。"""
@@ -497,6 +529,7 @@ def build_group_weight_preview_text(
         special_target_error=special_target_error,
         buy_multiplier=buy_multiplier,
         ex_multiplier=ex_multiplier,
+        ex_target_rtps=ex_target_rtps,
         buy_enabled=buy_enabled,
     )
     if context['message']:

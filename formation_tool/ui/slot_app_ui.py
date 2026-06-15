@@ -39,7 +39,7 @@ class SlotAppUiMixin:
         self.build_status_section(root_frame)
 
     def build_root_frame(self):
-        root_frame = ttk.Frame(self.root, padding=12)
+        root_frame = ttk.Frame(self.root, padding=8)
         root_frame.grid(row=0, column=0, sticky="nsew")
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
@@ -49,7 +49,7 @@ class SlotAppUiMixin:
 
     def build_config_section(self, root_frame):
         deps = self.ui_deps
-        config_frame = ttk.LabelFrame(root_frame, text="当前配置", padding=10)
+        config_frame = ttk.LabelFrame(root_frame, text="当前配置", padding=(8, 6))
         config_frame.grid(row=0, column=0, sticky="ew")
         for col in range(5):
             config_frame.columnconfigure(col, weight=1)
@@ -64,7 +64,7 @@ class SlotAppUiMixin:
         ]
         for col, (label, variable, values, state, widget_type) in enumerate(config_items):
             ttk.Label(config_frame, text=label).grid(
-                row=0, column=col, sticky="w", padx=(0, 12), pady=(0, 4)
+                row=0, column=col, sticky="w", padx=(0, 8), pady=(0, 2)
             )
             if widget_type == "entry":
                 widget = ttk.Entry(config_frame, textvariable=variable, width=14)
@@ -76,15 +76,15 @@ class SlotAppUiMixin:
                     state=state,
                     width=14,
                 )
-            widget.grid(row=1, column=col, sticky="ew", padx=(0, 12))
+            widget.grid(row=1, column=col, sticky="ew", padx=(0, 8))
             self.config_widgets.append((widget, state))
 
         seed_label = ttk.Label(config_frame, text=f"随机种子: {deps.random_seed}")
-        seed_label.grid(row=2, column=0, columnspan=5, sticky="w", pady=(8, 0))
+        seed_label.grid(row=2, column=0, columnspan=5, sticky="w", pady=(4, 0))
 
     def build_weight_section(self, root_frame):
-        weight_frame = ttk.LabelFrame(root_frame, text="权重配置", padding=10)
-        weight_frame.grid(row=1, column=0, sticky="ew", pady=(10, 0))
+        weight_frame = ttk.LabelFrame(root_frame, text="权重配置", padding=(8, 6))
+        weight_frame.grid(row=1, column=0, sticky="ew", pady=(6, 0))
         for col in range(4):
             weight_frame.columnconfigure(col, weight=1)
 
@@ -96,10 +96,10 @@ class SlotAppUiMixin:
         ]
         for col, (label, variable) in enumerate(weight_items):
             ttk.Label(weight_frame, text=label).grid(
-                row=0, column=col, sticky="w", padx=(0, 12), pady=(0, 4)
+                row=0, column=col, sticky="w", padx=(0, 8), pady=(0, 2)
             )
             entry = ttk.Entry(weight_frame, textvariable=variable, width=14)
-            entry.grid(row=1, column=col, sticky="ew", padx=(0, 12))
+            entry.grid(row=1, column=col, sticky="ew", padx=(0, 8))
             self.config_widgets.append((entry, "normal"))
 
         self.build_purchase_section(weight_frame)
@@ -110,7 +110,7 @@ class SlotAppUiMixin:
     def build_action_section(self, root_frame):
         deps = self.ui_deps
         action_container = ttk.Frame(root_frame)
-        action_container.grid(row=2, column=0, sticky="ew", pady=(10, 10))
+        action_container.grid(row=2, column=0, sticky="ew", pady=(6, 6))
         for col in range(3):
             action_container.columnconfigure(col, weight=1)
 
@@ -120,13 +120,13 @@ class SlotAppUiMixin:
         self.set_cancel_button_state("disabled")
 
     def build_action_group(self, action_container, group_col, group_name, actions):
-        group_frame = ttk.LabelFrame(action_container, text=group_name, padding=8)
-        group_frame.grid(row=0, column=group_col, sticky="nsew", padx=(0 if group_col == 0 else 6, 0))
+        group_frame = ttk.LabelFrame(action_container, text=group_name, padding=(6, 4))
+        group_frame.grid(row=0, column=group_col, sticky="nsew", padx=(0 if group_col == 0 else 4, 0))
         for col in range(2):
             group_frame.columnconfigure(col, weight=1)
         for idx, (text, command) in enumerate(actions):
             button = ttk.Button(group_frame, text=text, command=command)
-            button.grid(row=idx // 2, column=idx % 2, sticky="ew", padx=3, pady=3)
+            button.grid(row=idx // 2, column=idx % 2, sticky="ew", padx=2, pady=2)
             self.buttons.append(button)
             if text == "取消当前任务":
                 self.cancel_button = button
@@ -144,13 +144,13 @@ class SlotAppUiMixin:
             column=0,
             columnspan=2,
             sticky="w",
-            padx=3,
-            pady=(6, 0),
+            padx=2,
+            pady=(3, 0),
         )
         self.config_widgets.append((sampling_mode_check, "normal"))
 
     def build_log_section(self, root_frame):
-        log_frame = ttk.LabelFrame(root_frame, text="运行日志", padding=8)
+        log_frame = ttk.LabelFrame(root_frame, text="运行日志", padding=(6, 6))
         log_frame.grid(row=3, column=0, sticky="nsew")
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
@@ -158,7 +158,7 @@ class SlotAppUiMixin:
         self.log_text = scrolledtext.ScrolledText(
             log_frame,
             wrap="word",
-            height=22,
+            height=30,
             font=("Consolas", 10),
             state="disabled",
         )
@@ -166,7 +166,7 @@ class SlotAppUiMixin:
 
     def build_status_section(self, root_frame):
         status_frame = ttk.Frame(root_frame)
-        status_frame.grid(row=4, column=0, sticky="ew", pady=(10, 0))
+        status_frame.grid(row=4, column=0, sticky="ew", pady=(6, 0))
         status_frame.columnconfigure(0, weight=1)
         ttk.Label(status_frame, textvariable=self.status_var).grid(row=0, column=0, sticky="w")
         self.progress = ttk.Progressbar(status_frame, mode="indeterminate", length=180)

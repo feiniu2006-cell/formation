@@ -220,6 +220,14 @@ def build_ex_group_weight_rows_for_group(
     return rows, info
 
 
+def get_ex_display_target_rtp(group_id, game_type, ex_target_rtps, *, target_rtp_getter):
+    """Return the post-multiplier display target RTP for an independent ex mode."""
+    configured = (ex_target_rtps or {}).get(str(game_type))
+    if configured is None:
+        return target_rtp_getter(group_id)
+    return float(configured)
+
+
 def format_weighted_rtp(value):
     if value is None:
         return "N/A"

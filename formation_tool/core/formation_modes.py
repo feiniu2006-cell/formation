@@ -36,7 +36,7 @@ GROUP_WEIGHT_MODE_DEFS = {
     '3': {'source_mode': '3', 'write_game_type': 3, 'rtp_role': 'static'},
     '6': {'source_mode': '6', 'write_game_type': 6, 'rtp_role': 'ex_normal'},
     '7': {'source_mode': '7', 'write_game_type': 7, 'rtp_role': 'ex_independent'},
-    '8': {'source_mode': '8', 'write_game_type': 8, 'rtp_role': 'ex_independent'},
+    '8': {'source_mode': '8', 'write_game_type': 8, 'rtp_role': 'static'},
     '98': {'source_mode': '8', 'write_game_type': 98, 'rtp_role': 'ex_buy'},
     '99': {'source_mode': '3', 'write_game_type': 99, 'rtp_role': 'buy'},
 }

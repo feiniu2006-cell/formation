@@ -17,12 +17,12 @@ def refresh_extra_buy_group_rows(app):
     for row_idx, row_info in enumerate(app.extra_buy_rows, start=1):
         grid_row = row_idx + 1
         row_info['number_label'].configure(text=str(row_idx + 1))
-        row_info['number_label'].grid(row=grid_row, column=0, sticky="ew", padx=(0, 8), pady=2)
-        row_info['enabled_check'].grid(row=grid_row, column=1, sticky="w", padx=(0, 8), pady=2)
-        row_info['game_type_entry'].grid(row=grid_row, column=2, sticky="ew", padx=(0, 8), pady=2)
-        row_info['multiplier_entry'].grid(row=grid_row, column=3, sticky="ew", padx=(0, 8), pady=2)
-        row_info['source_suffix_entry'].grid(row=grid_row, column=4, sticky="ew", padx=(0, 8), pady=2)
-        row_info['remove_button'].grid(row=grid_row, column=5, sticky="ew", pady=2)
+        row_info['number_label'].grid(row=grid_row, column=0, sticky="ew", padx=(0, 6), pady=1)
+        row_info['enabled_check'].grid(row=grid_row, column=1, sticky="w", padx=(0, 6), pady=1)
+        row_info['game_type_entry'].grid(row=grid_row, column=2, sticky="ew", padx=(0, 6), pady=1)
+        row_info['multiplier_entry'].grid(row=grid_row, column=3, sticky="ew", padx=(0, 6), pady=1)
+        row_info['source_suffix_entry'].grid(row=grid_row, column=4, sticky="ew", padx=(0, 6), pady=1)
+        row_info['remove_button'].grid(row=grid_row, column=5, sticky="ew", pady=1)
 
 
 def add_extra_buy_group_row(app, game_type="", multiplier="", source_suffix="free_formation"):
@@ -131,7 +131,7 @@ def collect_extra_buy_groups(app):
 
 def build_purchase_section(app, weight_frame):
     purchase_frame = ttk.Frame(weight_frame)
-    purchase_frame.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(10, 0))
+    purchase_frame.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(6, 0))
     for col in range(4):
         purchase_frame.columnconfigure(col, weight=1)
 
@@ -150,8 +150,26 @@ def build_purchase_section(app, weight_frame):
     ex_multiplier_entry.grid(row=0, column=2, sticky="ew", padx=(0, 12))
     app.config_widgets.append((ex_multiplier_entry, "normal"))
 
+    ex_source_frame = ttk.Frame(purchase_frame)
+    ex_source_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(4, 0))
+    for col in range(3):
+        ex_source_frame.columnconfigure(col, weight=1)
+    ex_labels = {
+        '6': 'ex普通覆盖后缀',
+        '7': 'ex特殊覆盖后缀',
+        '8': 'ex免费覆盖后缀',
+    }
+    for col, mode in enumerate(('6', '7', '8')):
+        cell = ttk.Frame(ex_source_frame)
+        cell.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else 6, 0))
+        cell.columnconfigure(0, weight=1)
+        ttk.Label(cell, text=ex_labels[mode]).grid(row=0, column=0, sticky="w", pady=(0, 1))
+        entry = ttk.Entry(cell, textvariable=app.ex_source_suffix_vars[mode], width=18)
+        entry.grid(row=1, column=0, sticky="ew")
+        app.config_widgets.append((entry, "normal"))
+
     buy_header = ttk.Frame(purchase_frame)
-    buy_header.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(12, 4))
+    buy_header.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(6, 2))
     buy_header.columnconfigure(0, weight=1)
     ttk.Label(buy_header, text=ui_text.PURCHASE_SECTION_TITLE).grid(row=0, column=0, sticky="w")
     app.load_buy_group_types_button = ttk.Button(
@@ -159,7 +177,7 @@ def build_purchase_section(app, weight_frame):
         text=ui_text.LOAD_BUY_GROUP_TYPES_BUTTON,
         command=app.load_buy_group_types_from_database,
     )
-    app.load_buy_group_types_button.grid(row=0, column=1, sticky="e", padx=(0, 8))
+    app.load_buy_group_types_button.grid(row=0, column=1, sticky="e", padx=(0, 6))
     app.config_widgets.append((app.load_buy_group_types_button, "normal"))
 
     app.add_extra_buy_button = ttk.Button(
@@ -174,7 +192,7 @@ def build_purchase_section(app, weight_frame):
     app.add_extra_buy_button.grid(row=0, column=2, sticky="e")
 
     app.extra_buy_rows_frame = ttk.Frame(purchase_frame)
-    app.extra_buy_rows_frame.grid(row=2, column=0, columnspan=4, sticky="ew")
+    app.extra_buy_rows_frame.grid(row=3, column=0, columnspan=4, sticky="ew")
     app.extra_buy_rows_frame.columnconfigure(0, minsize=52)
     app.extra_buy_rows_frame.columnconfigure(1, minsize=64)
     app.extra_buy_rows_frame.columnconfigure(2, weight=1)
@@ -187,27 +205,27 @@ def build_purchase_section(app, weight_frame):
             row=0,
             column=col,
             sticky="w" if col else "ew",
-            padx=(0, 8) if col < 5 else 0,
-            pady=(0, 2),
+            padx=(0, 6) if col < 5 else 0,
+            pady=(0, 1),
         )
 
     ttk.Label(app.extra_buy_rows_frame, text="1", anchor="center", width=6).grid(
-        row=1, column=0, sticky="ew", padx=(0, 8), pady=2
+        row=1, column=0, sticky="ew", padx=(0, 6), pady=1
     )
     buy_check = ttk.Checkbutton(app.extra_buy_rows_frame, text="", variable=app.buy_group_enabled_var)
-    buy_check.grid(row=1, column=1, sticky="w", padx=(0, 8), pady=2)
+    buy_check.grid(row=1, column=1, sticky="w", padx=(0, 6), pady=1)
     app.config_widgets.append((buy_check, "normal"))
 
     buy_game_type_entry = ttk.Entry(app.extra_buy_rows_frame, textvariable=app.buy_game_type_var, width=12)
-    buy_game_type_entry.grid(row=1, column=2, sticky="ew", padx=(0, 8), pady=2)
+    buy_game_type_entry.grid(row=1, column=2, sticky="ew", padx=(0, 6), pady=1)
     app.config_widgets.append((buy_game_type_entry, "normal"))
 
     buy_multiplier_entry = ttk.Entry(app.extra_buy_rows_frame, textvariable=app.buy_multiplier_var, width=12)
-    buy_multiplier_entry.grid(row=1, column=3, sticky="ew", padx=(0, 8), pady=2)
+    buy_multiplier_entry.grid(row=1, column=3, sticky="ew", padx=(0, 6), pady=1)
     app.config_widgets.append((buy_multiplier_entry, "normal"))
 
     buy_source_entry = ttk.Entry(app.extra_buy_rows_frame, textvariable=app.buy_source_suffix_var, width=18)
-    buy_source_entry.grid(row=1, column=4, sticky="ew", padx=(0, 8), pady=2)
+    buy_source_entry.grid(row=1, column=4, sticky="ew", padx=(0, 6), pady=1)
     app.config_widgets.append((buy_source_entry, "normal"))
 
     delete_default_button = ttk.Button(
@@ -215,5 +233,5 @@ def build_purchase_section(app, weight_frame):
         text=ui_text.DELETE_BUTTON_TEXT,
         command=app.delete_default_buy_group,
     )
-    delete_default_button.grid(row=1, column=5, sticky="ew", pady=2)
+    delete_default_button.grid(row=1, column=5, sticky="ew", pady=1)
     app.config_widgets.append((delete_default_button, "normal"))

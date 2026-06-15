@@ -6,6 +6,22 @@ import mysql.connector
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
 
+DEFAULT_DB_CONNECTION_TIMEOUT = 10
+DEFAULT_DB_READ_TIMEOUT = 300
+DEFAULT_DB_WRITE_TIMEOUT = 300
+
+
+def with_default_db_timeouts(db_config):
+    config = dict(db_config)
+    if 'connection_timeout' not in config and 'connect_timeout' not in config:
+        config['connection_timeout'] = DEFAULT_DB_CONNECTION_TIMEOUT
+    config.setdefault('read_timeout', DEFAULT_DB_READ_TIMEOUT)
+    config.setdefault('write_timeout', DEFAULT_DB_WRITE_TIMEOUT)
+    for key in ('connection_timeout', 'connect_timeout', 'read_timeout', 'write_timeout'):
+        if key in config:
+            config[key] = int(config[key])
+    return config
+
 
 def rollback_safely(conn, label="数据库事务"):
     """尽量回滚，不让清理异常遮住原始错误。"""
@@ -24,7 +40,13 @@ def close_safely(conn):
 
 def get_engine(db_config):
     """创建 SQLAlchemy 引擎。"""
+    db_config = with_default_db_timeouts(db_config)
     use_pure = str(db_config.get('use_pure', True))
+    query = {'use_pure': use_pure}
+    connect_args = {}
+    for key in ('connection_timeout', 'connect_timeout', 'read_timeout', 'write_timeout'):
+        if key in db_config:
+            connect_args[key] = int(db_config[key])
     url = URL.create(
         'mysql+mysqlconnector',
         username=db_config['user'],
@@ -32,18 +54,19 @@ def get_engine(db_config):
         host=db_config['host'],
         port=int(db_config['port']),
         database=db_config['database'],
-        query={'use_pure': use_pure},
+        query=query,
     )
     return create_engine(
         url,
         pool_pre_ping=True,
         pool_recycle=1800,
+        connect_args=connect_args,
     )
 
 
 def connect_to_db(db_config, *, max_retries, retry_delay, check_cancelled, sleep_func):
     """连接到数据库，支持重试机制。"""
-    connect_config = dict(db_config)
+    connect_config = with_default_db_timeouts(db_config)
     connect_config.setdefault('use_pure', True)
     for attempt in range(max_retries):
         check_cancelled()

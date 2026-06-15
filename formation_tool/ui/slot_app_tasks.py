@@ -130,6 +130,13 @@ class SlotAppTaskMixin:
             f"\nex模式：game_type=6/7/8，ex倍数：{deps.format_weighted_rtp(deps.get_ex_group_multiplier())}，"
             f"ex购买局(98)：{'已开启' if deps.get_ex_buy_group_enabled() else '已关闭'}"
         )
+        ex_source_suffixes = getattr(deps, "get_ex_source_suffixes", lambda: {})()
+        if ex_source_suffixes:
+            suffix_text = ', '.join(
+                f"{mode}={suffix}"
+                for mode, suffix in sorted(ex_source_suffixes.items(), key=lambda item: str(item[0]))
+            )
+            self.append_log(f"，ex后缀覆盖：{suffix_text}")
         self.append_log("\n")
 
     def append_task_header_log(self, title):

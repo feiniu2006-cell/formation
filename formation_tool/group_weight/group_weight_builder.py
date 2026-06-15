@@ -56,7 +56,7 @@ def build_group_weight_pairs_for_modes(active_modes, rebates_by_mode):
             rules = extra_group.get('rules', GROUP_WEIGHT_RULES.get(BUY_GROUP_MODE, []))
         else:
             rules = GROUP_WEIGHT_RULES.get(game_type, [])
-        exclude_zero = game_type in ('1', '2', *EX_GROUP_MODES)
+        exclude_zero = get_group_weight_rtp_role(game_type) in ('normal', 'special', 'ex_normal', 'ex_independent')
         pairs, skipped_zero, skipped_rebate_zero = build_rebate_weight_pairs(
             rebates_by_mode[game_type],
             rules,

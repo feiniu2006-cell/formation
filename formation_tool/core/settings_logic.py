@@ -120,6 +120,8 @@ def migrate_settings_data(data):
         group_options.setdefault('buy_source_suffix', formation_defaults.DEFAULT_BUY_GROUP_SOURCE_SUFFIX)
         group_options.setdefault('buy_multiplier', formation_defaults.DEFAULT_BUY_GROUP_MULTIPLIER)
         group_options.setdefault('buy_enabled', formation_defaults.DEFAULT_BUY_GROUP_ENABLED)
+        group_options.setdefault('ex_source_suffixes', {})
+        group_options.setdefault('ex_group_target_rtps', {})
         if group_options.get('buy_groups'):
             split = buy_group_config.split_buy_groups_to_legacy(
                 group_options.get('buy_groups'),

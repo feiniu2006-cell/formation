@@ -49,6 +49,7 @@ def build_group_weight_builder_context(runtime, constants, deps):
         GROUP_WEIGHT_RULES=runtime.group_weight_rules,
         GAME_TYPE_NAMES=constants.game_type_names,
         SPECIAL_GROUP_TARGET_RTP=runtime.special_group_target_rtp,
+        EX_GROUP_TARGET_RTPS=getattr(runtime, 'ex_group_target_rtps', {}),
         BUY_GROUP_ENABLED=runtime.buy_group_enabled,
         EX_BUY_GROUP_ENABLED=runtime.ex_buy_group_enabled,
         BUY_GROUP_GAME_TYPE=runtime.buy_group_game_type,

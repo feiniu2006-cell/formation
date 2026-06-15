@@ -59,6 +59,10 @@ def apply_cli_settings_data(data, *, deps, runtime_only=False):
             deps.apply_buy_group_source_suffix(group_options.get('buy_source_suffix'))
         if 'ex_multiplier' in group_options:
             deps.apply_ex_group_multiplier(group_options.get('ex_multiplier'))
+        if 'ex_group_target_rtps' in group_options:
+            deps.apply_ex_group_target_rtps_config(group_options.get('ex_group_target_rtps'))
+        if 'ex_source_suffixes' in group_options:
+            deps.apply_ex_source_suffixes_config(group_options.get('ex_source_suffixes'))
         if 'extra_buy_groups' in group_options:
             deps.apply_extra_buy_groups_config(group_options.get('extra_buy_groups'))
         if 'special_target_rtp' in group_options:

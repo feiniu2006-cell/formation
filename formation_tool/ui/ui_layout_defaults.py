@@ -9,7 +9,7 @@ class WindowLayout:
     minsize: tuple[int, int]
 
 
-MAIN_WINDOW = WindowLayout("1280x860", (1100, 740))
+MAIN_WINDOW = WindowLayout("1420x960", (1180, 800))
 GROUP_WEIGHT_DIALOG = WindowLayout("1180x820", (980, 680))
 REBATE_RULES_DIALOG = WindowLayout("1380x820", (1160, 660))
 SINGLE_SAMPLING_DIALOG = WindowLayout("620x460", (520, 360))

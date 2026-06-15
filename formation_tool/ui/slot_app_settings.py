@@ -25,6 +25,20 @@ def _build_current_buy_groups(app):
     )
 
 
+def _collect_ex_source_suffixes(app):
+    return {
+        str(mode): var.get().strip()
+        for mode, var in getattr(app, 'ex_source_suffix_vars', {}).items()
+        if var.get().strip()
+    }
+
+
+def _set_ex_source_suffix_vars(app, values):
+    values = values or {}
+    for mode, var in getattr(app, 'ex_source_suffix_vars', {}).items():
+        var.set(_format_setting_text(values.get(str(mode), "")))
+
+
 def _count_mapping_items(value):
     return len(value) if isinstance(value, dict) else 0
 
@@ -113,12 +127,17 @@ class SlotAppSettingsMixin:
         self.buy_multiplier_var.set(str(deps.default_buy_group_multiplier))
         self.buy_source_suffix_var.set(str(deps.default_buy_group_source_suffix))
         self.ex_multiplier_var.set(str(deps.default_ex_group_multiplier))
+        _set_ex_source_suffix_vars(self, {})
         self.set_extra_buy_group_rows(deps.default_extra_buy_groups)
         deps.apply_rebate_rules_config(deps.clone_rebate_rules(deps.default_rebate_rules))
         deps.apply_group_weight_rules_config(deps.clone_group_weight_rules(deps.default_group_weight_rules))
         deps.apply_special_group_target_rtp(deps.default_special_group_target_rtp)
+        getattr(deps, "apply_ex_group_target_rtps_config", lambda _targets: None)(
+            getattr(deps, "default_ex_group_target_rtps", {})
+        )
         deps.apply_buy_group_game_type(deps.default_buy_group_game_type)
         deps.apply_buy_group_source_suffix(deps.default_buy_group_source_suffix)
+        deps.apply_ex_source_suffixes_config({})
         deps.apply_extra_buy_groups_config(deps.default_extra_buy_groups)
         deps.apply_rebate_config_direct_count_modes([])
         deps.apply_rebate_config_direct_count_tiers(deps.default_direct_count_tiers)
@@ -147,6 +166,7 @@ class SlotAppSettingsMixin:
             group_weight_rules=deps.clone_group_weight_rules(deps.get_group_weight_rules()),
             group_weight_options={
                 'special_target_rtp': deps.get_special_group_target_rtp(),
+                'ex_group_target_rtps': getattr(deps, "get_ex_group_target_rtps", lambda: {})(),
                 'buy_enabled': deps.get_buy_group_enabled(),
                 'ex_buy_enabled': deps.get_ex_buy_group_enabled(),
                 'buy_game_type': deps.get_buy_group_game_type(),
@@ -154,6 +174,7 @@ class SlotAppSettingsMixin:
                 'buy_source_suffix': deps.get_buy_group_source_suffix(),
                 'buy_groups': get_buy_groups(),
                 'ex_multiplier': deps.get_ex_group_multiplier(),
+                'ex_source_suffixes': deps.get_ex_source_suffixes(),
                 'extra_buy_groups': deps.clone_extra_buy_groups(deps.get_extra_buy_groups()),
             },
             direct_count_modes=deps.get_direct_count_modes(),
@@ -228,6 +249,10 @@ class SlotAppSettingsMixin:
             self.buy_multiplier_var.set(_format_setting_text(group_options.get('buy_multiplier', deps.get_buy_group_multiplier())))
             self.buy_source_suffix_var.set(_format_setting_text(group_options.get('buy_source_suffix', deps.get_buy_group_source_suffix())))
             self.ex_multiplier_var.set(_format_setting_text(group_options.get('ex_multiplier', deps.get_ex_group_multiplier())))
+            _set_ex_source_suffix_vars(
+                self,
+                group_options.get('ex_source_suffixes', deps.get_ex_source_suffixes()),
+            )
             extra_buy_groups = group_options.get('extra_buy_groups', deps.get_extra_buy_groups())
             self.set_extra_buy_group_rows(extra_buy_groups)
             if group_options.get('buy_groups'):
@@ -235,6 +260,10 @@ class SlotAppSettingsMixin:
             deps.apply_extra_buy_groups_config(extra_buy_groups)
             if 'special_target_rtp' in group_options:
                 deps.apply_special_group_target_rtp(group_options.get('special_target_rtp'))
+            if 'ex_group_target_rtps' in group_options:
+                getattr(deps, "apply_ex_group_target_rtps_config", lambda _targets: None)(
+                    group_options.get('ex_group_target_rtps')
+                )
 
         if not self.apply_selected_config():
             raise ValueError("配置文件中的基础配置无效")
@@ -522,6 +551,7 @@ class SlotAppSettingsMixin:
             deps.apply_buy_group_multiplier(self.buy_multiplier_var.get())
             deps.apply_buy_group_source_suffix(self.buy_source_suffix_var.get())
             deps.apply_ex_group_multiplier(self.ex_multiplier_var.get())
+            deps.apply_ex_source_suffixes_config(_collect_ex_source_suffixes(self))
             deps.apply_extra_buy_groups_config(self.collect_extra_buy_groups())
             getattr(deps, "apply_buy_groups_config", lambda _groups: None)(_build_current_buy_groups(self))
             deps.apply_sampling_append_mode(self.sampling_append_mode_var.get())

@@ -8,6 +8,8 @@ from formation_tool.group_weight import group_weight_ui_text
 from formation_tool.ui.gui_components import LoadingDialogBase, RuleTableEditor
 from formation_tool.ui import ui_layout_defaults
 
+ZERO_REBATE_MISSING_TEXT = "不存在rebate=0"
+
 
 class GroupWeightRulesDialog(LoadingDialogBase):
     """group_weight 权重配置窗口。"""
@@ -25,7 +27,9 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         self.current_group_var = None
         self.rtp_info_var = None
         self.special_target_rtp_var = None
+        self.ex_target_rtp_vars = {}
         self.special_has_zero_for_config = False
+        self._updating_zero_rebate_state = False
 
     def open(self):
         self.create_dialog(
@@ -138,6 +142,12 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         self.special_target_rtp_var = tk.StringVar(
             value="" if self.deps.special_target_rtp is None else str(self.deps.special_target_rtp)
         )
+        ex_targets = getattr(self.deps, 'ex_group_target_rtps', {}) or {}
+        ex_target_modes = getattr(self.deps, 'ex_independent_group_weight_modes', ('7',))
+        self.ex_target_rtp_vars = {
+            mode: tk.StringVar(value="" if ex_targets.get(mode) is None else str(ex_targets.get(mode)))
+            for mode in ex_target_modes
+        }
 
         rtp_frame = ttk.Frame(self.frame)
         rtp_frame.grid(row=2, column=0, sticky="ew", pady=(0, 8))
@@ -157,6 +167,8 @@ class GroupWeightRulesDialog(LoadingDialogBase):
 
         current_group_combo.bind("<<ComboboxSelected>>", self.update_rtp_info)
         self.special_target_rtp_var.trace_add("write", lambda *_args: self.update_rtp_info())
+        for var in self.ex_target_rtp_vars.values():
+            var.trace_add("write", lambda *_args: self.update_rtp_info())
 
     def build_rule_tabs(self):
         self.notebook = ttk.Notebook(self.frame)
@@ -180,6 +192,44 @@ class GroupWeightRulesDialog(LoadingDialogBase):
                 add_button_text=f"新增{mode_name}区间",
                 options_builder=self.build_mode_options,
             )
+        self.apply_zero_rebate_entry_states()
+
+    def mode_has_rebate_zero(self, mode):
+        try:
+            return any(int(value) == 0 for value in self.preview_rebates.get(str(mode), []))
+        except (TypeError, ValueError):
+            return False
+
+    def is_missing_zero_rebate_rule_row(self, mode, row_info):
+        rebate_var = row_info.get('vars', {}).get('rebate_min')
+        return (
+            rebate_var is not None
+            and rebate_var.get().strip() == "0"
+            and not self.mode_has_rebate_zero(mode)
+        )
+
+    def apply_zero_rebate_entry_states(self, mode=None):
+        if self.rule_editor is None or not hasattr(self.rule_editor, 'get_rows'):
+            return
+        modes = [mode] if mode is not None else list(getattr(self.rule_editor, 'mode_rows', {}))
+        self._updating_zero_rebate_state = True
+        try:
+            for item_mode in modes:
+                for row_info in self.rule_editor.get_rows(item_mode):
+                    weight_var = row_info.get('vars', {}).get('weight')
+                    weight_entry = row_info.get('entries', {}).get('weight')
+                    if weight_var is None or weight_entry is None:
+                        continue
+                    if self.is_missing_zero_rebate_rule_row(item_mode, row_info):
+                        if weight_var.get() != ZERO_REBATE_MISSING_TEXT:
+                            weight_var.set(ZERO_REBATE_MISSING_TEXT)
+                        weight_entry.configure(state="disabled")
+                    else:
+                        if weight_var.get() == ZERO_REBATE_MISSING_TEXT:
+                            weight_var.set("0")
+                        weight_entry.configure(state="normal")
+        finally:
+            self._updating_zero_rebate_state = False
 
     def build_buttons(self):
         button_frame = ttk.Frame(self.frame)
@@ -223,8 +273,12 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             self.rule_editor.clear_rule_rows(mode)
             for rule in self.get_default_rules_for_mode(mode):
                 self.rule_editor.add_rule_row(mode, rule)
+        self.apply_zero_rebate_entry_states()
         default_target = getattr(self.deps, 'default_special_target_rtp', None)
         self.special_target_rtp_var.set("" if default_target is None else str(default_target))
+        default_ex_targets = getattr(self.deps, 'default_ex_group_target_rtps', {}) or {}
+        for mode, var in getattr(self, 'ex_target_rtp_vars', {}).items():
+            var.set("" if default_ex_targets.get(mode) is None else str(default_ex_targets.get(mode)))
         self.update_rtp_info()
 
     def build_mode_options(self, mode, options_frame):
@@ -234,6 +288,19 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             special_target_entry.grid(row=0, column=1, sticky="w")
             special_target_entry.configure(state="normal" if self.special_has_zero_for_config else "disabled")
             note_text = group_weight_ui_text.build_special_target_note(self.special_has_zero_for_config)
+            ttk.Label(options_frame, text=note_text, foreground="#555555").grid(
+                row=0, column=2, sticky="w", padx=(10, 0)
+            )
+            return True
+        if mode in getattr(self, 'ex_target_rtp_vars', {}):
+            mode_name = self.deps.get_mode_name(mode)
+            ttk.Label(options_frame, text=f"{mode_name}目标RTP").grid(row=0, column=0, sticky="w", padx=(0, 8))
+            target_entry = ttk.Entry(options_frame, textvariable=self.ex_target_rtp_vars[mode], width=14)
+            target_entry.grid(row=0, column=1, sticky="w")
+            note_text = (
+                f"按除以 ex倍数后的实际RTP填写；留空使用当前RTP组目标，"
+                f"反推目标=目标RTP*{self.deps.format_weighted_rtp(self.deps.ex_multiplier)}"
+            )
             ttk.Label(options_frame, text=note_text, foreground="#555555").grid(
                 row=0, column=2, sticky="w", padx=(10, 0)
             )
@@ -251,13 +318,14 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         for row_info in self.rule_editor.get_rows(mode):
             rebate_text = row_info['vars']['rebate_min'].get().strip()
             weight_text = row_info['vars']['weight'].get().strip()
+            missing_zero_row = self.is_missing_zero_rebate_rule_row(mode, row_info)
             if not rebate_text and not weight_text:
                 continue
-            if not rebate_text or not weight_text:
+            if not rebate_text or (not weight_text and not missing_zero_row):
                 return None, group_weight_ui_text.PARSE_INCOMPLETE_ROW
             try:
                 rebate = self.deps.parse_non_negative_int_text(rebate_text, "rebate下限")
-                weight = self.deps.parse_non_negative_int_text(weight_text, "权重")
+                weight = 0 if missing_zero_row else self.deps.parse_non_negative_int_text(weight_text, "权重")
             except ValueError:
                 return None, group_weight_ui_text.PARSE_NOT_INTEGER
             parsed_rules.append({'rebate_min': rebate, 'weight': weight})
@@ -272,7 +340,26 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         except ValueError as e:
             return None, str(e)
 
+    def parse_ex_target_rtps_for_preview(self):
+        targets = {}
+        errors = {}
+        for mode, var in getattr(self, 'ex_target_rtp_vars', {}).items():
+            text = var.get().strip()
+            if not text:
+                continue
+            try:
+                targets[mode] = self.deps.parse_positive_float_text(
+                    text,
+                    f"{self.deps.get_mode_name(mode)}目标RTP",
+                )
+            except ValueError as e:
+                errors[mode] = str(e)
+        return targets, errors
+
     def update_rtp_info(self, _event=None):
+        if getattr(self, '_updating_zero_rebate_state', False):
+            return
+        self.apply_zero_rebate_entry_states()
         text = self.current_group_var.get()
         try:
             group_id = int(text.split(" ", 1)[0])
@@ -288,6 +375,8 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         parse_errors = {}
         for mode in self.dialog_modes:
             rules_by_mode[mode], parse_errors[mode] = self.parse_dialog_rules(mode)
+        ex_target_rtps, ex_target_errors = self.parse_ex_target_rtps_for_preview()
+        parse_errors.update(ex_target_errors)
 
         special_target, special_target_error = (
             self.parse_special_target_for_preview() if self.special_has_zero_for_config else (None, None)
@@ -306,6 +395,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
                 special_target_error=special_target_error,
                 buy_multiplier=self.deps.buy_multiplier,
                 ex_multiplier=self.deps.ex_multiplier,
+                ex_target_rtps=ex_target_rtps,
                 buy_enabled=self.deps.buy_enabled or self.deps.has_extra_buy_groups(),
             )
         except ValueError as e:
@@ -327,6 +417,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         mode_rules = []
         mode_name = self.deps.get_mode_name(mode)
         for row_idx, row_info in enumerate(rows, start=1):
+            missing_zero_row = self.is_missing_zero_rebate_rule_row(mode, row_info)
             texts = {
                 field: row_info['vars'][field].get().strip()
                 for field in self.deps.rule_fields
@@ -339,10 +430,13 @@ class GroupWeightRulesDialog(LoadingDialogBase):
                     label = self.deps.rule_field_labels[field]
                     raise ValueError(f"{mode_name}第 {row_idx} 行 {label} 不能为空")
                 label = self.deps.rule_field_labels[field]
-                rule[field] = self.deps.parse_non_negative_int_text(
-                    text,
-                    f"{mode_name}第 {row_idx} 行 {label}",
-                )
+                if field == 'weight' and missing_zero_row:
+                    rule[field] = 0
+                else:
+                    rule[field] = self.deps.parse_non_negative_int_text(
+                        text,
+                        f"{mode_name}第 {row_idx} 行 {label}",
+                    )
             mode_rules.append(rule)
         return mode_rules
 
@@ -384,6 +478,10 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             if self.special_has_zero_for_config and not special_target_text:
                 raise ValueError("特殊局采样配置中存在 rebate=0，请填写特殊局目标RTP")
 
+            ex_target_rtps, ex_target_errors = self.parse_ex_target_rtps_for_preview()
+            if ex_target_errors:
+                raise ValueError(next(iter(ex_target_errors.values())))
+
             self.deps.apply_special_target(
                 special_target_text if self.special_has_zero_for_config else ""
             )
@@ -392,6 +490,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             return
 
         self.deps.apply_rules(rules)
+        self.deps.apply_ex_group_target_rtps(ex_target_rtps)
         self.deps.apply_extra_buy_groups(extra_buy_groups)
         self.dialog.destroy()
         self.app.run_task(
