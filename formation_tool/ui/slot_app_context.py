@@ -16,6 +16,7 @@ class SlotAppDepsContext:
     normalize_extra_buy_groups: Any
     default_trigger_weights: Any
     default_sampling_append_mode: Any
+    default_sampling_detailed_log: Any
     default_buy_group_enabled: Any
     default_ex_buy_group_enabled: Any
     default_buy_group_game_type: Any
@@ -32,6 +33,7 @@ class SlotAppDepsContext:
     get_trigger_weights: Any
     get_rebate_rules: Any
     get_sampling_append_mode: Any
+    get_sampling_detailed_log: Any
     get_group_weight_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
@@ -82,6 +84,7 @@ class SlotAppDepsContext:
     apply_rebate_config_direct_count_modes: Any
     apply_rebate_config_direct_count_tiers: Any
     apply_sampling_append_mode: Any
+    apply_sampling_detailed_log: Any
     format_weighted_rtp: Any
     clear_cancel_request: Any
     request_cancel: Any
@@ -138,6 +141,7 @@ REQUIRED_RUNTIME_ATTRS = (
     'trigger_weights_dict',
     'rebate_rules',
     'sampling_append_mode',
+    'sampling_detailed_log',
     'group_weight_rules',
     'special_group_target_rtp',
     'buy_group_enabled',
@@ -165,6 +169,7 @@ REQUIRED_MODULE_ATTRS = (
     'normalize_extra_buy_groups',
     'DEFAULT_TRIGGER_WEIGHTS',
     'DEFAULT_SAMPLING_APPEND_MODE',
+    'DEFAULT_SAMPLING_DETAILED_LOG',
     'DEFAULT_BUY_GROUP_ENABLED',
     'DEFAULT_EX_BUY_GROUP_ENABLED',
     'DEFAULT_BUY_GROUP_GAME_TYPE',
@@ -205,6 +210,7 @@ REQUIRED_MODULE_ATTRS = (
     'apply_rebate_config_direct_count_modes',
     'apply_rebate_config_direct_count_tiers',
     'apply_sampling_append_mode',
+    'apply_sampling_detailed_log',
     'get_rebate_config_direct_count_tiers',
     'normalize_direct_count_tiers_for_load',
     'format_weighted_rtp',
@@ -281,6 +287,7 @@ def build_slot_app_deps_context(runtime, module):
         normalize_extra_buy_groups=m.normalize_extra_buy_groups,
         default_trigger_weights=m.DEFAULT_TRIGGER_WEIGHTS,
         default_sampling_append_mode=m.DEFAULT_SAMPLING_APPEND_MODE,
+        default_sampling_detailed_log=m.DEFAULT_SAMPLING_DETAILED_LOG,
         default_buy_group_enabled=m.DEFAULT_BUY_GROUP_ENABLED,
         default_ex_buy_group_enabled=m.DEFAULT_EX_BUY_GROUP_ENABLED,
         default_buy_group_game_type=m.DEFAULT_BUY_GROUP_GAME_TYPE,
@@ -297,6 +304,7 @@ def build_slot_app_deps_context(runtime, module):
         get_trigger_weights=r.trigger_weights_dict,
         get_rebate_rules=lambda: runtime.rebate_rules,
         get_sampling_append_mode=lambda: runtime.sampling_append_mode,
+        get_sampling_detailed_log=lambda: runtime.sampling_detailed_log,
         get_group_weight_rules=lambda: runtime.group_weight_rules,
         get_special_group_target_rtp=lambda: runtime.special_group_target_rtp,
         get_ex_group_target_rtps=lambda: dict(getattr(runtime, 'ex_group_target_rtps', {})),
@@ -347,6 +355,7 @@ def build_slot_app_deps_context(runtime, module):
         apply_rebate_config_direct_count_modes=m.apply_rebate_config_direct_count_modes,
         apply_rebate_config_direct_count_tiers=m.apply_rebate_config_direct_count_tiers,
         apply_sampling_append_mode=m.apply_sampling_append_mode,
+        apply_sampling_detailed_log=m.apply_sampling_detailed_log,
         format_weighted_rtp=m.format_weighted_rtp,
         clear_cancel_request=m.clear_cancel_request,
         request_cancel=m.request_cancel,

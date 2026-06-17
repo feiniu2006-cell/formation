@@ -9,6 +9,17 @@ from formation_tool.ui.gui_components import LoadingDialogBase, RuleTableEditor
 from formation_tool.ui import ui_layout_defaults
 
 ZERO_REBATE_MISSING_TEXT = "不存在rebate=0"
+DEFAULT_RTP_GROUP_ID = 9650
+
+
+def choose_default_rtp_group_option(group_ids, formatter, default_group_id=DEFAULT_RTP_GROUP_ID):
+    """Return the dialog's initial RTP group option."""
+    group_ids = list(group_ids or [])
+    if not group_ids:
+        return ""
+    default_group_id = int(default_group_id)
+    selected_group_id = default_group_id if default_group_id in [int(group_id) for group_id in group_ids] else group_ids[0]
+    return formatter(selected_group_id)
 
 
 class GroupWeightRulesDialog(LoadingDialogBase):
@@ -137,7 +148,12 @@ class GroupWeightRulesDialog(LoadingDialogBase):
 
     def build_rtp_selector(self):
         group_options = [self.deps.format_group_rtp_option(group_id) for group_id in self.deps.weight_group_ids]
-        self.current_group_var = tk.StringVar(value=group_options[0] if group_options else "")
+        self.current_group_var = tk.StringVar(
+            value=choose_default_rtp_group_option(
+                self.deps.weight_group_ids,
+                self.deps.format_group_rtp_option,
+            )
+        )
         self.rtp_info_var = tk.StringVar()
         self.special_target_rtp_var = tk.StringVar(
             value="" if self.deps.special_target_rtp is None else str(self.deps.special_target_rtp)

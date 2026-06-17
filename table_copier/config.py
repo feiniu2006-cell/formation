@@ -202,7 +202,7 @@ MAPPINGS = load_mappings_from_db()
 # 需要做公共表数据替换的表
 TABLES_WITH_DATA_REPLACEMENT = [
     "game_bet_amount_config",
-    "game_room_base_config",
+    # "game_room_base_config",
     "game_room_element_config",
     "game_room_group_config",
     "game_room_win_line_config",

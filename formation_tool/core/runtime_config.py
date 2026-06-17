@@ -163,6 +163,7 @@ class RuntimeState:
         self.rebate_rules = formation_defaults.clone_rule_map(formation_defaults.REBATE_RULES)
         self.group_weight_rules = formation_defaults.clone_rule_map(formation_defaults.GROUP_WEIGHT_RULES)
         self.sampling_append_mode = formation_defaults.DEFAULT_SAMPLING_APPEND_MODE
+        self.sampling_detailed_log = formation_defaults.DEFAULT_SAMPLING_DETAILED_LOG
         self.rebate_config_direct_count_modes = set(formation_defaults.DEFAULT_REBATE_CONFIG_DIRECT_COUNT_MODES)
         self.special_group_target_rtp = formation_defaults.DEFAULT_SPECIAL_GROUP_TARGET_RTP
         self.ex_group_target_rtps = formation_defaults.clone_ex_group_target_rtps()
@@ -214,6 +215,7 @@ class RuntimeState:
 
     def sync_sampling_runtime_from(self, namespace):
         self.sampling_append_mode = bool(_read(namespace, 'SAMPLING_APPEND_MODE', self.sampling_append_mode))
+        self.sampling_detailed_log = bool(_read(namespace, 'SAMPLING_DETAILED_LOG', self.sampling_detailed_log))
 
     def sync_group_weight_runtime_from(self, namespace):
         self.group_weight_rules = _clone(_read(namespace, 'GROUP_WEIGHT_RULES', self.group_weight_rules))
@@ -312,6 +314,7 @@ class RuntimeState:
         _assign(namespace, 'REBATE_RULES', _clone(self.rebate_rules))
         _assign(namespace, 'GROUP_WEIGHT_RULES', _clone(self.group_weight_rules))
         _assign(namespace, 'SAMPLING_APPEND_MODE', self.sampling_append_mode)
+        _assign(namespace, 'SAMPLING_DETAILED_LOG', self.sampling_detailed_log)
         _assign(namespace, 'REBATE_CONFIG_DIRECT_COUNT_MODES', set(self.rebate_config_direct_count_modes))
         _assign(namespace, 'SPECIAL_GROUP_TARGET_RTP', self.special_group_target_rtp)
         _assign(namespace, 'EX_GROUP_TARGET_RTPS', _clone(self.ex_group_target_rtps))

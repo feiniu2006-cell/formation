@@ -21,6 +21,7 @@ class UiDeps:
 class SettingsDeps:
     default_trigger_weights: Any
     default_sampling_append_mode: Any
+    default_sampling_detailed_log: Any
     default_buy_group_enabled: Any
     default_ex_buy_group_enabled: Any
     default_buy_group_game_type: Any
@@ -37,6 +38,7 @@ class SettingsDeps:
     get_trigger_weights: Any
     get_rebate_rules: Any
     get_sampling_append_mode: Any
+    get_sampling_detailed_log: Any
     get_group_weight_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
@@ -82,6 +84,7 @@ class SettingsDeps:
     apply_rebate_config_direct_count_modes: Any
     apply_rebate_config_direct_count_tiers: Any
     apply_sampling_append_mode: Any
+    apply_sampling_detailed_log: Any
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,7 @@ class TaskDeps:
     get_trigger_weights: Any
     get_rebate_rules: Any
     get_sampling_append_mode: Any
+    get_sampling_detailed_log: Any
     get_direct_count_modes: Any
     get_direct_count_tiers: Any
     get_game_configs: Any
@@ -238,6 +242,7 @@ def build_settings_deps(ctx):
     return SettingsDeps(
         default_trigger_weights=ctx.default_trigger_weights,
         default_sampling_append_mode=ctx.default_sampling_append_mode,
+        default_sampling_detailed_log=ctx.default_sampling_detailed_log,
         default_buy_group_enabled=ctx.default_buy_group_enabled,
         default_ex_buy_group_enabled=ctx.default_ex_buy_group_enabled,
         default_buy_group_game_type=ctx.default_buy_group_game_type,
@@ -254,6 +259,7 @@ def build_settings_deps(ctx):
         get_trigger_weights=ctx.get_trigger_weights,
         get_rebate_rules=ctx.get_rebate_rules,
         get_sampling_append_mode=ctx.get_sampling_append_mode,
+        get_sampling_detailed_log=ctx.get_sampling_detailed_log,
         get_group_weight_rules=ctx.get_group_weight_rules,
         get_special_group_target_rtp=ctx.get_special_group_target_rtp,
         get_ex_group_target_rtps=ctx.get_ex_group_target_rtps,
@@ -302,6 +308,7 @@ def build_settings_deps(ctx):
         apply_rebate_config_direct_count_modes=ctx.apply_rebate_config_direct_count_modes,
         apply_rebate_config_direct_count_tiers=ctx.apply_rebate_config_direct_count_tiers,
         apply_sampling_append_mode=ctx.apply_sampling_append_mode,
+        apply_sampling_detailed_log=ctx.apply_sampling_detailed_log,
     )
 
 
@@ -313,6 +320,7 @@ def build_task_deps(ctx):
         get_trigger_weights=ctx.get_trigger_weights,
         get_rebate_rules=ctx.get_rebate_rules,
         get_sampling_append_mode=ctx.get_sampling_append_mode,
+        get_sampling_detailed_log=ctx.get_sampling_detailed_log,
         get_direct_count_modes=ctx.get_direct_count_modes,
         get_direct_count_tiers=ctx.get_direct_count_tiers,
         get_game_configs=ctx.get_game_configs,

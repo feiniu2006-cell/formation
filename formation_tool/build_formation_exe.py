@@ -294,14 +294,23 @@ import types
 
 # These imports make PyInstaller collect the runtime dependencies used by the encrypted payload.
 import contextlib  # noqa: F401
+import copy  # noqa: F401
+import dataclasses  # noqa: F401
+import datetime  # noqa: F401
+import functools  # noqa: F401
+import hashlib  # noqa: F401
+import inspect  # noqa: F401
 import json  # noqa: F401
 import math  # noqa: F401
+import numbers  # noqa: F401
 import pathlib  # noqa: F401
 import queue  # noqa: F401
+import random  # noqa: F401
 import re  # noqa: F401
 import threading  # noqa: F401
 import time  # noqa: F401
 import traceback  # noqa: F401
+import typing  # noqa: F401
 import tkinter as tk  # noqa: F401
 from tkinter import filedialog, messagebox, scrolledtext, ttk  # noqa: F401
 import mysql.connector  # noqa: F401

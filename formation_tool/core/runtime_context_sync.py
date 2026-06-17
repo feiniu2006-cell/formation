@@ -7,6 +7,7 @@ SAMPLING_CORE_CONTEXT_KEYS = (
     'DB_RETRY_DELAY',
     'SAMPLE_ID_FETCH_CHUNK_SIZE',
     'SAMPLING_APPEND_MODE',
+    'SAMPLING_DETAILED_LOG',
     'check_cancelled',
     'chunked',
     'close_safely',

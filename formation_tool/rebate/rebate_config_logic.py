@@ -9,6 +9,10 @@ def _is_missing(value):
     return value is None or value != value
 
 
+def _resolve_detail_print_fn(print_fn, detail_print_fn):
+    return print_fn if detail_print_fn is None else detail_print_fn
+
+
 def normalize_rebate_config_rows(rows, mode_name):
     """Sort generated rebate_count rows and reject duplicate rebate values."""
     normalized = []
@@ -145,11 +149,19 @@ def get_direct_count_tier_limit_for_rebate(rebate, count_limits):
     return None
 
 
-def apply_direct_count_tier_limits_to_rows(rows, count_limits=None, label="采样配置", *, print_fn=print):
+def apply_direct_count_tier_limits_to_rows(
+    rows,
+    count_limits=None,
+    label="采样配置",
+    *,
+    print_fn=print,
+    detail_print_fn=None,
+):
     """Apply rebate-dependent caps for low-volume direct-count mode."""
     if not count_limits or not count_limits.get('direct_count_tiers'):
         return rows
 
+    detail_print_fn = _resolve_detail_print_fn(print_fn, detail_print_fn)
     limited_rows = []
     truncated_count = 0
     for rebate, count in rows:
@@ -158,7 +170,7 @@ def apply_direct_count_tier_limits_to_rows(rows, count_limits=None, label="采�
         tier_limit = get_direct_count_tier_limit_for_rebate(rebate, count_limits)
         if tier_limit is not None and tier_limit > 0 and count > tier_limit:
             truncated_count += 1
-            print_fn(
+            detail_print_fn(
                 f"  {label} 直接计数阶梯：rebate={rebate}，"
                 f"{count} -> {tier_limit}（上限 {tier_limit}）"
             )
@@ -169,8 +181,18 @@ def apply_direct_count_tier_limits_to_rows(rows, count_limits=None, label="采�
     return limited_rows
 
 
-def select_smooth_rebate_bucket_rows(rule, bucket_rows, limit_min, limit_max, *, check_cancelled=_noop, print_fn=print):
+def select_smooth_rebate_bucket_rows(
+    rule,
+    bucket_rows,
+    limit_min,
+    limit_max,
+    *,
+    check_cancelled=_noop,
+    print_fn=print,
+    detail_print_fn=None,
+):
     """Select rebate rows from a range rule using smooth buckets."""
+    detail_print_fn = _resolve_detail_print_fn(print_fn, detail_print_fn)
     selected_rows = []
     n_buckets = rule['smooth_buckets']
     r_min = rule['rebate_min']
@@ -208,8 +230,18 @@ def select_smooth_rebate_bucket_rows(rule, bucket_rows, limit_min, limit_max, *,
     return selected_rows
 
 
-def select_limited_rebate_bucket_rows(rule, bucket_rows, limit_min, limit_max, *, check_cancelled=_noop, print_fn=print):
+def select_limited_rebate_bucket_rows(
+    rule,
+    bucket_rows,
+    limit_min,
+    limit_max,
+    *,
+    check_cancelled=_noop,
+    print_fn=print,
+    detail_print_fn=None,
+):
     """Select rebate rows from a range rule by total desc, capped by rebate_limit_max."""
+    detail_print_fn = _resolve_detail_print_fn(print_fn, detail_print_fn)
     selected_rows = []
     rows = sorted(bucket_rows, key=lambda item: (-item[1], item[0]))
     available = len(rows)
@@ -224,12 +256,20 @@ def select_limited_rebate_bucket_rows(rule, bucket_rows, limit_min, limit_max, *
         print_fn(f"{rebate:>12}  {total:>10}  {actual:>10}  {note}")
         selected_rows.append((rebate, actual))
     for rebate, total, _actual in skipped:
-        print_fn(f"{rebate:>12}  {total:>10}  {'---':>10}  超出 rebate_limit_max 跳过")
+        detail_print_fn(f"{rebate:>12}  {total:>10}  {'---':>10}  超出 rebate_limit_max 跳过")
     return selected_rows
 
 
-def build_rule_based_rebate_config_rows(stats_df, rules, *, check_cancelled=_noop, print_fn=print):
+def build_rule_based_rebate_config_rows(
+    stats_df,
+    rules,
+    *,
+    check_cancelled=_noop,
+    print_fn=print,
+    detail_print_fn=None,
+):
     """Convert rebate distribution rows into rebate_count rows by configured rules."""
+    detail_print_fn = _resolve_detail_print_fn(print_fn, detail_print_fn)
     print_fn(f"{'rebate':>12}  {'total':>10}  {'count':>10}  备注")
     print_fn("-" * 50)
     range_buckets = {}
@@ -241,11 +281,11 @@ def build_rule_based_rebate_config_rows(stats_df, rules, *, check_cancelled=_noo
         total = int(row.total)
         rule = get_rule_for_rebate(rebate, rules)
         if rule is None:
-            print_fn(f"{rebate:>12}  {total:>10}  {'---':>10}  跳过")
+            detail_print_fn(f"{rebate:>12}  {total:>10}  {'---':>10}  跳过")
             continue
         min_total = rule.get('min_total', 0)
         if total < min_total:
-            print_fn(f"{rebate:>12}  {total:>10}  {'---':>10}  数据量不足 min_total({min_total})，跳过")
+            detail_print_fn(f"{rebate:>12}  {total:>10}  {'---':>10}  数据量不足 min_total({min_total})，跳过")
             continue
         count = rule['count']
         actual = min(count, total)
@@ -272,6 +312,7 @@ def build_rule_based_rebate_config_rows(stats_df, rules, *, check_cancelled=_noo
                     limit_max,
                     check_cancelled=check_cancelled,
                     print_fn=print_fn,
+                    detail_print_fn=detail_print_fn,
                 )
             )
         else:
@@ -283,6 +324,7 @@ def build_rule_based_rebate_config_rows(stats_df, rules, *, check_cancelled=_noo
                     limit_max,
                     check_cancelled=check_cancelled,
                     print_fn=print_fn,
+                    detail_print_fn=detail_print_fn,
                 )
             )
     return result_rows
@@ -375,19 +417,27 @@ def build_rebate_sql_filter(rules=None, count_limits=None, *, include_rule_range
     return "(" + " OR ".join(clauses) + ")"
 
 
-def apply_rebate_config_max_rebate_to_rows(rows, count_limits=None, label="采样配置", *, print_fn=print):
+def apply_rebate_config_max_rebate_to_rows(
+    rows,
+    count_limits=None,
+    label="采样配置",
+    *,
+    print_fn=print,
+    detail_print_fn=None,
+):
     """Drop generated rebate_count rows whose rebate exceeds the configured max rebate."""
     max_rebate = get_rebate_config_max_rebate(count_limits)
     if max_rebate is None:
         return rows
 
+    detail_print_fn = _resolve_detail_print_fn(print_fn, detail_print_fn)
     kept_rows = []
     skipped_count = 0
     for rebate, count in rows:
         rebate = int(rebate)
         if rebate > max_rebate:
             skipped_count += 1
-            print_fn(f"  {label} rebate上限：rebate={rebate} > {max_rebate}，跳过")
+            detail_print_fn(f"  {label} rebate上限：rebate={rebate} > {max_rebate}，跳过")
             continue
         kept_rows.append((rebate, int(count)))
     if skipped_count:
@@ -395,16 +445,25 @@ def apply_rebate_config_max_rebate_to_rows(rows, count_limits=None, label="采�
     return kept_rows
 
 
-def apply_rebate_config_count_limits_to_rows(rows, count_limits=None, label="采样配置", *, print_fn=print):
+def apply_rebate_config_count_limits_to_rows(
+    rows,
+    count_limits=None,
+    label="采样配置",
+    *,
+    print_fn=print,
+    detail_print_fn=None,
+):
     """Apply generated rebate_count max-rebate and count caps."""
     if not count_limits:
         return rows
 
+    detail_print_fn = _resolve_detail_print_fn(print_fn, detail_print_fn)
     rows = apply_rebate_config_max_rebate_to_rows(
         rows,
         count_limits,
         label,
         print_fn=print_fn,
+        detail_print_fn=detail_print_fn,
     )
     limited_rows = []
     truncated_count = 0
@@ -412,7 +471,7 @@ def apply_rebate_config_count_limits_to_rows(rows, count_limits=None, label="采
         limited_count, applied_limit = apply_rebate_config_count_limit(rebate, count, count_limits)
         if applied_limit is not None:
             truncated_count += 1
-            print_fn(
+            detail_print_fn(
                 f"  {label} count上限：rebate={int(rebate)}，"
                 f"{int(count)} -> {limited_count}（上限 {applied_limit}）"
             )

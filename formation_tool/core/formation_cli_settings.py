@@ -39,6 +39,10 @@ def apply_cli_settings_data(data, *, deps, runtime_only=False):
         deps.apply_sampling_append_mode(
             sampling_options.get('append_mode', deps.get_sampling_append_mode())
         )
+        apply_detailed_log = getattr(deps, 'apply_sampling_detailed_log', None)
+        if apply_detailed_log is not None:
+            default_detailed_log = getattr(deps, 'get_sampling_detailed_log', lambda: False)()
+            apply_detailed_log(sampling_options.get('detailed_log', default_detailed_log))
 
     if 'group_weight_rules' in data:
         deps.apply_group_weight_rules_config(

@@ -57,6 +57,8 @@ class SlotAppTaskMixin:
         else:
             self.append_log("数据库配置来源：exe 内置配置\n")
 
+    def append_trigger_weight_config_log(self):
+        deps = self.task_deps
         trigger_weights = deps.get_trigger_weights()
         self.append_log(
             f"权重配置：特殊局个位0={trigger_weights['special_0']}，"
@@ -79,6 +81,10 @@ class SlotAppTaskMixin:
         self.append_log(
             "采样写入模式："
             + ("不清空追加（冲突id自动改写）\n" if deps.get_sampling_append_mode() else "清空后写入\n")
+        )
+        self.append_log(
+            "采样详细日志："
+            + ("开启\n" if deps.get_sampling_detailed_log() else "关闭\n")
         )
         direct_count_modes = deps.get_direct_count_modes()
         if direct_count_modes:
@@ -139,12 +145,32 @@ class SlotAppTaskMixin:
             self.append_log(f"，ex后缀覆盖：{suffix_text}")
         self.append_log("\n")
 
-    def append_task_header_log(self, title):
+    @staticmethod
+    def get_task_log_kind(title, preflight):
+        if isinstance(preflight, dict):
+            return preflight.get("kind")
+        if title == "生成group_weight":
+            return "group_weight"
+        if title == "生成采样配置":
+            return "rebate_config"
+        if "采样" in title:
+            return "sampling"
+        if title == "通用表配置":
+            return "common_config"
+        return None
+
+    def append_task_header_log(self, title, preflight=None):
         self.append_log(log_utils.section(title) + "\n")
         self.append_runtime_config_log()
-        self.append_sampling_config_log()
-        self.append_group_weight_config_log()
-        self.append_purchase_config_log()
+        kind = self.get_task_log_kind(title, preflight)
+        if kind in {"rebate_config", "sampling"}:
+            self.append_sampling_config_log()
+        elif kind == "group_weight":
+            self.append_group_weight_config_log()
+            self.append_purchase_config_log()
+        elif kind == "common_config":
+            self.append_trigger_weight_config_log()
+            self.append_purchase_config_log()
 
     def build_dangerous_task_confirmation(self, title, preflight):
         return task_confirmations.build_dangerous_task_confirmation(
@@ -190,7 +216,7 @@ class SlotAppTaskMixin:
 
         self.task_deps.clear_cancel_request()
         self.enter_running_state(title)
-        self.append_task_header_log(title)
+        self.append_task_header_log(title, preflight)
         self.start_worker_thread(title, func, preflight)
 
     def worker_main(self, title, func, preflight):

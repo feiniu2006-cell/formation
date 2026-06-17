@@ -45,6 +45,7 @@ class RunnerDeps:
     apply_rebate_config_count_limits_to_rows: Callable[..., list]
     normalize_rebate_config_rows: Callable[[list, str], list]
     write_rebate_config_rows: Callable[[dict, str, str, list], bool]
+    detailed_log: bool = False
 
 
 def build_storage_replace_deps(callbacks):
@@ -93,6 +94,7 @@ def build_runner_deps(callbacks, runtime):
         apply_rebate_config_count_limits_to_rows=callbacks.apply_rebate_config_count_limits_to_rows,
         normalize_rebate_config_rows=callbacks.normalize_rebate_config_rows,
         write_rebate_config_rows=callbacks.write_rebate_config_rows,
+        detailed_log=bool(getattr(runtime, 'detailed_log', False)),
     )
 
 

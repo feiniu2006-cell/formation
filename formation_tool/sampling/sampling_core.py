@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
+from formation_tool.core import formation_defaults
 from formation_tool.core import runtime_context_sync
 from formation_tool.sampling import direct_sampling_runner
 from formation_tool.sampling import sampling_task_state
@@ -19,7 +20,9 @@ print = log_utils.emit
 SAMPLE_ID_RANDOM_RANGE_ATTEMPTS = 8
 SAMPLE_ID_RANDOM_RANGE_MAX_ATTEMPTS = 20
 SAMPLE_ID_RANDOM_RANGE_MAX_CANDIDATES_PER_QUERY = 20000
+SAMPLE_ID_FETCH_CHUNK_SIZE = formation_defaults.DEFAULT_SAMPLE_ID_FETCH_CHUNK_SIZE
 SAMPLE_ROW_WRITE_CHUNK_SIZE = 100
+SAMPLING_DETAILED_LOG = False
 SLOW_REBATE_SUMMARY_LIMIT = 5
 SAMPLING_TIMING_KEYS = (
     'id_query_seconds',
@@ -60,21 +63,34 @@ def add_sampling_counter(timing, key, value=1):
         timing[key] = int(timing.get(key, 0)) + int(value)
 
 
+def is_sampling_detailed_log_enabled():
+    return bool(globals().get('SAMPLING_DETAILED_LOG', False))
+
+
+def print_sampling_detail(message=""):
+    if is_sampling_detailed_log_enabled():
+        print(message)
+
+
 def print_sampling_timing_summary(timing):
     if not timing:
         return
-    print("\n采样性能汇总：")
-    print(f"  rebate数: {int(timing.get('rebate_count', 0))}，写入行数: {int(timing.get('row_count', 0))}")
-    print(f"  查ID耗时: {timing.get('id_query_seconds', 0.0):.2f} 秒")
-    print(f"  读完整行耗时: {timing.get('row_read_seconds', 0.0):.2f} 秒")
-    print(f"  写入临时表耗时: {timing.get('row_write_seconds', 0.0):.2f} 秒")
-    print(f"  append冲突ID处理耗时: {timing.get('id_remap_seconds', 0.0):.2f} 秒")
-    print(f"  rebate循环总耗时: {timing.get('rebate_seconds', 0.0):.2f} 秒")
+    print(
+        f"\n采样性能汇总：rebate数 {int(timing.get('rebate_count', 0))}，"
+        f"写入行数 {int(timing.get('row_count', 0))}，"
+        f"rebate循环 {timing.get('rebate_seconds', 0.0):.2f} 秒"
+    )
+    print(
+        f"  阶段耗时：查ID {timing.get('id_query_seconds', 0.0):.2f} 秒，"
+        f"读完整行 {timing.get('row_read_seconds', 0.0):.2f} 秒，"
+        f"写临时表 {timing.get('row_write_seconds', 0.0):.2f} 秒，"
+        f"append改ID {timing.get('id_remap_seconds', 0.0):.2f} 秒"
+    )
     random_returned = int(timing.get('random_range_returned_ids', 0))
     random_added = int(timing.get('random_range_added_ids', 0))
     random_duplicates = int(timing.get('random_range_duplicate_ids', 0))
     hit_rate = (random_added / random_returned * 100.0) if random_returned else 0.0
-    print(
+    print_sampling_detail(
         f"  随机范围候选：尝试 {int(timing.get('random_range_attempts', 0))} 次，"
         f"返回 {random_returned} 个，新增 {random_added} 个，"
         f"重复 {random_duplicates} 个，新增率 {hit_rate:.1f}%"
@@ -86,13 +102,13 @@ def print_sampling_timing_summary(timing):
             preview += ', ...'
         print(f"  全量 DISTINCT fallback：{len(fallback_rebates)} 个 rebate ({preview})")
     else:
-        print("  全量 DISTINCT fallback：0 个 rebate")
+        print_sampling_detail("  全量 DISTINCT fallback：0 个 rebate")
     details = sorted(
         timing.get('rebate_details') or [],
         key=lambda item: item.get('total_seconds', 0.0),
         reverse=True,
     )
-    if details:
+    if details and is_sampling_detailed_log_enabled():
         print(f"  最慢rebate Top {min(len(details), SLOW_REBATE_SUMMARY_LIMIT)}：")
         for item in details[:SLOW_REBATE_SUMMARY_LIMIT]:
             print(
@@ -187,7 +203,7 @@ def run_single_game(game_config):
 
 
 def resolve_direct_sample_conditions(source_conn, table_config, sample_conditions):
-    """解析采样 where_clause 中的结束字段占位符，并做结束字段完整性校验。"""
+    """解析采样 where_clause 中的结束字段占位符；完整性校验延后到已采样 id 上执行。"""
     where_tpl = sample_conditions['where_clause']
     if not any(pattern in where_tpl for pattern in ('{end_field}', '{end_field_opt}')):
         return sample_conditions
@@ -219,8 +235,12 @@ def resolve_direct_sample_conditions(source_conn, table_config, sample_condition
             end_field_for_validation = 'is_end'
 
     if end_field_for_validation:
-        validate_end_field_integrity(source_conn, source_table_name, end_field_for_validation)
-    return {**sample_conditions, 'where_clause': where_tpl}
+        print(f"  数据完整性校验将按已采样ID执行（字段：{end_field_for_validation}）")
+    return {
+        **sample_conditions,
+        'where_clause': where_tpl,
+        'end_field_for_validation': end_field_for_validation,
+    }
 
 
 def _preview_values(values, limit=5):
@@ -416,16 +436,16 @@ def _select_sample_ids_with_full_scan(
     elapsed = time.perf_counter() - start
     add_sampling_timing(timing, 'id_query_seconds', elapsed)
     check_cancelled()
-    print(
+    print_sampling_detail(
         f"从 {source_db_name} 全量查询到 {len(ids)} 个符合条件的ID "
         f"(rebate={target_rebate})，耗时 {elapsed:.2f} 秒"
     )
 
     sampled_ids = _sample_ids_from_candidates(ids, sample_size, random_seed)
     if len(ids) > sample_size:
-        print(f"随机抽取 {sample_size} 个ID")
+        print_sampling_detail(f"随机抽取 {sample_size} 个ID")
     else:
-        print(f"ID数量不足，使用全部 {len(sampled_ids)} 个ID")
+        print_sampling_detail(f"ID数量不足，使用全部 {len(sampled_ids)} 个ID")
     return sampled_ids
 
 
@@ -443,7 +463,7 @@ def _query_limited_distinct_ids(source_engine, source_table_ref, where_clause, t
     )
     elapsed = time.perf_counter() - start
     add_sampling_timing(timing, 'id_query_seconds', elapsed)
-    print(
+    print_sampling_detail(
         f"稀疏rebate探测耗时：{elapsed:.2f} 秒，"
         f"最多检查 {int(limit)} 个，返回 {len(ids)} 个 (rebate={target_rebate})"
     )
@@ -464,16 +484,16 @@ def _query_sample_id_range(source_engine, source_table_ref, where_clause, target
     elapsed = time.perf_counter() - start
     add_sampling_timing(timing, 'id_query_seconds', elapsed)
     if not range_row:
-        print(f"采样ID范围查询耗时：{elapsed:.2f} 秒，未查询到范围")
+        print_sampling_detail(f"采样ID范围查询耗时：{elapsed:.2f} 秒，未查询到范围")
         return None, None
     min_id = range_row[0]
     max_id = range_row[1]
     if pd.isna(min_id) or pd.isna(max_id):
-        print(f"采样ID范围查询耗时：{elapsed:.2f} 秒，未查询到范围")
+        print_sampling_detail(f"采样ID范围查询耗时：{elapsed:.2f} 秒，未查询到范围")
         return None, None
     min_id = int(min_id)
     max_id = int(max_id)
-    print(
+    print_sampling_detail(
         f"采样ID范围查询耗时：{elapsed:.2f} 秒，"
         f"rebate={target_rebate}, id范围={min_id}~{max_id}"
     )
@@ -549,7 +569,7 @@ def _query_candidate_ids_from_random_ranges(
         add_sampling_counter(timing, 'random_range_returned_ids', len(ids))
         add_sampling_counter(timing, 'random_range_added_ids', added)
         add_sampling_counter(timing, 'random_range_duplicate_ids', duplicates)
-        print(
+        print_sampling_detail(
             f"  随机范围第 {attempt}/{attempt_limit} 次："
             f"起点id={start_id}，返回 {len(ids)} 个，新增 {added} 个，"
             f"重复 {duplicates} 个，累计 {len(candidate_ids)} 个，"
@@ -560,7 +580,7 @@ def _query_candidate_ids_from_random_ranges(
 
     added_total = len(candidate_ids)
     hit_rate = (added_total / returned_total * 100.0) if returned_total else 0.0
-    print(
+    print_sampling_detail(
         f"随机范围候选ID查询总耗时：{time.perf_counter() - total_start:.2f} 秒，"
         f"返回 {returned_total} 个，候选 {added_total} 个，"
         f"重复 {duplicate_total} 个，新增率 {hit_rate:.1f}%"
@@ -597,11 +617,13 @@ def select_sample_ids_for_rebate(
     )
     if len(sparse_probe_ids) <= sample_size:
         add_sampling_counter(timing, 'sparse_shortcut_count')
-        print(
+        print_sampling_detail(
             f"rebate={target_rebate} 可用ID数量不超过采样数，"
             f"直接使用全部 {len(sparse_probe_ids)} 个ID"
         )
-        print(f"采样ID选择总耗时：{time.perf_counter() - total_start:.2f} 秒 (rebate={target_rebate})")
+        print_sampling_detail(
+            f"采样ID选择总耗时：{time.perf_counter() - total_start:.2f} 秒 (rebate={target_rebate})"
+        )
         return _sample_ids_from_candidates(sparse_probe_ids, sample_size, random_seed)
 
     min_id, max_id = _query_sample_id_range(
@@ -640,13 +662,111 @@ def select_sample_ids_for_rebate(
         )
     else:
         sampled_ids = _sample_ids_from_candidates(candidate_ids, sample_size, random_seed)
-        print(
+        print_sampling_detail(
             f"从 {source_db_name} 随机范围候选 {len(candidate_ids)} 个ID中"
             f"抽取 {len(sampled_ids)} 个 (rebate={target_rebate})"
         )
 
-    print(f"采样ID选择总耗时：{time.perf_counter() - total_start:.2f} 秒 (rebate={target_rebate})")
+    print_sampling_detail(f"采样ID选择总耗时：{time.perf_counter() - total_start:.2f} 秒 (rebate={target_rebate})")
     return [int(value) for value in sampled_ids]
+
+
+def _format_sampled_id_preview(ids, limit=10):
+    ids = list(ids)
+    preview = ', '.join(str(value) for value in ids[:limit])
+    if len(ids) > limit:
+        preview += ', ...'
+    return f"[{preview}]"
+
+
+def _query_sampled_end_counts(source_engine, source_table_ref, end_field_ref, id_batch):
+    id_text = ','.join(str(int(value)) for value in id_batch)
+    query = f"""
+    SELECT `id`, COUNT(CASE WHEN {end_field_ref}=1 THEN 1 END) AS end_cnt
+    FROM {source_table_ref}
+    WHERE `id` IN ({id_text})
+    GROUP BY `id`
+    """
+    with source_engine.connect() as conn:
+        result = conn.exec_driver_sql(query)
+        return [
+            {'id': int(row[0]), 'end_cnt': int(row[1] or 0)}
+            for row in result
+        ]
+
+
+def validate_sampled_ids_end_field_integrity(
+    source_engine,
+    source_table_ref,
+    source_table_name,
+    end_field,
+    sampled_ids,
+    *,
+    target_rebate=None,
+):
+    """校验已采样 id 下 end_field=1 的行数是否恰好为 1。"""
+    if not end_field:
+        return
+    expected_ids = sorted({int(value) for value in sampled_ids})
+    expected_id_set = set(expected_ids)
+    if not expected_ids:
+        return
+
+    total_start = time.perf_counter()
+    end_field_ref = quote_identifier(end_field, "结束字段名")
+    label_suffix = f" (rebate={target_rebate})" if target_rebate is not None else ""
+    print_sampling_detail(
+        f"  按已采样ID校验 {source_table_name} 数据完整性："
+        f"id数={len(expected_ids)}，字段={end_field}{label_suffix}"
+    )
+
+    no_end = []
+    multi_end = []
+    seen_ids = set()
+    for id_batch in chunked(expected_ids, SAMPLE_ID_FETCH_CHUNK_SIZE):
+        check_cancelled()
+        rows = sql_with_retry(
+            lambda batch=tuple(id_batch): _query_sampled_end_counts(
+                source_engine,
+                source_table_ref,
+                end_field_ref,
+                batch,
+            ),
+            f"校验采样ID结束行{label_suffix}",
+        )
+        for row in rows:
+            source_id = int(row['id'])
+            if source_id not in expected_id_set:
+                continue
+            seen_ids.add(source_id)
+            end_count = int(row.get('end_cnt') or 0)
+            if end_count == 0:
+                no_end.append(source_id)
+            elif end_count > 1:
+                multi_end.append(source_id)
+
+    missing_ids = sorted(expected_id_set - seen_ids)
+    no_end.extend(missing_ids)
+    if no_end or multi_end:
+        lines = [
+            f"数据完整性校验失败（表：{source_table_name}，字段：{end_field}，仅检查已采样ID）："
+        ]
+        if multi_end:
+            lines.append(
+                f"  存在多条 {end_field}=1 的 id 共 {len(multi_end)} 个："
+                f"{_format_sampled_id_preview(multi_end)}"
+            )
+        if no_end:
+            lines.append(
+                f"  缺少 {end_field}=1 的 id 共 {len(no_end)} 个："
+                f"{_format_sampled_id_preview(no_end)}"
+            )
+        raise ValueError('\n'.join(lines))
+
+    print_sampling_detail(
+        f"  已采样ID完整性校验通过：{len(expected_ids)} 个 id，"
+        f"耗时 {time.perf_counter() - total_start:.2f} 秒{label_suffix}"
+    )
 
 
 def read_sample_rows_by_ids(source_engine, source_table_ref, id_batch, target_rebate, *, timing=None):
@@ -664,7 +784,7 @@ def read_sample_rows_by_ids(source_engine, source_table_ref, id_batch, target_re
     )
     elapsed = time.perf_counter() - start
     add_sampling_timing(timing, 'row_read_seconds', elapsed)
-    print(
+    print_sampling_detail(
         f"读取完整采样行耗时：{elapsed:.2f} 秒，"
         f"id数={len(id_batch)}，行数={len(df)} (rebate={target_rebate})"
     )
@@ -719,7 +839,7 @@ def _make_sample_row_write_method(total_rows, target_rebate):
         state['batch_index'] += 1
         batch_index = state['batch_index']
         before_rows = state['written_rows']
-        print(
+        print_sampling_detail(
             f"  开始写入临时表批次 {batch_index}/{total_batches}："
             f"本批 {len(rows)} 行，已完成 {before_rows}/{total_rows} (rebate={target_rebate})"
         )
@@ -727,7 +847,7 @@ def _make_sample_row_write_method(total_rows, target_rebate):
         result = conn.execute(table.table.insert(), rows)
         elapsed = time.perf_counter() - start
         state['written_rows'] += len(rows)
-        print(
+        print_sampling_detail(
             f"  完成写入临时表批次 {batch_index}/{total_batches}："
             f"本批 {len(rows)} 行，累计 {state['written_rows']}/{total_rows}，耗时 {elapsed:.2f} 秒 "
             f"(rebate={target_rebate})"
@@ -745,7 +865,7 @@ def write_sample_chunk_to_staging(current_df, final_engine, staging_table_name, 
     start = time.perf_counter()
     row_count = len(current_df)
     total_batches = max(1, (row_count + SAMPLE_ROW_WRITE_CHUNK_SIZE - 1) // SAMPLE_ROW_WRITE_CHUNK_SIZE)
-    print(
+    print_sampling_detail(
         f"准备写入临时表：行数={row_count}，"
         f"批次={total_batches}，每批最多 {SAMPLE_ROW_WRITE_CHUNK_SIZE} 行 (rebate={target_rebate})"
     )
@@ -762,7 +882,7 @@ def write_sample_chunk_to_staging(current_df, final_engine, staging_table_name, 
     )
     elapsed = time.perf_counter() - start
     add_sampling_timing(timing, 'row_write_seconds', elapsed)
-    print(
+    print_sampling_detail(
         f"写入临时表耗时：{elapsed:.2f} 秒，"
         f"行数={len(current_df)} (rebate={target_rebate})"
     )
@@ -789,7 +909,7 @@ def fetch_and_write_sample_rows_in_chunks(
     totals = {'row_count': 0, 'changed_pair_count': 0, 'changed_row_count': 0}
     batches = list(chunked(sampled_ids, SAMPLE_ID_FETCH_CHUNK_SIZE))
     if len(batches) > 1:
-        print(f"采样ID较多，将按 {SAMPLE_ID_FETCH_CHUNK_SIZE} 个ID/批分 {len(batches)} 批提取写入")
+        print_sampling_detail(f"采样ID较多，将按 {SAMPLE_ID_FETCH_CHUNK_SIZE} 个ID/批分 {len(batches)} 批提取写入")
 
     for batch_index, id_batch in enumerate(batches, start=1):
         check_cancelled()
@@ -817,7 +937,7 @@ def fetch_and_write_sample_rows_in_chunks(
             )
             elapsed = time.perf_counter() - start
             add_sampling_timing(timing, 'id_remap_seconds', elapsed)
-            print(
+            print_sampling_detail(
                 f"追加模式id冲突处理耗时：{elapsed:.2f} 秒，"
                 f"冲突id={changed_pair_count}，改写行={changed_row_count}"
             )
@@ -835,10 +955,10 @@ def fetch_and_write_sample_rows_in_chunks(
         if append_mode:
             final_conn = refresh_connection_read_view(final_conn, final_db_name, "目标库")
         if len(batches) > 1:
-            print(f"  第 {batch_index}/{len(batches)} 批写入 {len(current_df)} 条，累计 {totals['row_count']} 条")
+            print_sampling_detail(f"  第 {batch_index}/{len(batches)} 批写入 {len(current_df)} 条，累计 {totals['row_count']} 条")
 
-    print(f"从 {source_db_name} 提取到 {totals['row_count']} 条数据")
-    print(f"采样行读取+写入总耗时：{time.perf_counter() - total_start:.2f} 秒 (rebate={target_rebate})")
+    print_sampling_detail(f"从 {source_db_name} 提取到 {totals['row_count']} 条数据")
+    print_sampling_detail(f"采样行读取+写入总耗时：{time.perf_counter() - total_start:.2f} 秒 (rebate={target_rebate})")
     return totals, final_conn
 
 
@@ -864,8 +984,8 @@ def sample_rebate_to_staging(
     sample_size = int(row['count'])
     timing_before = snapshot_sampling_timing(timing)
 
-    print(f"\n处理 rebate={target_rebate}, 采样数量={sample_size}...")
-    print(get_sample_description(target_rebate, sample_conditions))
+    print_sampling_detail(f"\n处理 rebate={target_rebate}, 采样数量={sample_size}...")
+    print_sampling_detail(get_sample_description(target_rebate, sample_conditions))
     source_table_ref = quote_identifier(source_table_name, "源表名")
     validate_sql_identifier(staging_table_name, "临时目标表名")
 
@@ -882,6 +1002,15 @@ def sample_rebate_to_staging(
         print(f"没有找到 rebate={target_rebate} 的数据")
         record_rebate_timing(timing, total_start, target_rebate=target_rebate, before=timing_before)
         return 0, 0, 0, final_conn
+
+    validate_sampled_ids_end_field_integrity(
+        source_engine,
+        source_table_ref,
+        source_table_name,
+        sample_conditions.get('end_field_for_validation'),
+        sampled_ids,
+        target_rebate=target_rebate,
+    )
 
     totals, final_conn = fetch_and_write_sample_rows_in_chunks(
         sampled_ids,
@@ -903,8 +1032,10 @@ def sample_rebate_to_staging(
         record_rebate_timing(timing, total_start, target_rebate=target_rebate, before=timing_before)
         return 0, totals['changed_pair_count'], totals['changed_row_count'], final_conn
 
-    print(f"成功写入 {totals['row_count']} 条数据到临时表 {final_db_name}.{staging_table_name} (rebate={target_rebate})")
-    print(f"rebate={target_rebate} 单项采样总耗时：{time.perf_counter() - total_start:.2f} 秒")
+    print_sampling_detail(
+        f"rebate={target_rebate} 完成：采样ID {len(sampled_ids)}/{sample_size}，"
+        f"写入 {totals['row_count']} 行，耗时 {time.perf_counter() - total_start:.2f} 秒"
+    )
     record_rebate_timing(
         timing,
         total_start,
@@ -1053,7 +1184,7 @@ def sample_config_rows_to_staging(
             'rebate': target_rebate,
             'count': int(row.count),
         }
-        print(f"\n采样进度：{row_index}/{len(config_rows)}，rebate={target_rebate}")
+        print(f"采样进度：{row_index}/{len(config_rows)}，rebate={target_rebate}")
         sampled_count, changed_pair_count, changed_row_count, final_conn = sample_rebate_to_staging(
             row_data,
             source_engine=source_engine,

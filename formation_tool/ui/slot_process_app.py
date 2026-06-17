@@ -44,6 +44,7 @@ class SlotProcessApp(SlotAppUiMixin, SlotAppSettingsMixin, SlotAppTaskMixin, Slo
         self.free_weight_0_var = tk.StringVar(value=str(trigger_weights['free_0']))
         self.free_weight_1_var = tk.StringVar(value=str(trigger_weights['free_1']))
         self.sampling_append_mode_var = tk.BooleanVar(value=app_deps.get_sampling_append_mode())
+        self.sampling_detailed_log_var = tk.BooleanVar(value=app_deps.get_sampling_detailed_log())
         self.buy_group_enabled_var = tk.BooleanVar(value=app_deps.get_buy_group_enabled())
         self.ex_buy_group_enabled_var = tk.BooleanVar(value=app_deps.get_ex_buy_group_enabled())
         self.buy_game_type_var = tk.StringVar(value=str(app_deps.get_buy_group_game_type()))

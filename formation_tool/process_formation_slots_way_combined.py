@@ -45,6 +45,7 @@ REBATE_CONFIG_COUNT_LIMITS = formation_defaults.clone_count_limits()
 DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIERS = formation_defaults.clone_direct_count_tiers()
 REBATE_CONFIG_DIRECT_COUNT_MODES = set(formation_defaults.DEFAULT_REBATE_CONFIG_DIRECT_COUNT_MODES)
 SAMPLING_APPEND_MODE = formation_defaults.DEFAULT_SAMPLING_APPEND_MODE
+SAMPLING_DETAILED_LOG = formation_defaults.DEFAULT_SAMPLING_DETAILED_LOG
 
 EXTERNAL_CONFIG_SOURCE = None
 EXTERNAL_CONFIG_LOAD_ERROR = None
@@ -125,6 +126,7 @@ def build_cli_settings_deps():
             'free_1': FREE_WEIGHT_BY_LAST_DIGIT[1],
         },
         get_sampling_append_mode=lambda: SAMPLING_APPEND_MODE,
+        get_sampling_detailed_log=lambda: SAMPLING_DETAILED_LOG,
         get_app_settings_path=get_app_settings_path,
         get_app_profile_settings_path=get_app_profile_settings_path,
         clear_config_warnings=clear_config_warnings,
@@ -135,6 +137,7 @@ def build_cli_settings_deps():
         apply_weight_config=apply_weight_config,
         apply_rebate_rules_config=apply_rebate_rules_config,
         apply_sampling_append_mode=apply_sampling_append_mode,
+        apply_sampling_detailed_log=apply_sampling_detailed_log,
         apply_group_weight_rules_config=apply_group_weight_rules_config,
         apply_rebate_config_direct_count_tiers=apply_rebate_config_direct_count_tiers,
         apply_buy_group_enabled=apply_buy_group_enabled,
@@ -312,6 +315,7 @@ DEFAULT_EX_GROUP_MULTIPLIER = formation_defaults.DEFAULT_EX_GROUP_MULTIPLIER
 DEFAULT_EX_SOURCE_SUFFIXES = formation_defaults.clone_ex_source_suffixes()
 DEFAULT_EXTRA_BUY_GROUPS = formation_defaults.clone_extra_buy_groups()
 DEFAULT_SAMPLING_APPEND_MODE = formation_defaults.DEFAULT_SAMPLING_APPEND_MODE
+DEFAULT_SAMPLING_DETAILED_LOG = formation_defaults.DEFAULT_SAMPLING_DETAILED_LOG
 
 # ================== 代码区域 =================
 
@@ -530,7 +534,7 @@ def _sync_globals_from_runtime_state():
     global GAME_TABLE_VENDOR, GAME_TABLE_GAME_ID, GAME_TABLE_PREFIX
     global _GAME_DEFS, GAME_CONFIGS, WEIGHT_TYPE_ID
     global SPECIAL_WEIGHT_BY_LAST_DIGIT, FREE_WEIGHT_BY_LAST_DIGIT
-    global REBATE_RULES, GROUP_WEIGHT_RULES, SAMPLING_APPEND_MODE
+    global REBATE_RULES, GROUP_WEIGHT_RULES, SAMPLING_APPEND_MODE, SAMPLING_DETAILED_LOG
     global REBATE_CONFIG_DIRECT_COUNT_MODES, SPECIAL_GROUP_TARGET_RTP
     global EX_GROUP_TARGET_RTPS
     global BUY_GROUP_ENABLED, EX_BUY_GROUP_ENABLED, BUY_GROUP_GAME_TYPE, BUY_GROUP_MULTIPLIER, BUY_GROUP_SOURCE_SUFFIX, EX_GROUP_MULTIPLIER
@@ -556,6 +560,7 @@ def _sync_globals_from_runtime_state():
     REBATE_RULES = target.REBATE_RULES
     GROUP_WEIGHT_RULES = target.GROUP_WEIGHT_RULES
     SAMPLING_APPEND_MODE = target.SAMPLING_APPEND_MODE
+    SAMPLING_DETAILED_LOG = target.SAMPLING_DETAILED_LOG
     REBATE_CONFIG_DIRECT_COUNT_MODES = target.REBATE_CONFIG_DIRECT_COUNT_MODES
     SPECIAL_GROUP_TARGET_RTP = target.SPECIAL_GROUP_TARGET_RTP
     EX_GROUP_TARGET_RTPS = target.EX_GROUP_TARGET_RTPS
@@ -758,6 +763,13 @@ def apply_sampling_append_mode(enabled):
     global SAMPLING_APPEND_MODE
     SAMPLING_APPEND_MODE = bool(enabled)
     RUNTIME_STATE.sampling_append_mode = SAMPLING_APPEND_MODE
+
+
+def apply_sampling_detailed_log(enabled):
+    """Apply verbose sampling log mode."""
+    global SAMPLING_DETAILED_LOG
+    SAMPLING_DETAILED_LOG = bool(enabled)
+    RUNTIME_STATE.sampling_detailed_log = SAMPLING_DETAILED_LOG
 
 
 def normalize_group_weight_rule_list(mode_name, mode_rules):
@@ -1035,6 +1047,7 @@ def connect_to_db(db_config, max_retries=None, retry_delay=None):
         retry_delay=retry_delay,
         check_cancelled=check_cancelled,
         sleep_func=interruptible_sleep,
+        verbose=SAMPLING_DETAILED_LOG,
     )
 
 
@@ -1571,46 +1584,78 @@ def write_rebate_config_rows(table_config, config_tbl, config_db_name, result_ro
     )
 
 
-def build_direct_rebate_config_rows(stats_df):
+def build_direct_rebate_config_rows(stats_df, *, print_fn=print):
     return rebate_config_logic.build_direct_rebate_config_rows(
         stats_df,
         check_cancelled=check_cancelled,
+        print_fn=print_fn,
     )
 
 
-def apply_direct_count_tier_limits_to_rows(rows, count_limits=None, label="采样配置"):
+def apply_direct_count_tier_limits_to_rows(
+    rows,
+    count_limits=None,
+    label="采样配置",
+    *,
+    print_fn=print,
+    detail_print_fn=None,
+):
     return rebate_config_logic.apply_direct_count_tier_limits_to_rows(
         rows,
         count_limits,
         label,
+        print_fn=print_fn,
+        detail_print_fn=detail_print_fn,
     )
 
 
-def select_smooth_rebate_bucket_rows(rule, bucket_rows, limit_min, limit_max):
+def select_smooth_rebate_bucket_rows(
+    rule,
+    bucket_rows,
+    limit_min,
+    limit_max,
+    *,
+    print_fn=print,
+    detail_print_fn=None,
+):
     return rebate_config_logic.select_smooth_rebate_bucket_rows(
         rule,
         bucket_rows,
         limit_min,
         limit_max,
         check_cancelled=check_cancelled,
+        print_fn=print_fn,
+        detail_print_fn=detail_print_fn,
     )
 
 
-def select_limited_rebate_bucket_rows(rule, bucket_rows, limit_min, limit_max):
+def select_limited_rebate_bucket_rows(
+    rule,
+    bucket_rows,
+    limit_min,
+    limit_max,
+    *,
+    print_fn=print,
+    detail_print_fn=None,
+):
     return rebate_config_logic.select_limited_rebate_bucket_rows(
         rule,
         bucket_rows,
         limit_min,
         limit_max,
         check_cancelled=check_cancelled,
+        print_fn=print_fn,
+        detail_print_fn=detail_print_fn,
     )
 
 
-def build_rule_based_rebate_config_rows(stats_df, rules):
+def build_rule_based_rebate_config_rows(stats_df, rules, *, print_fn=print, detail_print_fn=None):
     return rebate_config_logic.build_rule_based_rebate_config_rows(
         stats_df,
         rules,
         check_cancelled=check_cancelled,
+        print_fn=print_fn,
+        detail_print_fn=detail_print_fn,
     )
 
 
@@ -1630,11 +1675,20 @@ def build_rebate_sql_filter(rules=None, count_limits=None, *, include_rule_range
     )
 
 
-def apply_rebate_config_count_limits_to_rows(rows, count_limits=None, label="采样配置"):
+def apply_rebate_config_count_limits_to_rows(
+    rows,
+    count_limits=None,
+    label="采样配置",
+    *,
+    print_fn=print,
+    detail_print_fn=None,
+):
     return rebate_config_logic.apply_rebate_config_count_limits_to_rows(
         rows,
         count_limits,
         label,
+        print_fn=print_fn,
+        detail_print_fn=detail_print_fn,
     )
 
 def generate_rebate_config_for_game(game_key, game_config, rules, count_limits=None):
@@ -1657,7 +1711,10 @@ def generate_rebate_config_for_game(game_key, game_config, rules, count_limits=N
             normalize_rebate_config_rows=normalize_rebate_config_rows,
             write_rebate_config_rows=write_rebate_config_rows,
         ),
-        SimpleNamespace(direct_count_modes=RUNTIME_STATE.rebate_config_direct_count_modes),
+        SimpleNamespace(
+            direct_count_modes=RUNTIME_STATE.rebate_config_direct_count_modes,
+            detailed_log=SAMPLING_DETAILED_LOG,
+        ),
     )
     return rebate_config_runner.generate_rebate_config_for_game(
         game_key,

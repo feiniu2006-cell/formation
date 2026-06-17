@@ -1,5 +1,6 @@
 """Runner for generating rebate_count sampling configuration tables."""
 
+import inspect
 import time
 
 import pandas as pd
@@ -7,6 +8,32 @@ import pandas as pd
 from formation_tool.utils import log_utils
 
 print = log_utils.emit
+
+
+def is_rebate_config_detailed_log_enabled(deps):
+    return bool(getattr(deps, 'detailed_log', False))
+
+
+def print_rebate_config_detail(deps, message=""):
+    if is_rebate_config_detailed_log_enabled(deps):
+        print(message)
+
+
+def _call_with_supported_kwargs(func, *args, **kwargs):
+    """Call extension callbacks with only the keyword arguments they accept."""
+    try:
+        parameters = inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        return func(*args)
+    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values()):
+        supported_kwargs = kwargs
+    else:
+        supported_kwargs = {
+            key: value
+            for key, value in kwargs.items()
+            if key in parameters
+        }
+    return func(*args, **supported_kwargs)
 
 
 def get_rebate_config_run_names(game_config, deps):
@@ -70,10 +97,10 @@ def build_rebate_config_stats_condition(game_condition, rules, deps, count_limit
 
 def print_rebate_config_query_header(game_config, names):
     print(f"\n{'=' * 50}")
-    print(f"正在统计 [{game_config['name']}] {names['source_db_name']}.{names['source_table']} 的 rebate 分布...")
     print(
-        f"配置表 {names['config_db_name']}.{names['config_table']} "
-        "将在统计成功后整体替换；失败时保留旧配置。"
+        f"[{game_config['name']}] 统计 rebate 分布："
+        f"{names['source_db_name']}.{names['source_table']} -> "
+        f"{names['config_db_name']}.{names['config_table']}"
     )
 
 
@@ -88,7 +115,7 @@ def query_rebate_distribution(names, stats_condition, deps):
             f"FROM {source_ref} WHERE {stats_condition} GROUP BY `rebate` ORDER BY `rebate`",
             source_engine,
         )
-        print(f"rebate 分布统计耗时：{time.perf_counter() - start:.2f} 秒")
+        print_rebate_config_detail(deps, f"rebate 分布统计耗时：{time.perf_counter() - start:.2f} 秒")
         return stats_df
     except Exception as e:
         print(f"统计查询失败: {e}（配置表 {names['config_table']} 未替换）")
@@ -97,31 +124,48 @@ def query_rebate_distribution(names, stats_condition, deps):
 
 def build_rebate_config_rows(game_key, game_config, stats_df, rules, deps, count_limits):
     """Build normalized rebate_count rows from statistics and configured rules."""
+    detail_print_fn = lambda message="": print_rebate_config_detail(deps, message)
     direct_count_mode = str(game_key) in deps.direct_count_modes
     if direct_count_mode:
         print(
             "低数据量处理：已选择不使用现有采样规则，"
             "直接将统计到的 rebate 和数量写入配置表"
         )
-        result_rows = deps.build_direct_rebate_config_rows(stats_df)
-        result_rows = deps.apply_direct_count_tier_limits_to_rows(
+        result_rows = _call_with_supported_kwargs(
+            deps.build_direct_rebate_config_rows,
+            stats_df,
+            print_fn=print,
+        )
+        result_rows = _call_with_supported_kwargs(
+            deps.apply_direct_count_tier_limits_to_rows,
             result_rows,
             count_limits,
             game_config['name'],
+            print_fn=print,
+            detail_print_fn=detail_print_fn,
         )
         empty_message = "未查询到可写入的 rebate 数据；配置表未替换"
     else:
-        result_rows = deps.build_rule_based_rebate_config_rows(stats_df, rules)
+        result_rows = _call_with_supported_kwargs(
+            deps.build_rule_based_rebate_config_rows,
+            stats_df,
+            rules,
+            print_fn=print,
+            detail_print_fn=detail_print_fn,
+        )
         empty_message = "没有匹配规则的 rebate；配置表未替换，本次无可写入行"
 
     if not result_rows:
         print(empty_message)
         return None
 
-    result_rows = deps.apply_rebate_config_count_limits_to_rows(
+    result_rows = _call_with_supported_kwargs(
+        deps.apply_rebate_config_count_limits_to_rows,
         result_rows,
         count_limits,
         game_config['name'],
+        print_fn=print,
+        detail_print_fn=detail_print_fn,
     )
     try:
         return deps.normalize_rebate_config_rows(result_rows, game_config['name'])
@@ -164,7 +208,10 @@ def write_rebate_config_rows_if_ready(names, result_rows, deps):
     if not result_rows:
         return False
     print_rebate_config_write_preview(names, result_rows)
-    print(f"\n共 {len(result_rows)} 条配置准备写入 {names['config_db_name']}.{names['config_table']}")
+    print_rebate_config_detail(
+        deps,
+        f"\n共 {len(result_rows)} 条配置准备写入 {names['config_db_name']}.{names['config_table']}",
+    )
     return deps.write_rebate_config_rows(
         names['table_config'],
         names['config_table'],
@@ -180,7 +227,7 @@ def generate_rebate_config_for_game(game_key, game_config, rules, *, deps, count
     names = get_rebate_config_run_names(game_config, deps)
     start = time.perf_counter()
     game_condition = resolve_rebate_config_condition(names, deps)
-    print(f"源表与条件解析耗时：{time.perf_counter() - start:.2f} 秒")
+    print_rebate_config_detail(deps, f"源表与条件解析耗时：{time.perf_counter() - start:.2f} 秒")
     if game_condition is None:
         return False
 
@@ -202,7 +249,7 @@ def generate_rebate_config_for_game(game_key, game_config, rules, *, deps, count
         return False
 
     source_total = int(stats_df['total'].sum())
-    print(f"\n过滤条件: {stats_condition}")
+    print_rebate_config_detail(deps, f"\n过滤条件: {stats_condition}")
     print(f"匹配数据量: {source_total}")
 
     start = time.perf_counter()
@@ -214,10 +261,10 @@ def generate_rebate_config_for_game(game_key, game_config, rules, *, deps, count
         deps,
         count_limits,
     )
-    print(f"采样配置行构建耗时：{time.perf_counter() - start:.2f} 秒")
+    print_rebate_config_detail(deps, f"采样配置行构建耗时：{time.perf_counter() - start:.2f} 秒")
 
     start = time.perf_counter()
     result = write_rebate_config_rows_if_ready(names, result_rows, deps)
-    print(f"采样配置写入耗时：{time.perf_counter() - start:.2f} 秒")
-    print(f"{game_config['name']} 采样配置总耗时：{time.perf_counter() - total_start:.2f} 秒")
+    print_rebate_config_detail(deps, f"采样配置写入耗时：{time.perf_counter() - start:.2f} 秒")
+    print_rebate_config_detail(deps, f"{game_config['name']} 采样配置总耗时：{time.perf_counter() - total_start:.2f} 秒")
     return result

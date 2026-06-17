@@ -11,6 +11,7 @@ def build_sampling_core_context(runtime, deps):
         DB_RETRY_DELAY=runtime.db_retry_delay,
         SAMPLE_ID_FETCH_CHUNK_SIZE=deps.sample_id_fetch_chunk_size,
         SAMPLING_APPEND_MODE=runtime.sampling_append_mode,
+        SAMPLING_DETAILED_LOG=runtime.sampling_detailed_log,
         check_cancelled=deps.check_cancelled,
         chunked=deps.chunked,
         close_safely=deps.close_safely,

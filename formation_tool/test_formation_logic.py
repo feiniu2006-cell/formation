@@ -51,6 +51,7 @@ from formation_tool.ui import group_weight_rules_dialog
 from formation_tool.ui import rebate_rules_dialog
 from formation_tool.ui import single_sampling_dialog
 from formation_tool.ui import slot_app_settings
+from formation_tool.ui import slot_app_tasks
 from formation_tool.ui import ui_layout_defaults
 from formation_tool.ui.slot_app_settings import SlotAppSettingsMixin
 
@@ -1395,6 +1396,28 @@ class RebateConfigLogicTests(unittest.TestCase):
         self.assertEqual(rule_rows, [(0, 50000), (1000, 500), (2000, 120)])
         self.assertEqual(limited_rows, [(0, 20000), (1000, 200), (2000, 120)])
 
+    def test_rule_based_rebate_rows_keep_results_and_detail_skipped_rows(self):
+        pd = importlib.import_module("pandas")
+        stats_df = pd.DataFrame([
+            {"rebate": 0, "total": 100},
+            {"rebate": 1000, "total": 20},
+            {"rebate": 2000, "total": 1},
+        ])
+        normal_messages = []
+        detail_messages = []
+
+        rows = rebate_config_logic.build_rule_based_rebate_config_rows(
+            stats_df,
+            [{"rebate": 0, "count": 10}],
+            print_fn=normal_messages.append,
+            detail_print_fn=detail_messages.append,
+        )
+
+        self.assertEqual(rows, [(0, 10)])
+        self.assertTrue(any("           0" in message and "        10" in message for message in normal_messages))
+        self.assertFalse(any("跳过" in message for message in normal_messages))
+        self.assertEqual(len([message for message in detail_messages if "跳过" in message]), 2)
+
     def test_runner_build_rebate_rows_applies_limits_and_normalization(self):
         pd = importlib.import_module("pandas")
         stats_df = pd.DataFrame([
@@ -1714,6 +1737,46 @@ class DatabaseAccessTests(unittest.TestCase):
         self.assertEqual(customized["read_timeout"], 30)
         self.assertEqual(customized["write_timeout"], 40)
 
+    def test_connect_to_db_hides_success_logs_unless_verbose(self):
+        original_connect = db_runtime.mysql.connector.connect
+        try:
+            db_runtime.mysql.connector.connect = lambda **_kwargs: "conn"
+            db_config = {
+                "host": "127.0.0.1",
+                "port": 3306,
+                "user": "u",
+                "password": "p",
+                "database": "d",
+            }
+
+            quiet_output = io.StringIO()
+            with contextlib.redirect_stdout(quiet_output):
+                quiet_conn = db_runtime.connect_to_db(
+                    db_config,
+                    max_retries=1,
+                    retry_delay=0,
+                    check_cancelled=lambda: None,
+                    sleep_func=lambda _seconds: None,
+                )
+
+            verbose_output = io.StringIO()
+            with contextlib.redirect_stdout(verbose_output):
+                verbose_conn = db_runtime.connect_to_db(
+                    db_config,
+                    max_retries=1,
+                    retry_delay=0,
+                    check_cancelled=lambda: None,
+                    sleep_func=lambda _seconds: None,
+                    verbose=True,
+                )
+        finally:
+            db_runtime.mysql.connector.connect = original_connect
+
+        self.assertEqual(quiet_conn, "conn")
+        self.assertEqual(verbose_conn, "conn")
+        self.assertNotIn("数据库连接成功", quiet_output.getvalue())
+        self.assertIn("数据库连接成功", verbose_output.getvalue())
+
     def test_db_entrypoints_build_typed_database_access_callbacks(self):
         callbacks = db_entrypoints.DatabaseAccessCallbacks(
             get_database_configs=lambda: {"SRC": {"host": "127.0.0.1"}},
@@ -1811,7 +1874,9 @@ class SamplingCoreWriteTests(unittest.TestCase):
     def test_sampling_timing_records_slowest_rebate_breakdown(self):
         messages = []
         old_writer = log_utils._LOG_WRITER
+        old_detailed_log = getattr(sampling_core, "SAMPLING_DETAILED_LOG", False)
         log_utils.set_log_writer(messages.append)
+        sampling_core.SAMPLING_DETAILED_LOG = True
         timing = sampling_core.new_sampling_timing()
         before = sampling_core.snapshot_sampling_timing(timing)
         sampling_core.add_sampling_timing(timing, "id_query_seconds", 1.25)
@@ -1828,6 +1893,7 @@ class SamplingCoreWriteTests(unittest.TestCase):
             )
             sampling_core.print_sampling_timing_summary(timing)
         finally:
+            sampling_core.SAMPLING_DETAILED_LOG = old_detailed_log
             log_utils.set_log_writer(old_writer)
 
         self.assertEqual(timing["rebate_details"][0]["rebate"], 1000)
@@ -2075,6 +2141,166 @@ class SamplingCoreWriteTests(unittest.TestCase):
         self.assertNotIn("rebate", normalized_query.lower())
         self.assertNotIn("game_end", normalized_query.lower())
 
+    def test_resolve_direct_sample_conditions_defers_end_field_integrity_validation(self):
+        old_get_table_name = getattr(sampling_core, "get_table_name", None)
+        old_detect_optional = getattr(sampling_core, "detect_end_field_optional", None)
+        old_validate = getattr(sampling_core, "validate_end_field_integrity", None)
+        sampling_core.get_table_name = lambda _key, _config: "source_table"
+        sampling_core.detect_end_field_optional = lambda _conn, _table: " AND game_end = 1"
+        sampling_core.validate_end_field_integrity = (
+            lambda *_args: self.fail("full-table end-field validation should be deferred")
+        )
+        try:
+            resolved = sampling_core.resolve_direct_sample_conditions(
+                object(),
+                {},
+                {
+                    "where_clause": "rebate = {target_rebate}{end_field_opt}",
+                    "random_seed": 108,
+                },
+            )
+        finally:
+            if old_get_table_name is not None:
+                sampling_core.get_table_name = old_get_table_name
+            else:
+                delattr(sampling_core, "get_table_name")
+            if old_detect_optional is not None:
+                sampling_core.detect_end_field_optional = old_detect_optional
+            else:
+                delattr(sampling_core, "detect_end_field_optional")
+            if old_validate is not None:
+                sampling_core.validate_end_field_integrity = old_validate
+            else:
+                delattr(sampling_core, "validate_end_field_integrity")
+
+        self.assertEqual(resolved["where_clause"], "rebate = {target_rebate} AND game_end = 1")
+        self.assertEqual(resolved["end_field_for_validation"], "game_end")
+
+    def test_sampled_id_end_field_validation_checks_only_selected_ids(self):
+        queries = []
+
+        class FakeResult:
+            def __iter__(self):
+                return iter([(10, 1), (20, 1)])
+
+        class FakeConnection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def exec_driver_sql(self, query):
+                queries.append(query)
+                return FakeResult()
+
+        class FakeEngine:
+            def connect(self):
+                return FakeConnection()
+
+        old_sql_with_retry = getattr(sampling_core, "sql_with_retry", None)
+        had_sql_with_retry = hasattr(sampling_core, "sql_with_retry")
+        old_check_cancelled = getattr(sampling_core, "check_cancelled", None)
+        had_check_cancelled = hasattr(sampling_core, "check_cancelled")
+        old_quote_identifier = getattr(sampling_core, "quote_identifier", None)
+        had_quote_identifier = hasattr(sampling_core, "quote_identifier")
+        old_chunked = getattr(sampling_core, "chunked", None)
+        had_chunked = hasattr(sampling_core, "chunked")
+        sampling_core.sql_with_retry = lambda fn, label: fn()
+        sampling_core.check_cancelled = lambda: None
+        sampling_core.quote_identifier = lambda value, _label: f"`{value}`"
+        sampling_core.chunked = lambda values, _size: [list(values)]
+        try:
+            sampling_core.validate_sampled_ids_end_field_integrity(
+                FakeEngine(),
+                "`source_table`",
+                "source_table",
+                "game_end",
+                [10, 20],
+                target_rebate=1000,
+            )
+        finally:
+            if had_sql_with_retry:
+                sampling_core.sql_with_retry = old_sql_with_retry
+            else:
+                delattr(sampling_core, "sql_with_retry")
+            if had_check_cancelled:
+                sampling_core.check_cancelled = old_check_cancelled
+            else:
+                delattr(sampling_core, "check_cancelled")
+            if had_quote_identifier:
+                sampling_core.quote_identifier = old_quote_identifier
+            else:
+                delattr(sampling_core, "quote_identifier")
+            if had_chunked:
+                sampling_core.chunked = old_chunked
+            else:
+                delattr(sampling_core, "chunked")
+
+        normalized_query = " ".join(queries[0].split())
+        self.assertIn("WHERE `id` IN (10,20)", normalized_query)
+        self.assertIn("GROUP BY `id`", normalized_query)
+        self.assertNotIn("HAVING", normalized_query)
+
+    def test_sampled_id_end_field_validation_reports_bad_selected_ids(self):
+        class FakeResult:
+            def __iter__(self):
+                return iter([(10, 2), (20, 0)])
+
+        class FakeConnection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def exec_driver_sql(self, _query):
+                return FakeResult()
+
+        class FakeEngine:
+            def connect(self):
+                return FakeConnection()
+
+        old_sql_with_retry = getattr(sampling_core, "sql_with_retry", None)
+        had_sql_with_retry = hasattr(sampling_core, "sql_with_retry")
+        old_check_cancelled = getattr(sampling_core, "check_cancelled", None)
+        had_check_cancelled = hasattr(sampling_core, "check_cancelled")
+        old_quote_identifier = getattr(sampling_core, "quote_identifier", None)
+        had_quote_identifier = hasattr(sampling_core, "quote_identifier")
+        old_chunked = getattr(sampling_core, "chunked", None)
+        had_chunked = hasattr(sampling_core, "chunked")
+        sampling_core.sql_with_retry = lambda fn, label: fn()
+        sampling_core.check_cancelled = lambda: None
+        sampling_core.quote_identifier = lambda value, _label: f"`{value}`"
+        sampling_core.chunked = lambda values, _size: [list(values)]
+        try:
+            with self.assertRaisesRegex(ValueError, "仅检查已采样ID"):
+                sampling_core.validate_sampled_ids_end_field_integrity(
+                    FakeEngine(),
+                    "`source_table`",
+                    "source_table",
+                    "game_end",
+                    [10, 20],
+                    target_rebate=1000,
+                )
+        finally:
+            if had_sql_with_retry:
+                sampling_core.sql_with_retry = old_sql_with_retry
+            else:
+                delattr(sampling_core, "sql_with_retry")
+            if had_check_cancelled:
+                sampling_core.check_cancelled = old_check_cancelled
+            else:
+                delattr(sampling_core, "check_cancelled")
+            if had_quote_identifier:
+                sampling_core.quote_identifier = old_quote_identifier
+            else:
+                delattr(sampling_core, "quote_identifier")
+            if had_chunked:
+                sampling_core.chunked = old_chunked
+            else:
+                delattr(sampling_core, "chunked")
+
     def test_write_sample_chunk_uses_batched_progress_insert(self):
         calls = []
 
@@ -2145,6 +2371,22 @@ class SamplingCoreWriteTests(unittest.TestCase):
         self.assertEqual(execute_call[1], "insert-statement")
         self.assertEqual(execute_call[2], [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}])
         self.assertTrue(any(item[0] == "check_cancelled" for item in calls))
+
+    def test_sampling_detail_log_is_off_by_default(self):
+        calls = []
+        old_detailed_log = getattr(sampling_core, "SAMPLING_DETAILED_LOG", False)
+        old_print = sampling_core.print
+        sampling_core.print = lambda message="": calls.append(message)
+        try:
+            sampling_core.SAMPLING_DETAILED_LOG = False
+            sampling_core.print_sampling_detail("hidden")
+            sampling_core.SAMPLING_DETAILED_LOG = True
+            sampling_core.print_sampling_detail("shown")
+        finally:
+            sampling_core.SAMPLING_DETAILED_LOG = old_detailed_log
+            sampling_core.print = old_print
+
+        self.assertEqual(calls, ["shown"])
 
 
 class DirectSamplingRunnerTests(unittest.TestCase):
@@ -2535,7 +2777,7 @@ class RuleImportPreviewTests(unittest.TestCase):
             "rule_schema_version": 1,
             "trigger_weights": {"special_0": 100},
             "rebate_rules": {"1": [], "2": []},
-            "sampling_options": {"append_mode": True},
+            "sampling_options": {"append_mode": True, "detailed_log": True},
             "group_weight_rules": {"1": [], "99": []},
             "group_weight_options": {
                 "buy_groups": [
@@ -2548,6 +2790,7 @@ class RuleImportPreviewTests(unittest.TestCase):
         self.assertIn("规则文件版本：1", preview)
         self.assertIn("采样规则：2 个模式", preview)
         self.assertIn("采样写入模式：不清空追加", preview)
+        self.assertIn("采样详细日志：开启", preview)
         self.assertIn("group_weight 权重规则：2 个模式", preview)
         self.assertIn("购买局配置：1 个购买局配置", preview)
         self.assertIn("不会修改厂商、游戏编号、源库、目标库、配置库", preview)
@@ -2665,6 +2908,73 @@ class CommonConfigTests(unittest.TestCase):
 
 
 class SlotAppDepsTests(unittest.TestCase):
+    def build_task_header_app(self):
+        class FakeTaskHeaderApp(slot_app_tasks.SlotAppTaskMixin):
+            def __init__(self):
+                self.messages = []
+                self.task_deps = SimpleNamespace(
+                    get_runtime_state=lambda: {
+                        "vendor": "jili",
+                        "game_id": "106",
+                        "source_db": "SRC",
+                        "final_db": "DST",
+                        "config_db": "CFG",
+                    },
+                    get_external_config_source=lambda: None,
+                    get_external_config_load_error=lambda: None,
+                    get_trigger_weights=lambda: {
+                        "special_0": 100,
+                        "special_1": 200,
+                        "free_0": 50,
+                        "free_1": 100,
+                    },
+                    get_rebate_rules=lambda: {
+                        "1": [{}],
+                        "2": [{}],
+                        "3": [],
+                        "6": [{}],
+                        "7": [],
+                        "8": [],
+                    },
+                    get_sampling_append_mode=lambda: False,
+                    get_sampling_detailed_log=lambda: False,
+                    get_direct_count_modes=lambda: set(),
+                    get_direct_count_tiers=lambda: [{"rebate": 0, "count": 5000}],
+                    get_game_configs=lambda: {"1": {"name": "普通局"}},
+                    get_group_weight_rules=lambda: {"1": [{}], "99": [{}]},
+                    get_special_group_target_rtp=lambda: 6,
+                    get_buy_group_enabled=lambda: True,
+                    get_buy_group_multiplier=lambda: 43,
+                    get_buy_group_game_type=lambda: 99,
+                    get_buy_group_source_suffix=lambda: "free_formation",
+                    get_extra_buy_groups=lambda: [],
+                    format_weighted_rtp=lambda value: f"{value:g}",
+                    get_ex_group_multiplier=lambda: 1.5,
+                    get_ex_buy_group_enabled=lambda: False,
+                    get_ex_source_suffixes=lambda: {},
+                )
+
+            def append_log(self, message):
+                self.messages.append(message)
+
+        return FakeTaskHeaderApp()
+
+    def test_rebate_config_task_header_excludes_group_weight_and_purchase_logs(self):
+        app = self.build_task_header_app()
+
+        app.append_task_header_log(
+            "生成采样配置",
+            preflight={"kind": "rebate_config", "modes": ["1"]},
+        )
+        text = "".join(app.messages)
+
+        self.assertIn("采样规则：", text)
+        self.assertIn("直接计数阶梯", text)
+        self.assertNotIn("group_weight区间", text)
+        self.assertNotIn("购买局：", text)
+        self.assertNotIn("ex模式：", text)
+        self.assertNotIn("权重配置：", text)
+
     def test_slot_app_context_reports_missing_module_attrs(self):
         runtime = SimpleNamespace(**{
             name: None
@@ -2699,6 +3009,7 @@ class SlotAppDepsTests(unittest.TestCase):
         runtime.ex_source_suffixes = {}
         runtime.rebate_rules = {}
         runtime.sampling_append_mode = False
+        runtime.sampling_detailed_log = False
         runtime.group_weight_rules = {}
         runtime.special_group_target_rtp = None
         runtime.rebate_config_direct_count_modes = set()
@@ -2716,6 +3027,7 @@ class SlotAppDepsTests(unittest.TestCase):
             "RANDOM_SEED": 108,
             "DEFAULT_TRIGGER_WEIGHTS": {},
             "DEFAULT_SAMPLING_APPEND_MODE": False,
+            "DEFAULT_SAMPLING_DETAILED_LOG": False,
             "DEFAULT_BUY_GROUP_ENABLED": False,
             "DEFAULT_EX_BUY_GROUP_ENABLED": False,
             "DEFAULT_BUY_GROUP_GAME_TYPE": 99,
@@ -2845,6 +3157,7 @@ class FakeSettingsApp(SlotAppSettingsMixin):
         self.free_weight_0_var = tk.StringVar(master=master, value="30")
         self.free_weight_1_var = tk.StringVar(master=master, value="40")
         self.sampling_append_mode_var = tk.BooleanVar(master=master, value=False)
+        self.sampling_detailed_log_var = tk.BooleanVar(master=master, value=False)
         self.buy_group_enabled_var = tk.BooleanVar(master=master, value=False)
         self.ex_buy_group_enabled_var = tk.BooleanVar(master=master, value=False)
         self.buy_game_type_var = tk.StringVar(master=master, value="99")
@@ -2898,6 +3211,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             get_rebate_rules=lambda: {"1": [{"rebate": 0, "count": 1}]},
             clone_rebate_rules=lambda rules: {key: [dict(item) for item in value] for key, value in rules.items()},
             get_sampling_append_mode=lambda: True,
+            get_sampling_detailed_log=lambda: True,
             get_group_weight_rules=lambda: {"99": [{"rebate_min": 0, "weight": 10}]},
             clone_group_weight_rules=lambda rules: {key: [dict(item) for item in value] for key, value in rules.items()},
             get_special_group_target_rtp=lambda: 8.5,
@@ -2918,6 +3232,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         data = app.build_app_settings_data()
 
         self.assertTrue(data["sampling_options"]["append_mode"])
+        self.assertTrue(data["sampling_options"]["detailed_log"])
         self.assertEqual(data["group_weight_options"]["buy_game_type"], 99)
         self.assertEqual(data["group_weight_options"]["buy_multiplier"], 50)
         self.assertEqual(data["group_weight_options"]["buy_source_suffix"], "free_formation")
@@ -2965,6 +3280,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             trigger_weights={"special_0": 11, "special_1": 22, "free_0": 33, "free_1": 44},
             rebate_rules={"1": [{"rebate": 0, "count": 2}]},
             sampling_append_mode=True,
+            sampling_detailed_log=True,
             group_weight_rules={"99": [{"rebate_min": 0, "weight": 9}]},
             group_weight_options={
                 "special_target_rtp": 7.25,
@@ -2988,6 +3304,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertEqual(app.buy_game_type_var.get(), "120")
         self.assertEqual(app.buy_multiplier_var.get(), "60")
         self.assertEqual(app.buy_source_suffix_var.get(), "custom_free_formation")
+        self.assertTrue(app.sampling_detailed_log_var.get())
         self.assertEqual(app.ex_source_suffix_vars["6"].get(), "custom_ex_formation")
         self.assertEqual(app.ex_source_suffix_vars["8"].get(), "custom_ex_free_formation")
         self.assertEqual(app.extra_buy_rows, extra_groups)
@@ -3135,6 +3452,18 @@ class BuildFormationExeTests(unittest.TestCase):
             self.assertIn("_install_encrypted_importer(base_dir)", text)
             self.assertIn("decode('utf-8-sig')", text)
             self.assertIn("from tkinter import filedialog, messagebox, scrolledtext, ttk", text)
+            for module_name in (
+                "copy",
+                "dataclasses",
+                "datetime",
+                "functools",
+                "hashlib",
+                "inspect",
+                "numbers",
+                "random",
+                "typing",
+            ):
+                self.assertIn(f"import {module_name}  # noqa: F401", text)
             self.assertIn("formation_tool.rebate.rebate_config_storage", text)
             self.assertIn("formation_tool.common.common_config_runner", text)
         finally:
@@ -3407,6 +3736,24 @@ class GuiDialogSmokeTests(unittest.TestCase):
 
 
 class GroupWeightRulesDialogTests(unittest.TestCase):
+    def test_default_rtp_group_option_prefers_9650_when_available(self):
+        formatter = lambda group_id: f"{group_id} - target"
+
+        self.assertEqual(
+            group_weight_rules_dialog.choose_default_rtp_group_option(
+                [10000, 9900, 9650, 9600],
+                formatter,
+            ),
+            "9650 - target",
+        )
+        self.assertEqual(
+            group_weight_rules_dialog.choose_default_rtp_group_option(
+                [10000, 9900],
+                formatter,
+            ),
+            "10000 - target",
+        )
+
     def test_missing_zero_rebate_locks_zero_weight_entry_and_parses_as_zero(self):
         class FakeEntry:
             def __init__(self):

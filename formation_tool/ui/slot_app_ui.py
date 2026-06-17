@@ -139,15 +139,28 @@ class SlotAppUiMixin:
             text="不清空追加",
             variable=self.sampling_append_mode_var,
         )
+        detail_log_check = ttk.Checkbutton(
+            group_frame,
+            text="详细日志",
+            variable=self.sampling_detailed_log_var,
+        )
+        toggle_row = (action_count + 1) // 2
         sampling_mode_check.grid(
-            row=(action_count + 1) // 2,
+            row=toggle_row,
             column=0,
-            columnspan=2,
+            sticky="w",
+            padx=2,
+            pady=(3, 0),
+        )
+        detail_log_check.grid(
+            row=toggle_row,
+            column=1,
             sticky="w",
             padx=2,
             pady=(3, 0),
         )
         self.config_widgets.append((sampling_mode_check, "normal"))
+        self.config_widgets.append((detail_log_check, "normal"))
 
     def build_log_section(self, root_frame):
         log_frame = ttk.LabelFrame(root_frame, text="运行日志", padding=(6, 6))

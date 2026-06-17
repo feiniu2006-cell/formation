@@ -10,7 +10,7 @@ from formation_tool.core import formation_defaults
 
 APP_SETTINGS_FILE_NAME = 'formation_tool_settings.json'
 APP_SETTINGS_DIR_ENV = 'FORMATION_TOOL_SETTINGS_DIR'
-CURRENT_SETTINGS_VERSION = 3
+CURRENT_SETTINGS_VERSION = 4
 RULE_SETTINGS_SCHEMA_VERSION = 1
 
 
@@ -78,6 +78,7 @@ def build_app_settings_data(
     trigger_weights,
     rebate_rules,
     sampling_append_mode,
+    sampling_detailed_log,
     group_weight_rules,
     group_weight_options,
     direct_count_modes,
@@ -101,6 +102,7 @@ def build_app_settings_data(
         'rebate_rules': rebate_rules,
         'sampling_options': {
             'append_mode': bool(sampling_append_mode),
+            'detailed_log': bool(sampling_detailed_log),
         },
         'group_weight_rules': group_weight_rules,
         'group_weight_options': group_weight_options,
@@ -114,6 +116,13 @@ def migrate_settings_data(data):
     if not isinstance(data, dict):
         return data
     migrated = dict(data)
+    sampling_options = dict(migrated.get('sampling_options') or {})
+    if sampling_options:
+        sampling_options.setdefault(
+            'detailed_log',
+            formation_defaults.DEFAULT_SAMPLING_DETAILED_LOG,
+        )
+        migrated['sampling_options'] = sampling_options
     group_options = dict(migrated.get('group_weight_options') or {})
     if group_options:
         group_options.setdefault('buy_game_type', formation_defaults.DEFAULT_BUY_GROUP_GAME_TYPE)

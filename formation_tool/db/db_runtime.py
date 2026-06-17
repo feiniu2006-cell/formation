@@ -64,16 +64,18 @@ def get_engine(db_config):
     )
 
 
-def connect_to_db(db_config, *, max_retries, retry_delay, check_cancelled, sleep_func):
+def connect_to_db(db_config, *, max_retries, retry_delay, check_cancelled, sleep_func, verbose=False):
     """连接到数据库，支持重试机制。"""
     connect_config = with_default_db_timeouts(db_config)
     connect_config.setdefault('use_pure', True)
     for attempt in range(max_retries):
         check_cancelled()
         try:
-            print(f"尝试连接数据库 {db_config['host']}:{db_config['port']} (第{attempt + 1}次)...")
+            if verbose:
+                print(f"尝试连接数据库 {db_config['host']}:{db_config['port']} (第{attempt + 1}次)...")
             conn = mysql.connector.connect(**connect_config)
-            print(f"数据库连接成功: {db_config['host']}:{db_config['port']}")
+            if verbose:
+                print(f"数据库连接成功: {db_config['host']}:{db_config['port']}")
             return conn
         except Exception as e:
             print(f"数据库连接失败 (第{attempt + 1}次): {e}")
