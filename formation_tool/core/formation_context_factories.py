@@ -48,6 +48,7 @@ def build_group_weight_builder_context(runtime, constants, deps):
         EX_PURCHASE_MODE=constants.ex_purchase_mode,
         GROUP_WEIGHT_MODE_DEFS=constants.group_weight_mode_defs,
         GROUP_WEIGHT_RULES=runtime.group_weight_rules,
+        ZERO_REBATE_INFERENCE_MODES=getattr(runtime, 'zero_rebate_inference_modes', set()),
         GAME_TYPE_NAMES=constants.game_type_names,
         SPECIAL_GROUP_TARGET_RTP=runtime.special_group_target_rtp,
         EX_GROUP_TARGET_RTPS=getattr(runtime, 'ex_group_target_rtps', {}),

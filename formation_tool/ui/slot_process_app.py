@@ -47,6 +47,8 @@ class SlotProcessApp(SlotAppUiMixin, SlotAppSettingsMixin, SlotAppTaskMixin, Slo
         self.sampling_detailed_log_var = tk.BooleanVar(value=app_deps.get_sampling_detailed_log())
         self.buy_group_enabled_var = tk.BooleanVar(value=app_deps.get_buy_group_enabled())
         self.ex_buy_group_enabled_var = tk.BooleanVar(value=app_deps.get_ex_buy_group_enabled())
+        self.ex_buy_game_type_var = tk.StringVar(value=str(app_deps.get_ex_buy_group_game_type()))
+        self.ex_buy_source_suffix_var = tk.StringVar(value=str(app_deps.get_ex_buy_group_source_suffix()))
         self.buy_game_type_var = tk.StringVar(value=str(app_deps.get_buy_group_game_type()))
         self.buy_multiplier_var = tk.StringVar(value=str(app_deps.get_buy_group_multiplier()))
         self.buy_source_suffix_var = tk.StringVar(value=str(app_deps.get_buy_group_source_suffix()))

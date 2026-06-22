@@ -155,8 +155,11 @@ def load_buy_group_options_from_game_type_config(
     current_buy_game_type,
     current_buy_multiplier,
     current_buy_source_suffix,
+    current_ex_buy_game_type,
+    current_ex_buy_source_suffix,
     existing_extra_buy_groups,
     default_buy_game_type,
+    default_ex_buy_game_type,
     deps,
 ):
     """Load DB game_type rows, filter by existing source tables, and build UI buy options."""
@@ -191,9 +194,12 @@ def load_buy_group_options_from_game_type_config(
         current_buy_game_type=current_buy_game_type,
         current_buy_multiplier=current_buy_multiplier,
         current_buy_source_suffix=current_buy_source_suffix,
+        current_ex_buy_game_type=current_ex_buy_game_type,
+        current_ex_buy_source_suffix=current_ex_buy_source_suffix,
         existing_extra_buy_groups=existing_extra_buy_groups,
         existing_source_game_types=existing_source_game_types,
         default_buy_game_type=default_buy_game_type,
+        default_ex_buy_game_type=default_ex_buy_game_type,
     )
     options.update({
         'source_db': source_db,

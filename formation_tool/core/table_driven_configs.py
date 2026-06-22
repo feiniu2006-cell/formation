@@ -20,7 +20,7 @@ def get_fallback_source_suffix_for_mode(
     runtime,
     get_table_name,
 ):
-    mode = str(mode)
+    mode = formation_modes.normalize_group_weight_mode_key(mode)
     if mode in runtime.game_configs:
         table_name = get_table_name('SOURCE_TABLE', runtime.game_configs[mode]['table_config'])
         return extract_source_suffix_from_table_name(table_name, runtime.game_table_prefix)
@@ -99,9 +99,7 @@ def get_buy_group_source_suffix_for_mode(
 ):
     """Return the source formation suffix for one buy-like mode."""
     mode = str(game_type)
-    if mode == formation_modes.EX_PURCHASE_MODE:
-        actual_game_type = int(formation_modes.EX_PURCHASE_MODE)
-    elif mode == formation_modes.BUY_GROUP_MODE or formation_modes.is_extra_buy_mode(mode):
+    if mode in (formation_modes.EX_PURCHASE_MODE, formation_modes.BUY_GROUP_MODE) or formation_modes.is_extra_buy_mode(mode):
         actual_game_type = int(get_buy_group_game_type_for_mode(mode))
     else:
         actual_game_type = int(mode)

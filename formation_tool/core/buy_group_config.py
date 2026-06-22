@@ -256,6 +256,7 @@ def normalize_extra_buy_groups(
     buy_group_mode,
     default_buy_game_type,
     default_source_suffix=DEFAULT_BUY_GROUP_SOURCE_SUFFIX,
+    reserved_game_types=None,
 ):
     """Validate extra buy group config and return normalized rows."""
     if groups is None:
@@ -265,7 +266,15 @@ def normalize_extra_buy_groups(
 
     parsed = []
     seen = {int(default_buy_game_type)}
-    reserved = {int(mode) for mode in group_modes if str(mode) != str(buy_group_mode)}
+    reserved = set()
+    for mode in group_modes:
+        if str(mode) == str(buy_group_mode):
+            continue
+        try:
+            reserved.add(int(mode))
+        except (TypeError, ValueError):
+            continue
+    reserved.update(int(game_type) for game_type in (reserved_game_types or []))
     for idx, group in enumerate(groups, start=1):
         if not isinstance(group, dict):
             raise ValueError(f"额外购买局第 {idx} 行必须是对象")

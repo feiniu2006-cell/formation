@@ -203,7 +203,7 @@ def _check_buy_groups(report, deps):
     groups = list(deps.get_buy_groups() or [])
     enabled_groups = [group for group in groups if group.get("enabled", True)]
     seen_game_types = {}
-    reserved_game_types = {1, 2, 3, 6, 7, 8, 98}
+    reserved_game_types = {1, 2, 3, 6, 7, 8}
     for idx, group in enumerate(enabled_groups, start=1):
         try:
             game_type = int(group.get("game_type"))
@@ -217,6 +217,23 @@ def _check_buy_groups(report, deps):
         seen_game_types[game_type] = idx
         _check_positive_number(report, f"购买局{game_type}倍数", group.get("multiplier"))
         _check_source_suffix(report, f"购买局{game_type}阵型后缀", group.get("source_suffix"))
+
+    if deps.get_ex_buy_group_enabled():
+        try:
+            ex_buy_game_type = int(deps.get_ex_buy_group_game_type())
+        except (TypeError, ValueError):
+            report.add_fatal(f"ex购买局类型必须是整数：{deps.get_ex_buy_group_game_type()!r}")
+            ex_buy_game_type = None
+        if ex_buy_game_type is not None:
+            if ex_buy_game_type in reserved_game_types:
+                report.add_fatal(f"ex购买局类型 {ex_buy_game_type} 与内置局类型冲突")
+            if ex_buy_game_type in seen_game_types:
+                report.add_fatal(
+                    f"ex购买局类型 {ex_buy_game_type} 与购买局第 {seen_game_types[ex_buy_game_type]} 行重复"
+                )
+        source_suffix = str(deps.get_ex_buy_group_source_suffix() or "").strip()
+        if source_suffix:
+            _check_source_suffix(report, f"ex购买局{ex_buy_game_type}阵型后缀", source_suffix)
 
     _check_positive_number(report, "ex倍数", deps.get_ex_group_multiplier())
     special_target = deps.get_special_group_target_rtp()

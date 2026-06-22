@@ -55,6 +55,10 @@ def apply_cli_settings_data(data, *, deps, runtime_only=False):
             deps.apply_buy_group_enabled(group_options.get('buy_enabled'))
         if 'ex_buy_enabled' in group_options:
             deps.apply_ex_buy_group_enabled(group_options.get('ex_buy_enabled'))
+        if 'ex_buy_game_type' in group_options:
+            deps.apply_ex_buy_group_game_type(group_options.get('ex_buy_game_type'))
+        if 'ex_buy_source_suffix' in group_options:
+            deps.apply_ex_buy_group_source_suffix(group_options.get('ex_buy_source_suffix'))
         if 'buy_game_type' in group_options:
             deps.apply_buy_group_game_type(group_options.get('buy_game_type'))
         if 'buy_multiplier' in group_options:
@@ -65,6 +69,8 @@ def apply_cli_settings_data(data, *, deps, runtime_only=False):
             deps.apply_ex_group_multiplier(group_options.get('ex_multiplier'))
         if 'ex_group_target_rtps' in group_options:
             deps.apply_ex_group_target_rtps_config(group_options.get('ex_group_target_rtps'))
+        if 'zero_rebate_inference_modes' in group_options:
+            deps.apply_zero_rebate_inference_modes_config(group_options.get('zero_rebate_inference_modes'))
         if 'ex_source_suffixes' in group_options:
             deps.apply_ex_source_suffixes_config(group_options.get('ex_source_suffixes'))
         if 'extra_buy_groups' in group_options:

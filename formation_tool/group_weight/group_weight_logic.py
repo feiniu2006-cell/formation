@@ -65,6 +65,18 @@ def build_zero_weight_rebate_pairs(rebates, rules):
     return pairs
 
 
+def has_rebate_zero(rebates):
+    try:
+        return any(int(value) == 0 for value in rebates)
+    except (TypeError, ValueError):
+        return False
+
+
+def should_infer_zero_rebate(mode, rebates, enabled_modes):
+    """Only infer rebate=0 when the sample config contains it and the UI switch is enabled."""
+    return str(mode) in {str(item) for item in (enabled_modes or set())} and has_rebate_zero(rebates)
+
+
 def infer_zero_rebate_weight(nonzero_pairs, target_rtp):
     """Infer rebate=0 weight with ceiling rounding."""
     if target_rtp <= 0:
@@ -90,8 +102,8 @@ def build_special_group_weight_rows_for_group(
     return rows
 
 
-def infer_special_zero_weight(special_pairs, special_has_zero, target_rtp):
-    if not special_has_zero:
+def infer_special_zero_weight(special_pairs, should_infer, target_rtp):
+    if not should_infer:
         return 0, calculate_weighted_rtp(special_pairs)
     if target_rtp is None:
         raise ValueError("special mode has rebate=0; special target RTP is required")
@@ -108,7 +120,7 @@ def build_independent_group_weight_rows_for_group(
     group_id,
     game_type,
     pairs,
-    has_zero,
+    should_infer,
     target_rtp,
     *,
     display_divisor=1,
@@ -116,7 +128,7 @@ def build_independent_group_weight_rows_for_group(
     group_id = int(group_id)
     game_type = int(game_type)
     display_divisor = float(display_divisor)
-    zero_weight = infer_zero_rebate_weight(pairs, target_rtp) if has_zero else 0
+    zero_weight = infer_zero_rebate_weight(pairs, target_rtp) if should_infer else 0
     if zero_weight is None:
         zero_weight = 0
 
@@ -153,6 +165,7 @@ def build_normal_group_weight_rows_for_group(
     game_type=1,
     target_multiplier=1,
     display_divisor=1,
+    infer_zero_rebate=True,
 ):
     group_id = int(group_id)
     game_type = int(game_type)
@@ -171,7 +184,7 @@ def build_normal_group_weight_rows_for_group(
         - (free_rtp or 0) * free_rate
         - (special_rtp or 0) * special_rate
     ) / denominator
-    zero_weight = infer_zero_rebate_weight(normal_pairs, normal_target_rtp)
+    zero_weight = infer_zero_rebate_weight(normal_pairs, normal_target_rtp) if infer_zero_rebate else 0
     if zero_weight is None:
         zero_weight = 0
 
@@ -199,7 +212,7 @@ def build_normal_group_weight_rows_for_group(
 def build_ex_group_weight_rows_for_group(
     group_id,
     ex_pairs,
-    ex_has_zero,
+    ex_should_infer,
     ex_game_type,
     ex_multiplier=1,
     *,
@@ -211,7 +224,7 @@ def build_ex_group_weight_rows_for_group(
         group_id,
         ex_game_type,
         ex_pairs,
-        ex_has_zero,
+        ex_should_infer,
         target_rtp,
         display_divisor=ex_multiplier,
     )

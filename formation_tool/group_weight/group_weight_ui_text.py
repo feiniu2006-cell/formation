@@ -51,8 +51,9 @@ def build_special_target_note(has_zero):
 def build_ex_mode_note(mode, deps):
     write_game_type = deps.get_group_weight_write_game_type(mode)
     if mode == deps.ex_purchase_mode:
+        source_suffix = deps.get_buy_group_source_suffix_for_mode(mode)
         return (
-            f"ex购买局使用 ex免费局采样配置 rebate_ex_free_count，写入 game_type={write_game_type}；"
+            f"ex购买局使用 {source_suffix} 的采样配置，写入 game_type={write_game_type}；"
             f"最终RTP按 购买倍数 {deps.format_weighted_rtp(deps.buy_multiplier)} * "
             f"ex倍数 {deps.format_weighted_rtp(deps.ex_multiplier)} 折算"
         )

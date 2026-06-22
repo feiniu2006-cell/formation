@@ -7,6 +7,7 @@ from pathlib import Path
 
 from formation_tool.core import buy_group_config
 from formation_tool.core import formation_defaults
+from formation_tool.core import formation_modes
 
 APP_SETTINGS_FILE_NAME = 'formation_tool_settings.json'
 APP_SETTINGS_DIR_ENV = 'FORMATION_TOOL_SETTINGS_DIR'
@@ -129,8 +130,14 @@ def migrate_settings_data(data):
         group_options.setdefault('buy_source_suffix', formation_defaults.DEFAULT_BUY_GROUP_SOURCE_SUFFIX)
         group_options.setdefault('buy_multiplier', formation_defaults.DEFAULT_BUY_GROUP_MULTIPLIER)
         group_options.setdefault('buy_enabled', formation_defaults.DEFAULT_BUY_GROUP_ENABLED)
+        group_options.setdefault('ex_buy_game_type', formation_defaults.DEFAULT_EX_BUY_GROUP_GAME_TYPE)
+        group_options.setdefault('ex_buy_source_suffix', formation_defaults.DEFAULT_EX_BUY_GROUP_SOURCE_SUFFIX)
         group_options.setdefault('ex_source_suffixes', {})
         group_options.setdefault('ex_group_target_rtps', {})
+        group_options.setdefault(
+            'zero_rebate_inference_modes',
+            list(formation_modes.DEFAULT_ZERO_REBATE_INFERENCE_MODES),
+        )
         if group_options.get('buy_groups'):
             split = buy_group_config.split_buy_groups_to_legacy(
                 group_options.get('buy_groups'),

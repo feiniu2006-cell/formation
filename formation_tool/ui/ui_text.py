@@ -3,7 +3,9 @@
 PURCHASE_SECTION_TITLE = "购买局配置"
 ADD_BUY_GROUP_BUTTON = "新增购买局类型"
 LOAD_BUY_GROUP_TYPES_BUTTON = "加载阵型类型"
-EX_BUY_GROUP_CHECK_TEXT = "存在 ex 购买局(98)"
+EX_BUY_GROUP_CHECK_TEXT = "存在 ex 购买局"
+EX_BUY_GAME_TYPE_LABEL = "ex购买类型"
+EX_BUY_SOURCE_SUFFIX_LABEL = "ex购买后缀"
 EX_MULTIPLIER_LABEL = "ex 倍数"
 BUY_TABLE_HEADERS = ("序号", "启用", "类型", "倍数", "阵型后缀", "操作")
 DELETE_BUTTON_TEXT = "删除"

@@ -53,6 +53,8 @@ DEFAULT_SPECIAL_GROUP_TARGET_RTP = 6
 DEFAULT_EX_GROUP_TARGET_RTPS = {}
 DEFAULT_BUY_GROUP_ENABLED = False
 DEFAULT_EX_BUY_GROUP_ENABLED = False
+DEFAULT_EX_BUY_GROUP_GAME_TYPE = 98
+DEFAULT_EX_BUY_GROUP_SOURCE_SUFFIX = ''
 DEFAULT_BUY_GROUP_GAME_TYPE = 99
 DEFAULT_BUY_GROUP_MULTIPLIER = 75
 DEFAULT_BUY_GROUP_SOURCE_SUFFIX = 'free_formation'
@@ -134,7 +136,7 @@ REBATE_RULES = {
         {'rebate_min': 1000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 90, 'rebate_limit_max': 200, 'smooth_buckets': 9,'min_total': 5},
         {'rebate_min': 10000, 'rebate_max': 19999, 'count': 50, 'rebate_limit_min': 40, 'rebate_limit_max': 80, 'smooth_buckets': 6,'min_total': 5},
         {'rebate_min': 20000, 'rebate_max': 49999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 4,'min_total': 2},
-        {'rebate_min': 50000, 'rebate_max': 99999, 'count': 5, 'rebate_limit_min': 20, 'rebate_limit_max': 40, 'smooth_buckets': 1,'min_total': 2},
+        {'rebate_min': 50000, 'rebate_max': 99999, 'count': 10, 'rebate_limit_min': 20, 'rebate_limit_max': 40, 'smooth_buckets': 1,'min_total': 2},
         {'rebate_min': 100000, 'rebate_max': 599999, 'count': 5, 'rebate_limit_min': 10, 'rebate_limit_max': 20, 'smooth_buckets': 1,'min_total': 1},
         {'rebate_min': 600000, 'rebate_max': 1099999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 1,'min_total': 1},
     ],
@@ -144,7 +146,7 @@ REBATE_RULES = {
         {'rebate_min': 1000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 90, 'rebate_limit_max': 200, 'smooth_buckets': 9,'min_total': 5},
         {'rebate_min': 10000, 'rebate_max': 19999, 'count': 50, 'rebate_limit_min': 40, 'rebate_limit_max': 80, 'smooth_buckets': 6,'min_total': 5},
         {'rebate_min': 20000, 'rebate_max': 49999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 4,'min_total': 2},
-        {'rebate_min': 50000, 'rebate_max': 99999, 'count': 5, 'rebate_limit_min': 20, 'rebate_limit_max': 40, 'smooth_buckets': 1,'min_total': 2},
+        {'rebate_min': 50000, 'rebate_max': 99999, 'count': 10, 'rebate_limit_min': 20, 'rebate_limit_max': 40, 'smooth_buckets': 1,'min_total': 2},
         {'rebate_min': 100000, 'rebate_max': 599999, 'count': 5, 'rebate_limit_min': 10, 'rebate_limit_max': 20, 'smooth_buckets': 1,'min_total': 1},
         {'rebate_min': 600000, 'rebate_max': 1099999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 1,'min_total': 1},
     ],
@@ -152,7 +154,7 @@ REBATE_RULES = {
         {'rebate_min': 5000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 80, 'rebate_limit_max': 160, 'smooth_buckets': 8,'min_total': 5},
         {'rebate_min': 10000, 'rebate_max': 49999, 'count': 50, 'rebate_limit_min': 40, 'rebate_limit_max': 80, 'smooth_buckets': 5,'min_total': 5},
         {'rebate_min': 50000, 'rebate_max': 99999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 3,'min_total': 5},
-        {'rebate_min': 100000, 'rebate_max': 599999, 'count': 5, 'rebate_limit_min': 20, 'rebate_limit_max': 40, 'smooth_buckets': 1,'min_total': 2},
+        {'rebate_min': 100000, 'rebate_max': 599999, 'count': 10, 'rebate_limit_min': 20, 'rebate_limit_max': 40, 'smooth_buckets': 1,'min_total': 2},
         {'rebate_min': 600000, 'rebate_max': 1099999, 'count': 5, 'rebate_limit_min': 10, 'rebate_limit_max': 20, 'smooth_buckets': 1,'min_total': 1},
     ],
     '6': [  # ex普通局
@@ -161,7 +163,7 @@ REBATE_RULES = {
         {'rebate_min': 1000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 90, 'rebate_limit_max': 200, 'smooth_buckets': 9,'min_total': 5},
         {'rebate_min': 10000, 'rebate_max': 19999, 'count': 50, 'rebate_limit_min': 40, 'rebate_limit_max': 80, 'smooth_buckets': 6,'min_total': 5},
         {'rebate_min': 20000, 'rebate_max': 49999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 4,'min_total': 2},
-        {'rebate_min': 50000, 'rebate_max': 99999, 'count': 5, 'rebate_limit_min': 20, 'rebate_limit_max': 40, 'smooth_buckets': 1,'min_total': 2},
+        {'rebate_min': 50000, 'rebate_max': 99999, 'count': 10, 'rebate_limit_min': 20, 'rebate_limit_max': 40, 'smooth_buckets': 1,'min_total': 2},
         {'rebate_min': 100000, 'rebate_max': 599999, 'count': 5, 'rebate_limit_min': 10, 'rebate_limit_max': 20, 'smooth_buckets': 1,'min_total': 1},
         {'rebate_min': 600000, 'rebate_max': 1099999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 1,'min_total': 1},
     ],
@@ -171,7 +173,7 @@ REBATE_RULES = {
         {'rebate_min': 1000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 90, 'rebate_limit_max': 200, 'smooth_buckets': 9,'min_total': 5},
         {'rebate_min': 10000, 'rebate_max': 19999, 'count': 50, 'rebate_limit_min': 40, 'rebate_limit_max': 80, 'smooth_buckets': 6,'min_total': 5},
         {'rebate_min': 20000, 'rebate_max': 49999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 4,'min_total': 2},
-        {'rebate_min': 50000, 'rebate_max': 99999, 'count': 5, 'rebate_limit_min': 20, 'rebate_limit_max': 40, 'smooth_buckets': 1,'min_total': 2},
+        {'rebate_min': 50000, 'rebate_max': 99999, 'count': 10, 'rebate_limit_min': 20, 'rebate_limit_max': 40, 'smooth_buckets': 1,'min_total': 2},
         {'rebate_min': 100000, 'rebate_max': 599999, 'count': 5, 'rebate_limit_min': 10, 'rebate_limit_max': 20, 'smooth_buckets': 1,'min_total': 1},
         {'rebate_min': 600000, 'rebate_max': 1099999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 1,'min_total': 1},
     ],
@@ -179,7 +181,7 @@ REBATE_RULES = {
         {'rebate_min': 5000, 'rebate_max': 9999, 'count': 100, 'rebate_limit_min': 80, 'rebate_limit_max': 160, 'smooth_buckets': 8,'min_total': 5},
         {'rebate_min': 10000, 'rebate_max': 49999, 'count': 50, 'rebate_limit_min': 40, 'rebate_limit_max': 80, 'smooth_buckets': 5,'min_total': 5},
         {'rebate_min': 50000, 'rebate_max': 99999, 'count': 20, 'rebate_limit_min': 30, 'rebate_limit_max': 60, 'smooth_buckets': 3,'min_total': 5},
-        {'rebate_min': 100000, 'rebate_max': 599999, 'count': 5, 'rebate_limit_min': 10, 'rebate_limit_max': 20, 'smooth_buckets': 1,'min_total': 2},
+        {'rebate_min': 100000, 'rebate_max': 599999, 'count': 10, 'rebate_limit_min': 10, 'rebate_limit_max': 20, 'smooth_buckets': 1,'min_total': 2},
         {'rebate_min': 600000, 'rebate_max': 1099999, 'count': 5, 'rebate_limit_min': 5, 'rebate_limit_max': 10, 'smooth_buckets': 1,'min_total': 1},
     ],
     # '99': [  # ex局
@@ -275,7 +277,7 @@ GROUP_WEIGHT_RULES = {
         {'rebate_min': 500000,  'weight': 1},
         {'rebate_min': 1000000, 'weight': 1},
     ],
-    '99': [  # 购买局，独立配置；界面中可单独调整
+    'buy': [  # 购买局，独立配置；界面中可单独调整
         {'rebate_min': 0,        'weight': 0},
         {'rebate_min': 5000,     'weight': 0},
         {'rebate_min': 10000,    'weight': 0},
@@ -379,7 +381,7 @@ GROUP_WEIGHT_RULES = {
         {'rebate_min': 500000,  'weight': 1},
         {'rebate_min': 1000000, 'weight': 0},
     ],
-    '98': [  # 购买局，独立配置；界面中可单独调整
+    'ex_buy': [  # ex购买局，独立配置；界面中可单独调整
         {'rebate_min': 0,        'weight': 0},
         {'rebate_min': 5000,     'weight': 0},
         {'rebate_min': 10000,    'weight': 0},

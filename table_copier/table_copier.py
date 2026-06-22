@@ -16,7 +16,7 @@ import json
 import queue
 import sys
 import threading
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import mysql.connector
 from mysql.connector import Error
@@ -36,6 +36,7 @@ from config import (
     DATABASE_CONFIG,
     MAPPINGS,
     MAPPING_DB_CONFIG,
+    PREFIX_TYPE_ID_MAP,
     SKIP_IF_EXISTS_SUFFIXES,
     STRUCTURE_ONLY_SUFFIXES,
     TABLES_WITH_DATA_REPLACEMENT,
@@ -67,19 +68,68 @@ def build_data_replacement_config_for_mapping(mapping: Dict) -> Dict[str, Dict]:
     return config
 
 
-def expand_replacement_for_target(mapping: Dict, target_room_id: int) -> Dict[str, Dict]:
+def infer_type_id_from_prefix(prefix: str) -> Optional[int]:
+    """根据表前缀推断公共表 type_id。"""
+    if not prefix:
+        return None
+
+    game_prefix = str(prefix).split("_", 1)[0].lower()
+    return PREFIX_TYPE_ID_MAP.get(game_prefix)
+
+
+def get_target_prefix_for_room(
+    mapping: Dict,
+    target_room_id: int,
+    target_index: int,
+) -> Optional[str]:
+    """根据目标 room_id 和列表顺序找到对应目标表前缀。"""
+    target_prefixes = mapping.get("target_prefixes") or []
+    if not target_prefixes:
+        return None
+
+    room_id_text = str(target_room_id)
+    for target_prefix in target_prefixes:
+        if str(target_prefix).rsplit("_", 1)[-1] == room_id_text:
+            return target_prefix
+
+    if target_index < len(target_prefixes):
+        return target_prefixes[target_index]
+
+    if len(target_prefixes) == 1:
+        return target_prefixes[0]
+
+    return None
+
+
+def expand_replacement_for_target(
+    mapping: Dict,
+    target_room_id: int,
+    target_prefix: str = None,
+) -> Dict[str, Dict]:
     """
     基于映射配置和目标 room_id 生成一份完整的替换配置。
 
     这里会把 room_id.target 注入到每张公共表的替换规则中。
+    如果能从源/目标表前缀识别游戏类型，也会注入 type_id.source/type_id.target。
     """
     base_config = build_data_replacement_config_for_mapping(mapping)
+    source_type_id = infer_type_id_from_prefix(mapping.get("source_prefix"))
+    target_type_id = infer_type_id_from_prefix(target_prefix)
 
     for table, rules in base_config.items():
         table_rules = dict(rules)
         room_rule = dict(table_rules.get("room_id", {}))
         room_rule["target"] = target_room_id
         table_rules["room_id"] = room_rule
+
+        type_rule = dict(table_rules.get("type_id", {}))
+        if source_type_id is not None:
+            type_rule["source"] = source_type_id
+        if target_type_id is not None:
+            type_rule["target"] = target_type_id
+        if type_rule:
+            table_rules["type_id"] = type_rule
+
         base_config[table] = table_rules
 
     return base_config
@@ -265,14 +315,16 @@ class DatabaseTableCopier:
         target_table: str,
         replacement_config: Dict,
         manage_transaction: bool = True,
-    ) -> bool:
+    ) -> Optional[bool]:
         """
         按替换规则复制数据。
 
         注意：
         - `room_id.target` 用于确定目标侧清理范围；
         - 如果表里存在 `type_id`，则会额外要求 `type_id.target`，避免误删同 room_id 的其他类型数据；
-        - `type_id` 只用于目标侧清理保护和写入改值，不参与源数据筛选。
+        - `type_id.source` 存在时会参与源数据筛选，避免同 room_id 不同游戏类型互相混入；
+        - `type_id.target` 用于目标侧清理保护和写入改值。
+        - 返回 True 表示复制成功，None 表示源数据为空已跳过，False 表示失败。
         """
         try:
             if not self.table_exists(source_table):
@@ -312,14 +364,6 @@ class DatabaseTableCopier:
                 delete_conditions.append("`type_id` = %s")
                 delete_params.append(target_type_rule["target"])
 
-            delete_sql = f"DELETE FROM `{target_table}` WHERE " + " AND ".join(delete_conditions)
-            self.cursor.execute(delete_sql, tuple(delete_params))
-            deleted_rows = self.cursor.rowcount
-            print(
-                f"已清理目标旧数据: {target_table}，条件为 "
-                f"{' AND '.join(delete_conditions)}，删除 {deleted_rows} 行"
-            )
-
             auto_increment_columns = self.get_auto_increment_columns(source_table)
             if auto_increment_columns:
                 print(f"检测到自增字段: {auto_increment_columns}")
@@ -343,7 +387,7 @@ class DatabaseTableCopier:
                     select_parts.append(f"%s AS {quoted_column}")
                     select_params.append(rule["target"])
 
-                    if column == "type_id":
+                    if column == "type_id" and "source" not in rule:
                         continue
 
                     if "source" in rule:
@@ -356,6 +400,25 @@ class DatabaseTableCopier:
 
             select_clause = ", ".join(select_parts)
             where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+
+            count_sql = f"SELECT COUNT(*) FROM `{source_table}` WHERE {where_clause}"
+            self.cursor.execute(count_sql, tuple(where_params))
+            source_rows = self.cursor.fetchone()[0]
+            if source_rows <= 0:
+                print(
+                    f"源数据为空，跳过替换复制: {source_table} -> {target_table}，"
+                    f"筛选条件为 {where_clause}"
+                )
+                return None
+
+            delete_sql = f"DELETE FROM `{target_table}` WHERE " + " AND ".join(delete_conditions)
+            self.cursor.execute(delete_sql, tuple(delete_params))
+            deleted_rows = self.cursor.rowcount
+            print(
+                f"已清理目标旧数据: {target_table}，条件为 "
+                f"{' AND '.join(delete_conditions)}，删除 {deleted_rows} 行"
+            )
+
             query_params = tuple(select_params + where_params)
 
             query = f"""
@@ -472,8 +535,10 @@ class DatabaseTableCopier:
             else:
                 ok = self.copy_table_data(source_table, target_table)
 
-            if ok:
+            if ok is True:
                 results["data_copied"] += 1
+            elif ok is None:
+                results["skipped"] += 1
             else:
                 results["failed"] += 1
 
@@ -503,9 +568,14 @@ class DatabaseTableCopier:
                 results["skipped"] += 1
                 continue
 
-            if self.copy_table_data_with_replacement(table, table, replacement_config):
+            copy_result = self.copy_table_data_with_replacement(table, table, replacement_config)
+            if copy_result is True:
                 results["data_copied"] += 1
+            elif copy_result is None:
+                results["skipped"] += 1
             else:
+                target_room_id = replacement_config.get("room_id", {}).get("target")
+                print(f"处理失败: {table}，目标 room_id={target_room_id}")
                 results["failed"] += 1
 
         return results
@@ -591,6 +661,7 @@ def execute_mappings_workflow(
         "skipped": 0,
         "failed": 0,
     }
+    failed_room_ids = []
     processed_mappings = 0
 
     if not mappings:
@@ -643,17 +714,34 @@ def execute_mappings_workflow(
 
         if should_replace_data:
             source_room_id = mapping["source_room_id"]
-            for target_room_id in mapping["target_room_ids"]:
-                print(f"\n-> 开始替换公共表数据: room_id {source_room_id} -> {target_room_id}")
-                replacement_config = expand_replacement_for_target(mapping, target_room_id)
-                results = copier.copy_tables_data_replacement(replacement_config)
+            for target_index, target_room_id in enumerate(mapping["target_room_ids"]):
+                target_prefix = get_target_prefix_for_room(mapping, target_room_id, target_index)
+                source_type_id = infer_type_id_from_prefix(mapping.get("source_prefix"))
+                target_type_id = infer_type_id_from_prefix(target_prefix)
+                type_text = ""
+                if source_type_id is not None or target_type_id is not None:
+                    type_text = f"，type_id {source_type_id} -> {target_type_id}"
                 print(
+                    f"\n-> 开始替换公共表数据: room_id {source_room_id} -> {target_room_id}"
+                    f"{type_text}"
+                )
+                replacement_config = expand_replacement_for_target(
+                    mapping,
+                    target_room_id,
+                    target_prefix=target_prefix,
+                )
+                results = copier.copy_tables_data_replacement(replacement_config)
+                result_text = (
                     "   结果: "
                     f"表数={results['total_tables']}，"
                     f"成功={results['data_copied']}，"
                     f"跳过={results['skipped']}，"
                     f"失败={results['failed']}"
                 )
+                if results["failed"] > 0:
+                    failed_room_ids.append(target_room_id)
+                    result_text += f"，失败房间号={target_room_id}"
+                print(result_text)
 
                 replacement_totals["total_tables"] += results["total_tables"]
                 replacement_totals["data_copied"] += results["data_copied"]
@@ -678,6 +766,9 @@ def execute_mappings_workflow(
         f"跳过={replacement_totals['skipped']}，"
         f"失败={replacement_totals['failed']}"
     )
+    if failed_room_ids:
+        failed_room_text = ", ".join(map(str, dict.fromkeys(failed_room_ids)))
+        print(f"数据替换失败房间号: {failed_room_text}")
     print("=" * 60)
 
     return {

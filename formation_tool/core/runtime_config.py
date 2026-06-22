@@ -4,6 +4,7 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 from formation_tool.core import buy_group_config
+from formation_tool.core import formation_modes
 from formation_tool.core import formation_defaults
 
 
@@ -162,6 +163,7 @@ class RuntimeState:
 
         self.rebate_rules = formation_defaults.clone_rule_map(formation_defaults.REBATE_RULES)
         self.group_weight_rules = formation_defaults.clone_rule_map(formation_defaults.GROUP_WEIGHT_RULES)
+        self.zero_rebate_inference_modes = formation_modes.normalize_zero_rebate_inference_modes(None)
         self.sampling_append_mode = formation_defaults.DEFAULT_SAMPLING_APPEND_MODE
         self.sampling_detailed_log = formation_defaults.DEFAULT_SAMPLING_DETAILED_LOG
         self.rebate_config_direct_count_modes = set(formation_defaults.DEFAULT_REBATE_CONFIG_DIRECT_COUNT_MODES)
@@ -169,6 +171,8 @@ class RuntimeState:
         self.ex_group_target_rtps = formation_defaults.clone_ex_group_target_rtps()
         self.buy_group_enabled = formation_defaults.DEFAULT_BUY_GROUP_ENABLED
         self.ex_buy_group_enabled = formation_defaults.DEFAULT_EX_BUY_GROUP_ENABLED
+        self.ex_buy_group_game_type = formation_defaults.DEFAULT_EX_BUY_GROUP_GAME_TYPE
+        self.ex_buy_group_source_suffix = formation_defaults.DEFAULT_EX_BUY_GROUP_SOURCE_SUFFIX
         self.buy_group_game_type = formation_defaults.DEFAULT_BUY_GROUP_GAME_TYPE
         self.buy_group_multiplier = formation_defaults.DEFAULT_BUY_GROUP_MULTIPLIER
         self.buy_group_source_suffix = formation_defaults.DEFAULT_BUY_GROUP_SOURCE_SUFFIX
@@ -219,11 +223,20 @@ class RuntimeState:
 
     def sync_group_weight_runtime_from(self, namespace):
         self.group_weight_rules = _clone(_read(namespace, 'GROUP_WEIGHT_RULES', self.group_weight_rules))
+        self.zero_rebate_inference_modes = formation_modes.normalize_zero_rebate_inference_modes(
+            _read(namespace, 'ZERO_REBATE_INFERENCE_MODES', self.zero_rebate_inference_modes)
+        )
         self.special_group_target_rtp = _read(namespace, 'SPECIAL_GROUP_TARGET_RTP', self.special_group_target_rtp)
         self.ex_group_target_rtps = _clone(_read(namespace, 'EX_GROUP_TARGET_RTPS', self.ex_group_target_rtps))
         self.ex_group_multiplier = _read(namespace, 'EX_GROUP_MULTIPLIER', self.ex_group_multiplier)
         self.ex_source_suffixes = _clone(_read(namespace, 'EX_SOURCE_SUFFIXES', self.ex_source_suffixes))
         self.ex_buy_group_enabled = bool(_read(namespace, 'EX_BUY_GROUP_ENABLED', self.ex_buy_group_enabled))
+        self.ex_buy_group_game_type = _read(namespace, 'EX_BUY_GROUP_GAME_TYPE', self.ex_buy_group_game_type)
+        self.ex_buy_group_source_suffix = _read(
+            namespace,
+            'EX_BUY_GROUP_SOURCE_SUFFIX',
+            self.ex_buy_group_source_suffix,
+        )
 
         buy_groups = _read(namespace, 'BUY_GROUPS', None)
         if buy_groups is not None:
@@ -313,6 +326,7 @@ class RuntimeState:
         _assign(namespace, 'FREE_WEIGHT_BY_LAST_DIGIT', _clone(self.free_weight_by_last_digit))
         _assign(namespace, 'REBATE_RULES', _clone(self.rebate_rules))
         _assign(namespace, 'GROUP_WEIGHT_RULES', _clone(self.group_weight_rules))
+        _assign(namespace, 'ZERO_REBATE_INFERENCE_MODES', set(self.zero_rebate_inference_modes))
         _assign(namespace, 'SAMPLING_APPEND_MODE', self.sampling_append_mode)
         _assign(namespace, 'SAMPLING_DETAILED_LOG', self.sampling_detailed_log)
         _assign(namespace, 'REBATE_CONFIG_DIRECT_COUNT_MODES', set(self.rebate_config_direct_count_modes))
@@ -320,6 +334,8 @@ class RuntimeState:
         _assign(namespace, 'EX_GROUP_TARGET_RTPS', _clone(self.ex_group_target_rtps))
         _assign(namespace, 'BUY_GROUP_ENABLED', self.buy_group_enabled)
         _assign(namespace, 'EX_BUY_GROUP_ENABLED', self.ex_buy_group_enabled)
+        _assign(namespace, 'EX_BUY_GROUP_GAME_TYPE', self.ex_buy_group_game_type)
+        _assign(namespace, 'EX_BUY_GROUP_SOURCE_SUFFIX', self.ex_buy_group_source_suffix)
         _assign(namespace, 'BUY_GROUP_GAME_TYPE', self.buy_group_game_type)
         _assign(namespace, 'BUY_GROUP_MULTIPLIER', self.buy_group_multiplier)
         _assign(namespace, 'BUY_GROUP_SOURCE_SUFFIX', self.buy_group_source_suffix)

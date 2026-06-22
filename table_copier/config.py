@@ -22,16 +22,9 @@ DATABASE_CONFIG = DATABASE_CONFIGS["DB1"]  # 业务数据库
 MAPPING_DB_CONFIG = DATABASE_CONFIGS["MY"]  # 映射配置库，room_copy 表位于此库
 
 # ==================== 表复制规则 ====================
-# 如果 COPY_TABLE_SUFFIXES 为空列表，则复制前缀命中的全部表。
-# 如果配置了后缀，则只复制这些后缀结尾的表。
-COPY_TABLE_SUFFIXES = [
-    "_group_weight",
-    "_formation",
-    "_free_formation",
-    "_special_formation",
-    # "_personal_rebate_profile",
-    # "_bet_history",
-]
+# 自动复制前缀命中的全部表，不再维护后缀白名单。
+# 例如 source_prefix 为 pg_110 时，会自动复制 pg_110_xxx 和 pg_110 本身。
+COPY_TABLE_SUFFIXES = []
 
 # 这些后缀只复制结构，不复制数据。
 STRUCTURE_ONLY_SUFFIXES = [
@@ -54,6 +47,14 @@ SKIP_IF_EXISTS_SUFFIXES = [
     # "_log_table",
     # "_temp_table",
 ]
+
+# 游戏前缀对应的公共表 type_id。
+# 公共表复制时会按源前缀筛选源 type_id，并按目标前缀写入目标 type_id。
+PREFIX_TYPE_ID_MAP = {
+    "pg": 1,
+    "vg": 2,
+    "jili": 3,
+}
 
 # ==================== 运行时映射说明 ====================
 # 每条映射可以只做其中一种操作，也可以两种都做：
@@ -201,11 +202,11 @@ MAPPINGS = load_mappings_from_db()
 
 # 需要做公共表数据替换的表
 TABLES_WITH_DATA_REPLACEMENT = [
-    "game_bet_amount_config",
+    # "game_bet_amount_config",
     # "game_room_base_config",
-    "game_room_element_config",
-    "game_room_group_config",
-    "game_room_win_line_config",
+    # "game_room_element_config",
+    # "game_room_group_config",
+    # "game_room_win_line_config",
     "game_group_free_game_config",
     "game_group_special_weight_config",
 ]

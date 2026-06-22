@@ -24,6 +24,8 @@ class SettingsDeps:
     default_sampling_detailed_log: Any
     default_buy_group_enabled: Any
     default_ex_buy_group_enabled: Any
+    default_ex_buy_group_game_type: Any
+    default_ex_buy_group_source_suffix: Any
     default_buy_group_game_type: Any
     default_buy_group_multiplier: Any
     default_buy_group_source_suffix: Any
@@ -34,6 +36,7 @@ class SettingsDeps:
     default_group_weight_rules: Any
     default_special_group_target_rtp: Any
     default_ex_group_target_rtps: Any
+    default_zero_rebate_inference_modes: Any
     get_runtime_state: Any
     get_trigger_weights: Any
     get_rebate_rules: Any
@@ -42,8 +45,11 @@ class SettingsDeps:
     get_group_weight_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
+    get_zero_rebate_inference_modes: Any
     get_buy_group_enabled: Any
     get_ex_buy_group_enabled: Any
+    get_ex_buy_group_game_type: Any
+    get_ex_buy_group_source_suffix: Any
     get_buy_group_game_type: Any
     get_buy_group_multiplier: Any
     get_buy_group_source_suffix: Any
@@ -71,12 +77,15 @@ class SettingsDeps:
     apply_group_weight_rules_config: Any
     apply_special_group_target_rtp: Any
     apply_ex_group_target_rtps_config: Any
+    apply_zero_rebate_inference_modes_config: Any
     apply_buy_group_multiplier: Any
     apply_buy_group_game_type: Any
     apply_buy_group_source_suffix: Any
     apply_buy_groups_config: Any
     apply_buy_group_enabled: Any
     apply_ex_buy_group_enabled: Any
+    apply_ex_buy_group_game_type: Any
+    apply_ex_buy_group_source_suffix: Any
     apply_ex_group_multiplier: Any
     apply_ex_source_suffixes_config: Any
     apply_extra_buy_groups_config: Any
@@ -99,6 +108,8 @@ class TaskDeps:
     get_direct_count_modes: Any
     get_direct_count_tiers: Any
     get_game_configs: Any
+    ex_purchase_mode: Any
+    buy_group_mode: Any
     get_group_weight_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
@@ -110,6 +121,8 @@ class TaskDeps:
     get_ex_group_multiplier: Any
     get_ex_source_suffixes: Any
     get_ex_buy_group_enabled: Any
+    get_ex_buy_group_game_type: Any
+    get_ex_buy_group_source_suffix: Any
     format_weighted_rtp: Any
     clear_cancel_request: Any
     request_cancel: Any
@@ -135,6 +148,8 @@ class GroupWeightDialogDeps:
     default_special_target_rtp: Any
     ex_group_target_rtps: Any
     default_ex_group_target_rtps: Any
+    zero_rebate_inference_modes: Any
+    default_zero_rebate_inference_modes: Any
     buy_enabled: Any
     buy_game_type: Any
     buy_multiplier: Any
@@ -146,6 +161,7 @@ class GroupWeightDialogDeps:
     get_displayed_modes: Any
     collect_preview_warnings: Any
     get_mode_name: Any
+    supports_zero_rebate_inference: Any
     is_extra_buy_mode: Any
     get_extra_buy_group_by_mode: Any
     get_buy_group_game_type_for_mode: Any
@@ -164,6 +180,7 @@ class GroupWeightDialogDeps:
     normalize_extra_buy_groups: Any
     apply_special_target: Any
     apply_ex_group_target_rtps: Any
+    apply_zero_rebate_inference_modes: Any
     apply_rules: Any
     apply_extra_buy_groups: Any
     generate_config: Any
@@ -245,6 +262,8 @@ def build_settings_deps(ctx):
         default_sampling_detailed_log=ctx.default_sampling_detailed_log,
         default_buy_group_enabled=ctx.default_buy_group_enabled,
         default_ex_buy_group_enabled=ctx.default_ex_buy_group_enabled,
+        default_ex_buy_group_game_type=ctx.default_ex_buy_group_game_type,
+        default_ex_buy_group_source_suffix=ctx.default_ex_buy_group_source_suffix,
         default_buy_group_game_type=ctx.default_buy_group_game_type,
         default_buy_group_multiplier=ctx.default_buy_group_multiplier,
         default_buy_group_source_suffix=ctx.default_buy_group_source_suffix,
@@ -255,6 +274,7 @@ def build_settings_deps(ctx):
         default_group_weight_rules=ctx.default_group_weight_rules,
         default_special_group_target_rtp=ctx.default_special_group_target_rtp,
         default_ex_group_target_rtps=ctx.default_ex_group_target_rtps,
+        default_zero_rebate_inference_modes=ctx.default_zero_rebate_inference_modes,
         get_runtime_state=ctx.get_runtime_state,
         get_trigger_weights=ctx.get_trigger_weights,
         get_rebate_rules=ctx.get_rebate_rules,
@@ -263,8 +283,11 @@ def build_settings_deps(ctx):
         get_group_weight_rules=ctx.get_group_weight_rules,
         get_special_group_target_rtp=ctx.get_special_group_target_rtp,
         get_ex_group_target_rtps=ctx.get_ex_group_target_rtps,
+        get_zero_rebate_inference_modes=ctx.get_zero_rebate_inference_modes,
         get_buy_group_enabled=ctx.get_buy_group_enabled,
         get_ex_buy_group_enabled=ctx.get_ex_buy_group_enabled,
+        get_ex_buy_group_game_type=ctx.get_ex_buy_group_game_type,
+        get_ex_buy_group_source_suffix=ctx.get_ex_buy_group_source_suffix,
         get_buy_group_game_type=ctx.get_buy_group_game_type,
         get_buy_group_multiplier=ctx.get_buy_group_multiplier,
         get_buy_group_source_suffix=ctx.get_buy_group_source_suffix,
@@ -295,12 +318,15 @@ def build_settings_deps(ctx):
         apply_group_weight_rules_config=ctx.apply_group_weight_rules_config,
         apply_special_group_target_rtp=ctx.apply_special_group_target_rtp,
         apply_ex_group_target_rtps_config=ctx.apply_ex_group_target_rtps_config,
+        apply_zero_rebate_inference_modes_config=ctx.apply_zero_rebate_inference_modes_config,
         apply_buy_group_multiplier=ctx.apply_buy_group_multiplier,
         apply_buy_group_game_type=ctx.apply_buy_group_game_type,
         apply_buy_group_source_suffix=ctx.apply_buy_group_source_suffix,
         apply_buy_groups_config=ctx.apply_buy_groups_config,
         apply_buy_group_enabled=ctx.apply_buy_group_enabled,
         apply_ex_buy_group_enabled=ctx.apply_ex_buy_group_enabled,
+        apply_ex_buy_group_game_type=ctx.apply_ex_buy_group_game_type,
+        apply_ex_buy_group_source_suffix=ctx.apply_ex_buy_group_source_suffix,
         apply_ex_group_multiplier=ctx.apply_ex_group_multiplier,
         apply_ex_source_suffixes_config=ctx.apply_ex_source_suffixes_config,
         apply_extra_buy_groups_config=ctx.apply_extra_buy_groups_config,
@@ -324,6 +350,8 @@ def build_task_deps(ctx):
         get_direct_count_modes=ctx.get_direct_count_modes,
         get_direct_count_tiers=ctx.get_direct_count_tiers,
         get_game_configs=ctx.get_game_configs,
+        ex_purchase_mode=ctx.ex_purchase_mode,
+        buy_group_mode=ctx.buy_group_mode,
         get_group_weight_rules=ctx.get_group_weight_rules,
         get_special_group_target_rtp=ctx.get_special_group_target_rtp,
         get_ex_group_target_rtps=ctx.get_ex_group_target_rtps,
@@ -335,6 +363,8 @@ def build_task_deps(ctx):
         get_ex_group_multiplier=ctx.get_ex_group_multiplier,
         get_ex_source_suffixes=ctx.get_ex_source_suffixes,
         get_ex_buy_group_enabled=ctx.get_ex_buy_group_enabled,
+        get_ex_buy_group_game_type=ctx.get_ex_buy_group_game_type,
+        get_ex_buy_group_source_suffix=ctx.get_ex_buy_group_source_suffix,
         format_weighted_rtp=ctx.format_weighted_rtp,
         clear_cancel_request=ctx.clear_cancel_request,
         request_cancel=ctx.request_cancel,
@@ -371,6 +401,8 @@ def build_group_weight_dialog_deps(ctx):
         ),
         ex_group_target_rtps=getattr(ctx, 'get_ex_group_target_rtps', lambda: {})(),
         default_ex_group_target_rtps=getattr(ctx, 'default_ex_group_target_rtps', {}),
+        zero_rebate_inference_modes=getattr(ctx, 'get_zero_rebate_inference_modes', lambda: set())(),
+        default_zero_rebate_inference_modes=getattr(ctx, 'default_zero_rebate_inference_modes', set()),
         buy_enabled=ctx.get_buy_group_enabled(),
         buy_game_type=ctx.get_buy_group_game_type(),
         buy_multiplier=ctx.get_buy_group_multiplier(),
@@ -382,6 +414,7 @@ def build_group_weight_dialog_deps(ctx):
         get_displayed_modes=ctx.get_displayed_group_weight_modes,
         collect_preview_warnings=ctx.collect_group_weight_preview_warnings,
         get_mode_name=ctx.get_group_weight_mode_name,
+        supports_zero_rebate_inference=getattr(ctx, 'supports_zero_rebate_inference', lambda _mode: False),
         is_extra_buy_mode=ctx.is_extra_buy_mode,
         get_extra_buy_group_by_mode=ctx.get_extra_buy_group_by_mode,
         get_buy_group_game_type_for_mode=ctx.get_buy_group_game_type_for_mode,
@@ -400,6 +433,11 @@ def build_group_weight_dialog_deps(ctx):
         normalize_extra_buy_groups=ctx.normalize_extra_buy_groups,
         apply_special_target=ctx.apply_special_group_target_rtp,
         apply_ex_group_target_rtps=getattr(ctx, 'apply_ex_group_target_rtps_config', lambda _targets: None),
+        apply_zero_rebate_inference_modes=getattr(
+            ctx,
+            'apply_zero_rebate_inference_modes_config',
+            lambda _modes: None,
+        ),
         apply_rules=ctx.apply_group_weight_rules_config,
         apply_extra_buy_groups=ctx.apply_extra_buy_groups_config,
         generate_config=ctx.generate_group_weight_config,

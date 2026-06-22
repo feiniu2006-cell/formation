@@ -5,6 +5,7 @@ from formation_tool.group_weight.group_weight_logic import (
     calculate_weighted_rtp,
     format_weighted_rtp,
     infer_special_zero_weight,
+    should_infer_zero_rebate,
 )
 from formation_tool.group_weight import group_weight_row_helpers
 from formation_tool.core import runtime_context_sync
@@ -20,11 +21,16 @@ def configure(**values):
 def prepare_original_trigger_rtp_context(rebates_by_mode, mode_exists, mode_pairs):
     """准备原模式普通局反推需要的特殊/免费局 RTP 和触发状态。"""
     special_has_zero = group_weight_row_helpers.has_rebate_zero(rebates_by_mode['2'])
+    special_should_infer = should_infer_zero_rebate(
+        '2',
+        rebates_by_mode['2'],
+        globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
+    )
     special_enabled = mode_exists['2'] and bool(mode_pairs['2'])
     free_enabled = mode_exists['3'] and bool(mode_pairs['3'])
     special_zero_weight, special_actual_rtp = infer_special_zero_weight(
         mode_pairs['2'],
-        special_has_zero,
+        special_should_infer,
         SPECIAL_GROUP_TARGET_RTP,
     )
     special_rtp = special_actual_rtp or 0
@@ -33,6 +39,7 @@ def prepare_original_trigger_rtp_context(rebates_by_mode, mode_exists, mode_pair
         'special_enabled': special_enabled,
         'free_enabled': free_enabled,
         'special_has_zero': special_has_zero,
+        'special_should_infer': special_should_infer,
         'special_zero_weight': special_zero_weight,
         'special_rtp': special_rtp,
         'free_rtp': free_rtp,
@@ -44,6 +51,7 @@ def log_original_trigger_rtp_context(context):
     print(
         f"\n特殊局RTP={format_weighted_rtp(context['special_rtp'])}，"
         f"rebate=0 {'存在' if context['special_has_zero'] else '不存在'}，"
+        f"反推{'开启' if context['special_should_infer'] else '关闭'}，"
         f"反推0权重={context['special_zero_weight']}，"
         f"触发配置{'有效' if context['special_enabled'] else '无效/不存在'}"
     )
@@ -63,7 +71,12 @@ def append_original_normal_group_weight_rows(rows, rebates_by_mode, mode_exists,
         print("\n[普通局] 采样配置表没有数据，跳过普通局 group_weight")
         return 0
 
-    print("\n[普通局] 按目标RTP反推 rebate=0 权重")
+    normal_should_infer = should_infer_zero_rebate(
+        game_type,
+        rebates_by_mode[game_type],
+        globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
+    )
+    print(f"[普通局] rebate=0 反推：{'开启' if normal_should_infer else '关闭'}")
     normal_rows = 0
     for group_id in WEIGHT_GROUP_IDS:
         check_cancelled()
@@ -75,6 +88,7 @@ def append_original_normal_group_weight_rows(rows, rebates_by_mode, mode_exists,
                 trigger_context['free_enabled'],
                 trigger_context['special_rtp'],
                 trigger_context['special_enabled'],
+                infer_zero_rebate=normal_should_infer,
             )
         except ValueError as e:
             print(f"  ⚠ {e}，跳过 group_id={group_id}")

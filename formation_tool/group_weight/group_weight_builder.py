@@ -12,6 +12,7 @@ from formation_tool.group_weight.group_weight_logic import (
     build_rebate_weight_pairs,
     build_zero_weight_rebate_pairs,
     format_weighted_rtp,
+    should_infer_zero_rebate,
 )
 from formation_tool.core import runtime_context_sync
 from formation_tool.utils import log_utils
@@ -56,18 +57,22 @@ def build_group_weight_pairs_for_modes(active_modes, rebates_by_mode):
             rules = extra_group.get('rules', GROUP_WEIGHT_RULES.get(BUY_GROUP_MODE, []))
         else:
             rules = GROUP_WEIGHT_RULES.get(game_type, [])
-        exclude_zero = get_group_weight_rtp_role(game_type) in ('normal', 'special', 'ex_normal', 'ex_independent')
+        infer_zero = should_infer_zero_rebate(
+            game_type,
+            rebates_by_mode[game_type],
+            globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
+        )
         pairs, skipped_zero, skipped_rebate_zero = build_rebate_weight_pairs(
             rebates_by_mode[game_type],
             rules,
-            exclude_rebate_zero=exclude_zero,
+            exclude_rebate_zero=infer_zero,
         )
         mode_pairs[game_type] = pairs
         mode_name = get_group_weight_mode_name(game_type)
         print(
             f"\n[{mode_name}] 可写入非0权重 rebate {len(pairs)} 个，"
             f"跳过 weight=0 的 rebate {skipped_zero} 个"
-            + (f"，{mode_name}暂不使用配置中的 rebate=0 {skipped_rebate_zero} 个" if exclude_zero else "")
+            + (f"，{mode_name}开启 rebate=0 反推，暂不使用配置中的 rebate=0 {skipped_rebate_zero} 个" if infer_zero else "")
         )
     return mode_pairs
 
@@ -159,8 +164,8 @@ def append_special_group_weight_rows(rows, write_game_type, pairs, zero_weight):
     return group_weight_row_helpers.append_special_group_weight_rows(rows, write_game_type, pairs, zero_weight)
 
 
-def append_independent_ex_group_rows(rows, game_type, pairs, has_zero):
-    return group_weight_row_helpers.append_independent_ex_group_rows(rows, game_type, pairs, has_zero)
+def append_independent_ex_group_rows(rows, game_type, pairs, should_infer_zero):
+    return group_weight_row_helpers.append_independent_ex_group_rows(rows, game_type, pairs, should_infer_zero)
 
 
 def has_rebate_zero(rebates):

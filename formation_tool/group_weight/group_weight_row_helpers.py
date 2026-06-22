@@ -35,6 +35,31 @@ def append_buy_like_group_weight_rows(rows, write_game_type, pairs, multiplier):
     return mode_rows, game_rtp, display_rtp
 
 
+def append_targeted_buy_like_group_weight_rows(rows, write_game_type, pairs, multiplier):
+    """Write buy-like rows while inferring rebate=0 per RTP group target."""
+    mode_rows = 0
+    infos = {}
+    write_game_type = int(write_game_type)
+    multiplier = float(multiplier)
+    for group_id in WEIGHT_GROUP_IDS:
+        group_id = int(group_id)
+        base_target_rtp = get_group_target_rtp_ratio(group_id)
+        game_rows, info = build_independent_group_weight_rows_for_group(
+            group_id,
+            write_game_type,
+            pairs,
+            True,
+            base_target_rtp * multiplier,
+            display_divisor=multiplier,
+        )
+        info['base_target_rtp'] = base_target_rtp
+        info['multiplier'] = multiplier
+        infos[group_id] = info
+        rows.extend(game_rows)
+        mode_rows += len(game_rows)
+    return mode_rows, infos
+
+
 def append_special_group_weight_rows(rows, write_game_type, pairs, zero_weight):
     """写入需要把 rebate=0 放第一条的局类型，返回新增行数。"""
     mode_rows = 0

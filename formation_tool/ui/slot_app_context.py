@@ -19,6 +19,8 @@ class SlotAppDepsContext:
     default_sampling_detailed_log: Any
     default_buy_group_enabled: Any
     default_ex_buy_group_enabled: Any
+    default_ex_buy_group_game_type: Any
+    default_ex_buy_group_source_suffix: Any
     default_buy_group_game_type: Any
     default_buy_group_multiplier: Any
     default_buy_group_source_suffix: Any
@@ -29,6 +31,7 @@ class SlotAppDepsContext:
     default_group_weight_rules: Any
     default_special_group_target_rtp: Any
     default_ex_group_target_rtps: Any
+    default_zero_rebate_inference_modes: Any
     get_runtime_state: Any
     get_trigger_weights: Any
     get_rebate_rules: Any
@@ -37,8 +40,11 @@ class SlotAppDepsContext:
     get_group_weight_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
+    get_zero_rebate_inference_modes: Any
     get_buy_group_enabled: Any
     get_ex_buy_group_enabled: Any
+    get_ex_buy_group_game_type: Any
+    get_ex_buy_group_source_suffix: Any
     get_buy_group_game_type: Any
     get_buy_group_multiplier: Any
     get_buy_group_source_suffix: Any
@@ -71,12 +77,15 @@ class SlotAppDepsContext:
     apply_group_weight_rules_config: Any
     apply_special_group_target_rtp: Any
     apply_ex_group_target_rtps_config: Any
+    apply_zero_rebate_inference_modes_config: Any
     apply_buy_group_multiplier: Any
     apply_buy_group_game_type: Any
     apply_buy_group_source_suffix: Any
     apply_buy_groups_config: Any
     apply_buy_group_enabled: Any
     apply_ex_buy_group_enabled: Any
+    apply_ex_buy_group_game_type: Any
+    apply_ex_buy_group_source_suffix: Any
     apply_ex_group_multiplier: Any
     apply_ex_source_suffixes_config: Any
     apply_extra_buy_groups_config: Any
@@ -117,6 +126,7 @@ class SlotAppDepsContext:
     get_displayed_group_weight_modes: Any
     collect_group_weight_preview_warnings: Any
     get_group_weight_mode_name: Any
+    supports_zero_rebate_inference: Any
     is_extra_buy_mode: Any
     get_extra_buy_group_by_mode: Any
     get_buy_group_game_type_for_mode: Any
@@ -143,9 +153,12 @@ REQUIRED_RUNTIME_ATTRS = (
     'sampling_append_mode',
     'sampling_detailed_log',
     'group_weight_rules',
+    'zero_rebate_inference_modes',
     'special_group_target_rtp',
     'buy_group_enabled',
     'ex_buy_group_enabled',
+    'ex_buy_group_game_type',
+    'ex_buy_group_source_suffix',
     'buy_group_game_type',
     'buy_group_multiplier',
     'buy_group_source_suffix',
@@ -172,6 +185,8 @@ REQUIRED_MODULE_ATTRS = (
     'DEFAULT_SAMPLING_DETAILED_LOG',
     'DEFAULT_BUY_GROUP_ENABLED',
     'DEFAULT_EX_BUY_GROUP_ENABLED',
+    'DEFAULT_EX_BUY_GROUP_GAME_TYPE',
+    'DEFAULT_EX_BUY_GROUP_SOURCE_SUFFIX',
     'DEFAULT_BUY_GROUP_GAME_TYPE',
     'DEFAULT_BUY_GROUP_MULTIPLIER',
     'DEFAULT_BUY_GROUP_SOURCE_SUFFIX',
@@ -182,6 +197,7 @@ REQUIRED_MODULE_ATTRS = (
     'DEFAULT_GROUP_WEIGHT_RULES',
     'DEFAULT_SPECIAL_GROUP_TARGET_RTP',
     'DEFAULT_EX_GROUP_TARGET_RTPS',
+    'DEFAULT_ZERO_REBATE_INFERENCE_MODES',
     'get_app_settings_path',
     'get_app_profile_settings_path',
     'clone_rebate_rules',
@@ -197,12 +213,15 @@ REQUIRED_MODULE_ATTRS = (
     'apply_group_weight_rules_config',
     'apply_special_group_target_rtp',
     'apply_ex_group_target_rtps_config',
+    'apply_zero_rebate_inference_modes_config',
     'apply_buy_group_multiplier',
     'apply_buy_group_game_type',
     'apply_buy_group_source_suffix',
     'apply_buy_groups_config',
     'apply_buy_group_enabled',
     'apply_ex_buy_group_enabled',
+    'apply_ex_buy_group_game_type',
+    'apply_ex_buy_group_source_suffix',
     'apply_ex_group_multiplier',
     'apply_ex_source_suffixes_config',
     'apply_extra_buy_groups_config',
@@ -247,6 +266,7 @@ REQUIRED_MODULE_ATTRS = (
     'get_displayed_group_weight_modes',
     'collect_group_weight_preview_warnings',
     'get_group_weight_mode_name',
+    'supports_zero_rebate_inference',
     'is_extra_buy_mode',
     'get_extra_buy_group_by_mode',
     'get_buy_group_game_type_for_mode',
@@ -290,6 +310,8 @@ def build_slot_app_deps_context(runtime, module):
         default_sampling_detailed_log=m.DEFAULT_SAMPLING_DETAILED_LOG,
         default_buy_group_enabled=m.DEFAULT_BUY_GROUP_ENABLED,
         default_ex_buy_group_enabled=m.DEFAULT_EX_BUY_GROUP_ENABLED,
+        default_ex_buy_group_game_type=m.DEFAULT_EX_BUY_GROUP_GAME_TYPE,
+        default_ex_buy_group_source_suffix=m.DEFAULT_EX_BUY_GROUP_SOURCE_SUFFIX,
         default_buy_group_game_type=m.DEFAULT_BUY_GROUP_GAME_TYPE,
         default_buy_group_multiplier=m.DEFAULT_BUY_GROUP_MULTIPLIER,
         default_buy_group_source_suffix=m.DEFAULT_BUY_GROUP_SOURCE_SUFFIX,
@@ -300,6 +322,7 @@ def build_slot_app_deps_context(runtime, module):
         default_group_weight_rules=m.DEFAULT_GROUP_WEIGHT_RULES,
         default_special_group_target_rtp=m.DEFAULT_SPECIAL_GROUP_TARGET_RTP,
         default_ex_group_target_rtps=m.DEFAULT_EX_GROUP_TARGET_RTPS,
+        default_zero_rebate_inference_modes=m.DEFAULT_ZERO_REBATE_INFERENCE_MODES,
         get_runtime_state=r.runtime_dict,
         get_trigger_weights=r.trigger_weights_dict,
         get_rebate_rules=lambda: runtime.rebate_rules,
@@ -308,8 +331,11 @@ def build_slot_app_deps_context(runtime, module):
         get_group_weight_rules=lambda: runtime.group_weight_rules,
         get_special_group_target_rtp=lambda: runtime.special_group_target_rtp,
         get_ex_group_target_rtps=lambda: dict(getattr(runtime, 'ex_group_target_rtps', {})),
+        get_zero_rebate_inference_modes=lambda: set(runtime.zero_rebate_inference_modes or ()),
         get_buy_group_enabled=lambda: runtime.buy_group_enabled,
         get_ex_buy_group_enabled=lambda: runtime.ex_buy_group_enabled,
+        get_ex_buy_group_game_type=lambda: runtime.ex_buy_group_game_type,
+        get_ex_buy_group_source_suffix=lambda: runtime.ex_buy_group_source_suffix,
         get_buy_group_game_type=lambda: runtime.buy_group_game_type,
         get_buy_group_multiplier=lambda: runtime.buy_group_multiplier,
         get_buy_group_source_suffix=lambda: runtime.buy_group_source_suffix,
@@ -342,12 +368,15 @@ def build_slot_app_deps_context(runtime, module):
         apply_group_weight_rules_config=m.apply_group_weight_rules_config,
         apply_special_group_target_rtp=m.apply_special_group_target_rtp,
         apply_ex_group_target_rtps_config=m.apply_ex_group_target_rtps_config,
+        apply_zero_rebate_inference_modes_config=m.apply_zero_rebate_inference_modes_config,
         apply_buy_group_multiplier=m.apply_buy_group_multiplier,
         apply_buy_group_game_type=m.apply_buy_group_game_type,
         apply_buy_group_source_suffix=m.apply_buy_group_source_suffix,
         apply_buy_groups_config=m.apply_buy_groups_config,
         apply_buy_group_enabled=m.apply_buy_group_enabled,
         apply_ex_buy_group_enabled=m.apply_ex_buy_group_enabled,
+        apply_ex_buy_group_game_type=m.apply_ex_buy_group_game_type,
+        apply_ex_buy_group_source_suffix=m.apply_ex_buy_group_source_suffix,
         apply_ex_group_multiplier=m.apply_ex_group_multiplier,
         apply_ex_source_suffixes_config=m.apply_ex_source_suffixes_config,
         apply_extra_buy_groups_config=m.apply_extra_buy_groups_config,
@@ -388,6 +417,7 @@ def build_slot_app_deps_context(runtime, module):
         get_displayed_group_weight_modes=m.get_displayed_group_weight_modes,
         collect_group_weight_preview_warnings=m.collect_group_weight_preview_warnings,
         get_group_weight_mode_name=m.get_group_weight_mode_name,
+        supports_zero_rebate_inference=m.supports_zero_rebate_inference,
         is_extra_buy_mode=m.is_extra_buy_mode,
         get_extra_buy_group_by_mode=m.get_extra_buy_group_by_mode,
         get_buy_group_game_type_for_mode=m.get_buy_group_game_type_for_mode,

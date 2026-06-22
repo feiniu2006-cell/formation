@@ -39,6 +39,9 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         self.rtp_info_var = None
         self.special_target_rtp_var = None
         self.ex_target_rtp_vars = {}
+        self.zero_rebate_inference_vars = {}
+        self.special_target_entry = None
+        self.ex_target_entries = {}
         self.special_has_zero_for_config = False
         self._updating_zero_rebate_state = False
 
@@ -109,6 +112,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             formation_exists.get('2', False)
             and 0 in {int(value) for value in preview_rebates.get('2', [])}
         )
+        self.initialize_zero_rebate_inference_vars()
 
         self.show_missing_config_warning()
         self.build_header()
@@ -186,6 +190,18 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         for var in self.ex_target_rtp_vars.values():
             var.trace_add("write", lambda *_args: self.update_rtp_info())
 
+    def initialize_zero_rebate_inference_vars(self):
+        if hasattr(self.deps, 'zero_rebate_inference_modes'):
+            enabled_modes = {str(mode) for mode in (self.deps.zero_rebate_inference_modes or set())}
+        else:
+            enabled_modes = {str(mode) for mode in getattr(self.deps, 'default_zero_rebate_inference_modes', ())}
+        supports = getattr(self.deps, 'supports_zero_rebate_inference', lambda _mode: False)
+        self.zero_rebate_inference_vars = {
+            mode: tk.BooleanVar(value=str(mode) in enabled_modes)
+            for mode in self.dialog_modes
+            if supports(mode)
+        }
+
     def build_rule_tabs(self):
         self.notebook = ttk.Notebook(self.frame)
         self.notebook.grid(row=3, column=0, sticky="nsew")
@@ -209,12 +225,57 @@ class GroupWeightRulesDialog(LoadingDialogBase):
                 options_builder=self.build_mode_options,
             )
         self.apply_zero_rebate_entry_states()
+        self.refresh_zero_rebate_option_states()
 
     def mode_has_rebate_zero(self, mode):
         try:
             return any(int(value) == 0 for value in self.preview_rebates.get(str(mode), []))
         except (TypeError, ValueError):
             return False
+
+    def mode_zero_rebate_inference_enabled(self, mode):
+        var = getattr(self, 'zero_rebate_inference_vars', {}).get(str(mode))
+        return bool(var is not None and var.get() and self.mode_has_rebate_zero(mode))
+
+    def collect_zero_rebate_inference_modes(self):
+        return {
+            str(mode)
+            for mode, var in getattr(self, 'zero_rebate_inference_vars', {}).items()
+            if var.get()
+        }
+
+    def refresh_zero_rebate_option_states(self):
+        special_target_entry = getattr(self, 'special_target_entry', None)
+        if special_target_entry is not None:
+            special_target_entry.configure(
+                state="normal" if self.mode_zero_rebate_inference_enabled('2') else "disabled"
+            )
+        for mode, entry in getattr(self, 'ex_target_entries', {}).items():
+            entry.configure(
+                state="normal" if self.mode_zero_rebate_inference_enabled(mode) else "disabled"
+            )
+
+    def on_zero_rebate_inference_changed(self, mode):
+        self.refresh_zero_rebate_option_states()
+        self.update_rtp_info()
+
+    def build_zero_rebate_inference_option(self, mode, options_frame, row=0):
+        var = getattr(self, 'zero_rebate_inference_vars', {}).get(str(mode))
+        if var is None:
+            return row
+        has_zero = self.mode_has_rebate_zero(mode)
+        ttk.Checkbutton(
+            options_frame,
+            text="rebate=0 反推",
+            variable=var,
+            command=lambda m=mode: self.on_zero_rebate_inference_changed(m),
+            state="normal" if has_zero else "disabled",
+        ).grid(row=row, column=0, sticky="w", padx=(0, 8))
+        note_text = "采样配置存在 rebate=0" if has_zero else "不存在 rebate=0，本次不会反推"
+        ttk.Label(options_frame, text=note_text, foreground="#555555").grid(
+            row=row, column=1, columnspan=2, sticky="w"
+        )
+        return row + 1
 
     def is_missing_zero_rebate_rule_row(self, mode, row_info):
         rebate_var = row_info.get('vars', {}).get('rebate_min')
@@ -295,39 +356,57 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         default_ex_targets = getattr(self.deps, 'default_ex_group_target_rtps', {}) or {}
         for mode, var in getattr(self, 'ex_target_rtp_vars', {}).items():
             var.set("" if default_ex_targets.get(mode) is None else str(default_ex_targets.get(mode)))
+        default_inference_modes = {
+            str(mode) for mode in getattr(self.deps, 'default_zero_rebate_inference_modes', ())
+        }
+        for mode, var in getattr(self, 'zero_rebate_inference_vars', {}).items():
+            var.set(str(mode) in default_inference_modes)
+        self.refresh_zero_rebate_option_states()
         self.update_rtp_info()
 
     def build_mode_options(self, mode, options_frame):
+        row = self.build_zero_rebate_inference_option(mode, options_frame, row=0)
         if mode == '2':
-            ttk.Label(options_frame, text="特殊局目标RTP").grid(row=0, column=0, sticky="w", padx=(0, 8))
+            ttk.Label(options_frame, text="特殊局目标RTP").grid(row=row, column=0, sticky="w", padx=(0, 8))
             special_target_entry = ttk.Entry(options_frame, textvariable=self.special_target_rtp_var, width=14)
-            special_target_entry.grid(row=0, column=1, sticky="w")
-            special_target_entry.configure(state="normal" if self.special_has_zero_for_config else "disabled")
-            note_text = group_weight_ui_text.build_special_target_note(self.special_has_zero_for_config)
+            special_target_entry.grid(row=row, column=1, sticky="w")
+            self.special_target_entry = special_target_entry
+            special_target_entry.configure(
+                state="normal" if self.mode_zero_rebate_inference_enabled(mode) else "disabled"
+            )
+            note_text = group_weight_ui_text.build_special_target_note(
+                self.mode_zero_rebate_inference_enabled(mode)
+            )
             ttk.Label(options_frame, text=note_text, foreground="#555555").grid(
-                row=0, column=2, sticky="w", padx=(10, 0)
+                row=row, column=2, sticky="w", padx=(10, 0)
             )
             return True
         if mode in getattr(self, 'ex_target_rtp_vars', {}):
             mode_name = self.deps.get_mode_name(mode)
-            ttk.Label(options_frame, text=f"{mode_name}目标RTP").grid(row=0, column=0, sticky="w", padx=(0, 8))
+            ttk.Label(options_frame, text=f"{mode_name}目标RTP").grid(
+                row=row, column=0, sticky="w", padx=(0, 8)
+            )
             target_entry = ttk.Entry(options_frame, textvariable=self.ex_target_rtp_vars[mode], width=14)
-            target_entry.grid(row=0, column=1, sticky="w")
+            target_entry.grid(row=row, column=1, sticky="w")
+            self.ex_target_entries[mode] = target_entry
+            target_entry.configure(
+                state="normal" if self.mode_zero_rebate_inference_enabled(mode) else "disabled"
+            )
             note_text = (
                 f"按除以 ex倍数后的实际RTP填写；留空使用当前RTP组目标，"
                 f"反推目标=目标RTP*{self.deps.format_weighted_rtp(self.deps.ex_multiplier)}"
             )
             ttk.Label(options_frame, text=note_text, foreground="#555555").grid(
-                row=0, column=2, sticky="w", padx=(10, 0)
+                row=row, column=2, sticky="w", padx=(10, 0)
             )
             return True
         note_text = group_weight_ui_text.build_mode_option_note(mode, self.deps)
         if note_text:
             ttk.Label(options_frame, text=note_text, foreground="#555555").grid(
-                row=0, column=0, columnspan=3, sticky="w"
+                row=row, column=0, columnspan=3, sticky="w"
             )
             return True
-        return False
+        return row > 0
 
     def parse_dialog_rules(self, mode):
         parsed_rules = []
@@ -360,6 +439,8 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         targets = {}
         errors = {}
         for mode, var in getattr(self, 'ex_target_rtp_vars', {}).items():
+            if not self.mode_zero_rebate_inference_enabled(mode):
+                continue
             text = var.get().strip()
             if not text:
                 continue
@@ -376,6 +457,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         if getattr(self, '_updating_zero_rebate_state', False):
             return
         self.apply_zero_rebate_entry_states()
+        self.refresh_zero_rebate_option_states()
         text = self.current_group_var.get()
         try:
             group_id = int(text.split(" ", 1)[0])
@@ -395,7 +477,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         parse_errors.update(ex_target_errors)
 
         special_target, special_target_error = (
-            self.parse_special_target_for_preview() if self.special_has_zero_for_config else (None, None)
+            self.parse_special_target_for_preview() if self.mode_zero_rebate_inference_enabled('2') else (None, None)
         )
         try:
             current_rtp_text = self.deps.build_preview_text(
@@ -412,6 +494,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
                 buy_multiplier=self.deps.buy_multiplier,
                 ex_multiplier=self.deps.ex_multiplier,
                 ex_target_rtps=ex_target_rtps,
+                zero_rebate_inference_modes=self.collect_zero_rebate_inference_modes(),
                 buy_enabled=self.deps.buy_enabled or self.deps.has_extra_buy_groups(),
             )
         except ValueError as e:
@@ -491,7 +574,8 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             )
             extra_buy_groups = self.collect_extra_buy_groups_with_rules()
             special_target_text = self.special_target_rtp_var.get().strip()
-            if self.special_has_zero_for_config and not special_target_text:
+            special_inference_enabled = self.mode_zero_rebate_inference_enabled('2')
+            if special_inference_enabled and not special_target_text:
                 raise ValueError("特殊局采样配置中存在 rebate=0，请填写特殊局目标RTP")
 
             ex_target_rtps, ex_target_errors = self.parse_ex_target_rtps_for_preview()
@@ -499,7 +583,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
                 raise ValueError(next(iter(ex_target_errors.values())))
 
             self.deps.apply_special_target(
-                special_target_text if self.special_has_zero_for_config else ""
+                special_target_text if special_inference_enabled else ""
             )
         except ValueError as e:
             messagebox.showerror("group_weight 权重配置错误", str(e), parent=self.dialog)
@@ -507,6 +591,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
 
         self.deps.apply_rules(rules)
         self.deps.apply_ex_group_target_rtps(ex_target_rtps)
+        self.deps.apply_zero_rebate_inference_modes(self.collect_zero_rebate_inference_modes())
         self.deps.apply_extra_buy_groups(extra_buy_groups)
         self.dialog.destroy()
         self.app.run_task(

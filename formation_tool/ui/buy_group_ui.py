@@ -135,19 +135,43 @@ def build_purchase_section(app, weight_frame):
     for col in range(4):
         purchase_frame.columnconfigure(col, weight=1)
 
+    ex_buy_frame = ttk.Frame(purchase_frame)
+    ex_buy_frame.grid(row=0, column=0, columnspan=4, sticky="ew")
+    ex_buy_frame.columnconfigure(0, weight=0)
+    ex_buy_frame.columnconfigure(1, weight=0)
+    ex_buy_frame.columnconfigure(2, weight=1)
+    ex_buy_frame.columnconfigure(3, weight=0)
+    ex_buy_frame.columnconfigure(4, weight=2)
+    ex_buy_frame.columnconfigure(5, weight=0)
+    ex_buy_frame.columnconfigure(6, weight=1)
+
     ex_buy_check = ttk.Checkbutton(
-        purchase_frame,
+        ex_buy_frame,
         text=ui_text.EX_BUY_GROUP_CHECK_TEXT,
         variable=app.ex_buy_group_enabled_var,
     )
     ex_buy_check.grid(row=0, column=0, sticky="w", padx=(0, 12))
     app.config_widgets.append((ex_buy_check, "normal"))
 
-    ttk.Label(purchase_frame, text=ui_text.EX_MULTIPLIER_LABEL).grid(
+    ttk.Label(ex_buy_frame, text=ui_text.EX_BUY_GAME_TYPE_LABEL).grid(
         row=0, column=1, sticky="w", padx=(0, 6)
     )
-    ex_multiplier_entry = ttk.Entry(purchase_frame, textvariable=app.ex_multiplier_var, width=14)
-    ex_multiplier_entry.grid(row=0, column=2, sticky="ew", padx=(0, 12))
+    ex_buy_game_type_entry = ttk.Entry(ex_buy_frame, textvariable=app.ex_buy_game_type_var, width=10)
+    ex_buy_game_type_entry.grid(row=0, column=2, sticky="ew", padx=(0, 12))
+    app.config_widgets.append((ex_buy_game_type_entry, "normal"))
+
+    ttk.Label(ex_buy_frame, text=ui_text.EX_BUY_SOURCE_SUFFIX_LABEL).grid(
+        row=0, column=3, sticky="w", padx=(0, 6)
+    )
+    ex_buy_source_entry = ttk.Entry(ex_buy_frame, textvariable=app.ex_buy_source_suffix_var, width=18)
+    ex_buy_source_entry.grid(row=0, column=4, sticky="ew", padx=(0, 12))
+    app.config_widgets.append((ex_buy_source_entry, "normal"))
+
+    ttk.Label(ex_buy_frame, text=ui_text.EX_MULTIPLIER_LABEL).grid(
+        row=0, column=5, sticky="w", padx=(0, 6)
+    )
+    ex_multiplier_entry = ttk.Entry(ex_buy_frame, textvariable=app.ex_multiplier_var, width=10)
+    ex_multiplier_entry.grid(row=0, column=6, sticky="ew")
     app.config_widgets.append((ex_multiplier_entry, "normal"))
 
     ex_source_frame = ttk.Frame(purchase_frame)

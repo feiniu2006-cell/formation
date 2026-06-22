@@ -4,6 +4,7 @@ from formation_tool.group_weight.group_weight_logic import (
     build_normal_group_weight_rows_for_group,
     calculate_weighted_rtp,
     format_weighted_rtp,
+    should_infer_zero_rebate,
 )
 from formation_tool.group_weight import group_weight_row_helpers
 from formation_tool.core import runtime_context_sync
@@ -55,11 +56,16 @@ def append_ex_independent_group_weight_modes(rows, formation_exists, rebates_by_
             continue
 
         has_zero = group_weight_row_helpers.has_rebate_zero(rebates_by_mode[game_type])
+        should_infer = should_infer_zero_rebate(
+            game_type,
+            rebates_by_mode[game_type],
+            globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
+        )
         mode_rows, ex_info_by_mode[game_type] = group_weight_row_helpers.append_independent_ex_group_rows(
             rows,
             game_type,
             mode_pairs[game_type],
-            has_zero,
+            should_infer,
         )
         log_ex_independent_group_weight_result(
             game_type,
@@ -110,6 +116,11 @@ def append_ex_normal_group_weight_mode(rows, formation_exists, rebates_by_mode, 
         return
 
     mode_rows = 0
+    normal_should_infer = should_infer_zero_rebate(
+        game_type,
+        rebates_by_mode[game_type],
+        globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
+    )
     ex_special_enabled = mode_exists['7'] and bool(mode_pairs['7'])
     ex_free_enabled = mode_exists['8'] and bool(mode_pairs['8'])
     for group_id in WEIGHT_GROUP_IDS:
@@ -127,6 +138,7 @@ def append_ex_normal_group_weight_mode(rows, formation_exists, rebates_by_mode, 
                 game_type=6,
                 target_multiplier=EX_GROUP_MULTIPLIER,
                 display_divisor=EX_GROUP_MULTIPLIER,
+                infer_zero_rebate=normal_should_infer,
             )
         except ValueError as e:
             print(f"  ⚠ {e}，跳过 group_id={group_id}")
@@ -156,19 +168,38 @@ def append_ex_buy_group_weight_mode(rows, formation_exists, rebates_by_mode, mod
         return
 
     combined_multiplier = BUY_GROUP_MULTIPLIER * EX_GROUP_MULTIPLIER
-    mode_rows, game_rtp, display_rtp = group_weight_row_helpers.append_buy_like_group_weight_rows(
-        rows,
-        get_group_weight_write_game_type(game_type),
-        mode_pairs[game_type],
-        combined_multiplier,
+    should_infer = should_infer_zero_rebate(
+        game_type,
+        rebates_by_mode[game_type],
+        globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
     )
-    print(
-        f"\n[{mode_name}] RTP={format_weighted_rtp(game_rtp)}，game_type={get_group_weight_write_game_type(game_type)}，"
-        f"购买倍数={format_weighted_rtp(BUY_GROUP_MULTIPLIER)}，"
-        f"ex倍数={format_weighted_rtp(EX_GROUP_MULTIPLIER)}，"
-        f"实际倍数={format_weighted_rtp(combined_multiplier)}，"
-        f"显示RTP={format_weighted_rtp(display_rtp)}，准备写入 {mode_rows} 行"
-    )
+    if should_infer:
+        mode_rows, _infos = group_weight_row_helpers.append_targeted_buy_like_group_weight_rows(
+            rows,
+            get_group_weight_write_game_type(game_type),
+            mode_pairs[game_type],
+            combined_multiplier,
+        )
+        print(
+            f"\n[{mode_name}] rebate=0 反推开启，game_type={get_group_weight_write_game_type(game_type)}，"
+            f"购买倍数={format_weighted_rtp(BUY_GROUP_MULTIPLIER)}，"
+            f"ex倍数={format_weighted_rtp(EX_GROUP_MULTIPLIER)}，"
+            f"实际倍数={format_weighted_rtp(combined_multiplier)}，准备写入 {mode_rows} 行"
+        )
+    else:
+        mode_rows, game_rtp, display_rtp = group_weight_row_helpers.append_buy_like_group_weight_rows(
+            rows,
+            get_group_weight_write_game_type(game_type),
+            mode_pairs[game_type],
+            combined_multiplier,
+        )
+        print(
+            f"\n[{mode_name}] RTP={format_weighted_rtp(game_rtp)}，game_type={get_group_weight_write_game_type(game_type)}，"
+            f"购买倍数={format_weighted_rtp(BUY_GROUP_MULTIPLIER)}，"
+            f"ex倍数={format_weighted_rtp(EX_GROUP_MULTIPLIER)}，"
+            f"实际倍数={format_weighted_rtp(combined_multiplier)}，"
+            f"显示RTP={format_weighted_rtp(display_rtp)}，准备写入 {mode_rows} 行"
+        )
 
 
 def append_ex_group_weight_modes(rows, formation_exists, rebates_by_mode, mode_exists, mode_pairs):

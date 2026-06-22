@@ -251,6 +251,69 @@ class GroupWeightLogicTests(unittest.TestCase):
         self.assertEqual(base_rows, [(1, 9000, 1000, 10)])
         self.assertEqual(zero_rows, [(1, 9000, 1000, 10), (1, 9000, 2000, 0)])
 
+    def test_zero_rebate_inference_requires_sampled_zero_and_enabled_mode(self):
+        self.assertTrue(group_weight_logic.should_infer_zero_rebate("1", [0, 1000], {"1"}))
+        self.assertFalse(group_weight_logic.should_infer_zero_rebate("1", [1000, 2000], {"1"}))
+        self.assertFalse(group_weight_logic.should_infer_zero_rebate("1", [0, 1000], set()))
+
+    def test_buy_modes_support_manual_zero_rebate_inference_but_default_off(self):
+        from formation_tool.core import formation_modes
+
+        self.assertEqual(formation_modes.BUY_GROUP_MODE, "buy")
+        self.assertEqual(formation_modes.EX_PURCHASE_MODE, "ex_buy")
+        self.assertTrue(formation_modes.supports_zero_rebate_inference("buy"))
+        self.assertTrue(formation_modes.supports_zero_rebate_inference("ex_buy"))
+        self.assertTrue(formation_modes.supports_zero_rebate_inference("99"))
+        self.assertTrue(formation_modes.supports_zero_rebate_inference("98"))
+        self.assertNotIn("buy", formation_modes.DEFAULT_ZERO_REBATE_INFERENCE_MODES)
+        self.assertNotIn("ex_buy", formation_modes.DEFAULT_ZERO_REBATE_INFERENCE_MODES)
+
+    def test_buy_like_rows_can_infer_zero_rebate_per_group_target(self):
+        row_helpers = group_weight_builder.group_weight_row_helpers
+        names = ("WEIGHT_GROUP_IDS", "get_group_target_rtp_ratio")
+        missing = object()
+        old_values = {name: getattr(row_helpers, name, missing) for name in names}
+        try:
+            row_helpers.WEIGHT_GROUP_IDS = (9650,)
+            row_helpers.get_group_target_rtp_ratio = lambda _group_id: 1
+            rows = []
+
+            row_count, infos = row_helpers.append_targeted_buy_like_group_weight_rows(
+                rows,
+                97,
+                [(4000, 10)],
+                2,
+            )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(row_helpers, name):
+                        delattr(row_helpers, name)
+                else:
+                    setattr(row_helpers, name, value)
+
+        self.assertEqual(row_count, 2)
+        self.assertEqual(rows, [(97, 9650, 0, 10), (97, 9650, 4000, 10)])
+        self.assertEqual(infos[9650]["zero_weight"], 10)
+        self.assertEqual(infos[9650]["display_rtp"], 1)
+
+    def test_normal_rows_can_disable_zero_rebate_inference(self):
+        rows, info = group_weight_logic.build_normal_group_weight_rows_for_group(
+            9000,
+            [(1000, 10)],
+            free_rtp=0,
+            free_enabled=False,
+            special_rtp=0,
+            special_enabled=False,
+            free_rate_getter=lambda _group_id, _enabled: 0,
+            special_rate_getter=lambda _group_id, _enabled: 0,
+            target_rtp_getter=lambda _group_id: 0.5,
+            infer_zero_rebate=False,
+        )
+
+        self.assertEqual(info["zero_weight"], 0)
+        self.assertEqual(rows, [(1, 9000, 1000, 10)])
+
     def test_zero_weight_trigger_modes_do_not_enable_trigger_rtp(self):
         original_modes = group_weight_builder.group_weight_original_modes
         missing = object()
@@ -449,7 +512,7 @@ class GroupWeightLogicTests(unittest.TestCase):
         had_values = {name: hasattr(original_modes, name) for name in names}
         calls = []
 
-        def fake_normal_builder(group_id, normal_pairs, free_rtp, free_enabled, special_rtp, special_enabled):
+        def fake_normal_builder(group_id, normal_pairs, free_rtp, free_enabled, special_rtp, special_enabled, **_kwargs):
             calls.append((group_id, tuple(normal_pairs), free_rtp, free_enabled, special_rtp, special_enabled))
             return [(1, int(group_id), 1000, 10)], {
                 "group_id": int(group_id),
@@ -821,6 +884,8 @@ class BuyGroupConfigTests(unittest.TestCase):
             ],
         )
         self.assertTrue(options["ex_buy_enabled"])
+        self.assertEqual(options["ex_buy"]["game_type"], 98)
+        self.assertEqual(options["ex_buy"]["source_suffix"], "ex_free_formation")
         self.assertEqual(options["normal_buy_game_types"], [91, 92, 99])
         self.assertEqual(options["ex_buy_game_types"], [98])
 
@@ -1034,9 +1099,9 @@ class BuyGroupConfigTests(unittest.TestCase):
     def test_extra_buy_groups_preserve_source_suffix(self):
         groups = buy_group_config.normalize_extra_buy_groups(
             [{"game_type": "120", "multiplier": "80", "source_suffix": "bonus_formation"}],
-            group_modes=("1", "2", "3", "6", "7", "8", "98", "99"),
+            group_modes=formation_modes.GROUP_WEIGHT_MODES,
             default_buy_rules=[{"rebate_min": 0, "weight": 1}],
-            buy_group_mode="99",
+            buy_group_mode=formation_modes.BUY_GROUP_MODE,
             default_buy_game_type=99,
             default_source_suffix="free_formation",
         )
@@ -1047,9 +1112,9 @@ class BuyGroupConfigTests(unittest.TestCase):
     def test_default_buy_game_type_can_change_and_free_99_for_extra_buy(self):
         groups = buy_group_config.normalize_extra_buy_groups(
             [{"game_type": "99", "multiplier": "80", "source_suffix": "bonus_formation"}],
-            group_modes=("1", "2", "3", "6", "7", "8", "98", "99"),
+            group_modes=formation_modes.GROUP_WEIGHT_MODES,
             default_buy_rules=[{"rebate_min": 0, "weight": 1}],
-            buy_group_mode="99",
+            buy_group_mode=formation_modes.BUY_GROUP_MODE,
             default_buy_game_type=120,
             default_source_suffix="free_formation",
         )
@@ -1071,6 +1136,30 @@ class BuyGroupConfigTests(unittest.TestCase):
             ),
             99,
         )
+
+    def test_98_and_99_are_not_fixed_group_weight_types(self):
+        groups = buy_group_config.normalize_extra_buy_groups(
+            [
+                {"game_type": "98", "multiplier": "70", "source_suffix": "bonus_ex_formation"},
+                {"game_type": "99", "multiplier": "80", "source_suffix": "bonus_formation"},
+            ],
+            group_modes=formation_modes.GROUP_WEIGHT_MODES,
+            default_buy_rules=[{"rebate_min": 0, "weight": 1}],
+            buy_group_mode=formation_modes.BUY_GROUP_MODE,
+            default_buy_game_type=120,
+            default_source_suffix="free_formation",
+        )
+
+        self.assertEqual([group["game_type"] for group in groups], [98, 99])
+        with self.assertRaisesRegex(ValueError, "内置局类型"):
+            buy_group_config.normalize_extra_buy_groups(
+                [{"game_type": "6", "multiplier": "80", "source_suffix": "bonus_formation"}],
+                group_modes=formation_modes.GROUP_WEIGHT_MODES,
+                default_buy_rules=[{"rebate_min": 0, "weight": 1}],
+                buy_group_mode=formation_modes.BUY_GROUP_MODE,
+                default_buy_game_type=120,
+                default_source_suffix="free_formation",
+            )
 
     def test_settings_migration_adds_buy_group_defaults(self):
         migrated = settings_logic.migrate_settings_data(
@@ -1123,7 +1212,7 @@ class BuyGroupConfigTests(unittest.TestCase):
 
     def test_active_modes_include_extra_buy_source_independently(self):
         extra_groups = [{"game_type": 120, "source_suffix": "bonus_formation"}]
-        formation_exists = {"1": True, "99": False, "extra_buy:120": True}
+        formation_exists = {"1": True, formation_modes.BUY_GROUP_MODE: False, "extra_buy:120": True}
         modes = formation_modes.get_active_group_weight_modes(
             formation_exists,
             buy_enabled=False,
@@ -1133,10 +1222,211 @@ class BuyGroupConfigTests(unittest.TestCase):
 
         self.assertIn("1", modes)
         self.assertIn("extra_buy:120", modes)
-        self.assertNotIn("99", modes)
+        self.assertNotIn(formation_modes.BUY_GROUP_MODE, modes)
 
 
 class ExGroupWeightSourceOverrideTests(unittest.TestCase):
+    def test_buy_group_manual_suffix_controls_group_weight_rebate_table(self):
+        module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
+        runtime = module.RUNTIME_STATE
+        saved_runtime = {
+            name: getattr(runtime, name)
+            for name in (
+                "vendor",
+                "game_id",
+                "source_db",
+                "final_db",
+                "config_db",
+                "game_table_prefix",
+                "game_defs",
+                "game_configs",
+                "buy_group_enabled",
+                "buy_group_game_type",
+                "buy_group_multiplier",
+                "buy_group_source_suffix",
+                "extra_buy_groups",
+                "buy_groups",
+            )
+        }
+        saved_loader = module.load_game_type_configs
+        try:
+            prefix, game_defs, game_configs = runtime_config.build_game_configs(
+                "jili",
+                "106",
+                "XP1",
+                "DB1",
+                "MY",
+                random_seed=108,
+            )
+            runtime.vendor = "jili"
+            runtime.game_id = "106"
+            runtime.source_db = "XP1"
+            runtime.final_db = "DB1"
+            runtime.config_db = "MY"
+            runtime.game_table_prefix = prefix
+            runtime.game_defs = game_defs
+            runtime.game_configs = game_configs
+            runtime.buy_group_enabled = True
+            runtime.buy_group_game_type = 99
+            runtime.buy_group_multiplier = 5
+            runtime.buy_group_source_suffix = "formation"
+            runtime.extra_buy_groups = []
+            runtime.buy_groups = runtime.build_buy_groups()
+
+            module.load_game_type_configs = lambda force=False: {
+                1: {"game_type": 1, "source_suffix": "formation", "is_buy": 0},
+                3: {"game_type": 3, "source_suffix": "free_formation", "is_buy": 0},
+                99: {"game_type": 99, "source_suffix": "free_formation", "is_buy": 1},
+            }
+
+            self.assertEqual(module.get_buy_group_source_suffix_for_mode("99"), "formation")
+            self.assertEqual(module.get_group_weight_rebate_table_name("99"), "jili_106_rebate_count")
+            self.assertNotEqual(module.get_group_weight_rebate_table_name("99"), "jili_106_rebate_free_count")
+        finally:
+            module.load_game_type_configs = saved_loader
+            for name, value in saved_runtime.items():
+                setattr(runtime, name, value)
+
+    def test_ex_purchase_uses_manual_ex_buy_config_for_group_weight(self):
+        module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
+        runtime = module.RUNTIME_STATE
+        saved_runtime = {
+            name: getattr(runtime, name)
+            for name in (
+                "vendor",
+                "game_id",
+                "source_db",
+                "final_db",
+                "config_db",
+                "game_table_prefix",
+                "game_defs",
+                "game_configs",
+                "ex_source_suffixes",
+                "ex_buy_group_game_type",
+                "ex_buy_group_source_suffix",
+                "buy_group_enabled",
+                "buy_group_game_type",
+                "buy_group_multiplier",
+                "buy_group_source_suffix",
+                "extra_buy_groups",
+                "buy_groups",
+            )
+        }
+        saved_loader = module.load_game_type_configs
+        try:
+            prefix, game_defs, game_configs = runtime_config.build_game_configs(
+                "jili",
+                "106",
+                "XP1",
+                "DB1",
+                "MY",
+                random_seed=108,
+            )
+            runtime.vendor = "jili"
+            runtime.game_id = "106"
+            runtime.source_db = "XP1"
+            runtime.final_db = "DB1"
+            runtime.config_db = "MY"
+            runtime.game_table_prefix = prefix
+            runtime.game_defs = game_defs
+            runtime.game_configs = game_configs
+            runtime.ex_source_suffixes = {"8": "ex_free_formation"}
+            runtime.ex_buy_group_game_type = 198
+            runtime.ex_buy_group_source_suffix = "formation"
+            runtime.buy_group_enabled = False
+            runtime.buy_group_game_type = 99
+            runtime.buy_group_multiplier = 75
+            runtime.buy_group_source_suffix = "free_formation"
+            runtime.extra_buy_groups = []
+            runtime.buy_groups = runtime.build_buy_groups()
+
+            module.load_game_type_configs = lambda force=False: {
+                8: {"game_type": 8, "source_suffix": "ex_free_formation", "is_buy": 0},
+                98: {"game_type": 98, "source_suffix": "ex_free_formation", "is_buy": 2},
+            }
+
+            self.assertEqual(module.get_buy_group_source_suffix_for_mode("98"), "formation")
+            self.assertEqual(module.get_group_weight_write_game_type("98"), 198)
+            self.assertEqual(module.get_group_weight_rebate_table_name("98"), "jili_106_rebate_count")
+            self.assertNotEqual(module.get_group_weight_rebate_table_name("98"), "jili_106_rebate_ex_free_count")
+        finally:
+            module.load_game_type_configs = saved_loader
+            for name, value in saved_runtime.items():
+                setattr(runtime, name, value)
+
+    def test_ex_purchase_uses_configured_game_type_for_table_driven_suffix(self):
+        module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
+        runtime = module.RUNTIME_STATE
+        saved_runtime = {
+            name: getattr(runtime, name)
+            for name in (
+                "vendor",
+                "game_id",
+                "source_db",
+                "final_db",
+                "config_db",
+                "game_table_prefix",
+                "game_defs",
+                "game_configs",
+                "ex_source_suffixes",
+                "ex_buy_group_game_type",
+                "ex_buy_group_source_suffix",
+                "buy_group_enabled",
+                "buy_group_game_type",
+                "buy_group_multiplier",
+                "buy_group_source_suffix",
+                "extra_buy_groups",
+                "buy_groups",
+            )
+        }
+        saved_loader = module.load_game_type_configs
+        try:
+            prefix, game_defs, game_configs = runtime_config.build_game_configs(
+                "jili",
+                "106",
+                "XP1",
+                "DB1",
+                "MY",
+                random_seed=108,
+            )
+            runtime.vendor = "jili"
+            runtime.game_id = "106"
+            runtime.source_db = "XP1"
+            runtime.final_db = "DB1"
+            runtime.config_db = "MY"
+            runtime.game_table_prefix = prefix
+            runtime.game_defs = game_defs
+            runtime.game_configs = game_configs
+            runtime.ex_source_suffixes = {"8": "ex_free_formation"}
+            runtime.ex_buy_group_game_type = 198
+            runtime.ex_buy_group_source_suffix = ""
+            runtime.buy_group_enabled = False
+            runtime.buy_group_game_type = 97
+            runtime.buy_group_multiplier = 75
+            runtime.buy_group_source_suffix = "free_formation"
+            runtime.extra_buy_groups = []
+            runtime.buy_groups = runtime.build_buy_groups()
+
+            module.load_game_type_configs = lambda force=False: {
+                98: {"game_type": 98, "source_suffix": "ex_free_formation", "is_buy": 2},
+                198: {"game_type": 198, "source_suffix": "formation", "is_buy": 2},
+            }
+
+            self.assertEqual(
+                module.get_buy_group_source_suffix_for_mode(module.EX_PURCHASE_MODE),
+                "formation",
+            )
+            self.assertEqual(module.get_group_weight_write_game_type(module.EX_PURCHASE_MODE), 198)
+            self.assertEqual(
+                module.get_group_weight_rebate_table_name(module.EX_PURCHASE_MODE),
+                "jili_106_rebate_count",
+            )
+            self.assertEqual(module.get_group_weight_write_game_type("98"), 198)
+        finally:
+            module.load_game_type_configs = saved_loader
+            for name, value in saved_runtime.items():
+                setattr(runtime, name, value)
+
     def test_manual_ex_suffix_affects_group_weight_only_not_sampling_configs(self):
         module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
         runtime = module.RUNTIME_STATE
@@ -3143,6 +3433,25 @@ class SlotAppDepsTests(unittest.TestCase):
             group_weight_ui_text.build_mode_option_note("99", dialog_deps),
         )
 
+    def test_ex_purchase_note_uses_resolved_source_suffix(self):
+        deps = SimpleNamespace(
+            ex_group_modes=("6", "7", "8"),
+            ex_purchase_mode="98",
+            buy_group_mode="99",
+            game_type_names={"98": "ex购买局"},
+            get_group_weight_write_game_type=lambda _mode: 98,
+            get_buy_group_source_suffix_for_mode=lambda _mode: "formation",
+            format_weighted_rtp=lambda value: f"{value:g}",
+            buy_multiplier=5,
+            ex_multiplier=1.5,
+            is_extra_buy_mode=lambda _mode: False,
+        )
+
+        note = group_weight_ui_text.build_mode_option_note("98", deps)
+
+        self.assertIn("formation 的采样配置", note)
+        self.assertNotIn("rebate_ex_free_count", note)
+
 
 class FakeSettingsApp(SlotAppSettingsMixin):
     def __init__(self, deps, master):
@@ -3160,6 +3469,8 @@ class FakeSettingsApp(SlotAppSettingsMixin):
         self.sampling_detailed_log_var = tk.BooleanVar(master=master, value=False)
         self.buy_group_enabled_var = tk.BooleanVar(master=master, value=False)
         self.ex_buy_group_enabled_var = tk.BooleanVar(master=master, value=False)
+        self.ex_buy_game_type_var = tk.StringVar(master=master, value="98")
+        self.ex_buy_source_suffix_var = tk.StringVar(master=master, value="")
         self.buy_game_type_var = tk.StringVar(master=master, value="99")
         self.buy_multiplier_var = tk.StringVar(master=master, value="50")
         self.buy_source_suffix_var = tk.StringVar(master=master, value="free_formation")
@@ -3215,8 +3526,11 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             get_group_weight_rules=lambda: {"99": [{"rebate_min": 0, "weight": 10}]},
             clone_group_weight_rules=lambda rules: {key: [dict(item) for item in value] for key, value in rules.items()},
             get_special_group_target_rtp=lambda: 8.5,
+            get_zero_rebate_inference_modes=lambda: {"1", "7"},
             get_buy_group_enabled=lambda: True,
             get_ex_buy_group_enabled=lambda: True,
+            get_ex_buy_group_game_type=lambda: 98,
+            get_ex_buy_group_source_suffix=lambda: "ex_free_formation",
             get_buy_group_game_type=lambda: 99,
             get_buy_group_multiplier=lambda: 50,
             get_buy_group_source_suffix=lambda: "free_formation",
@@ -3234,8 +3548,11 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertTrue(data["sampling_options"]["append_mode"])
         self.assertTrue(data["sampling_options"]["detailed_log"])
         self.assertEqual(data["group_weight_options"]["buy_game_type"], 99)
+        self.assertEqual(data["group_weight_options"]["ex_buy_game_type"], 98)
+        self.assertEqual(data["group_weight_options"]["ex_buy_source_suffix"], "ex_free_formation")
         self.assertEqual(data["group_weight_options"]["buy_multiplier"], 50)
         self.assertEqual(data["group_weight_options"]["buy_source_suffix"], "free_formation")
+        self.assertEqual(data["group_weight_options"]["zero_rebate_inference_modes"], ["1", "7"])
         self.assertEqual(data["group_weight_options"]["ex_source_suffixes"], {"6": "manual_ex_formation"})
         self.assertEqual(data["group_weight_options"]["extra_buy_groups"], extra_groups)
         self.assertEqual(data["group_weight_options"]["buy_groups"][0]["game_type"], 99)
@@ -3252,6 +3569,8 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             clear_config_warnings=lambda: calls.append(("clear", None)),
             get_buy_group_enabled=lambda: False,
             get_ex_buy_group_enabled=lambda: False,
+            get_ex_buy_group_game_type=lambda: 98,
+            get_ex_buy_group_source_suffix=lambda: "",
             get_buy_group_game_type=lambda: 99,
             get_buy_group_multiplier=lambda: 50,
             get_buy_group_source_suffix=lambda: "free_formation",
@@ -3264,6 +3583,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             apply_group_weight_rules_config=lambda rules: calls.append(("group_rules", rules)),
             apply_extra_buy_groups_config=lambda groups: calls.append(("extra", [dict(group) for group in groups])),
             apply_special_group_target_rtp=lambda value: calls.append(("special_rtp", value)),
+            apply_zero_rebate_inference_modes_config=lambda modes: calls.append(("zero_infer", list(modes))),
             apply_rebate_config_direct_count_modes=lambda modes: calls.append(("direct", list(modes))),
             normalize_direct_count_tiers_for_load=lambda tiers: [dict(rule) for rule in tiers],
             apply_rebate_config_direct_count_tiers=lambda tiers: calls.append(("direct_tiers", [dict(rule) for rule in tiers])),
@@ -3284,8 +3604,11 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             group_weight_rules={"99": [{"rebate_min": 0, "weight": 9}]},
             group_weight_options={
                 "special_target_rtp": 7.25,
+                "zero_rebate_inference_modes": ["1", "7"],
                 "buy_enabled": True,
                 "ex_buy_enabled": True,
+                "ex_buy_game_type": 198,
+                "ex_buy_source_suffix": "custom_ex_buy_formation",
                 "buy_game_type": 120,
                 "buy_multiplier": 60,
                 "buy_source_suffix": "custom_free_formation",
@@ -3302,6 +3625,8 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertEqual(app.vendor_var.get(), "jili")
         self.assertEqual(app.game_id_var.get(), "49")
         self.assertEqual(app.buy_game_type_var.get(), "120")
+        self.assertEqual(app.ex_buy_game_type_var.get(), "198")
+        self.assertEqual(app.ex_buy_source_suffix_var.get(), "custom_ex_buy_formation")
         self.assertEqual(app.buy_multiplier_var.get(), "60")
         self.assertEqual(app.buy_source_suffix_var.get(), "custom_free_formation")
         self.assertTrue(app.sampling_detailed_log_var.get())
@@ -3310,6 +3635,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertEqual(app.extra_buy_rows, extra_groups)
         self.assertTrue(app.apply_selected_config_called)
         self.assertIn(("special_rtp", 7.25), calls)
+        self.assertIn(("zero_infer", ["1", "7"]), calls)
         self.assertIn(("direct", ["1", "6"]), calls)
         self.assertIn(("direct_tiers", [{"rebate_min": 1, "rebate_max": 999, "count": 88}]), calls)
         self.assertIn(("extra", extra_groups), calls)
@@ -3346,6 +3672,8 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             apply_buy_group_multiplier=lambda value: calls.append(("multiplier", value)),
             apply_buy_group_source_suffix=lambda value: calls.append(("suffix", value)),
             apply_ex_buy_group_enabled=lambda value: calls.append(("ex_enabled", value)),
+            apply_ex_buy_group_game_type=lambda value: calls.append(("ex_game_type", value)),
+            apply_ex_buy_group_source_suffix=lambda value: calls.append(("ex_suffix", value)),
             apply_extra_buy_groups_config=lambda groups: calls.append(("extra", [dict(item) for item in groups])),
         )
         app = FakeSettingsApp(deps, self.tcl_root)
@@ -3358,6 +3686,11 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
                 "source_suffix": "special_formation",
             },
             "ex_buy_enabled": True,
+            "ex_buy": {
+                "enabled": True,
+                "game_type": 198,
+                "source_suffix": "custom_ex_buy_formation",
+            },
             "extra_buy_groups": [
                 {"game_type": 92, "multiplier": 65, "source_suffix": "buy2_special_formation"}
             ],
@@ -3367,10 +3700,14 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
 
         self.assertTrue(app.buy_group_enabled_var.get())
         self.assertEqual(app.buy_game_type_var.get(), "91")
+        self.assertEqual(app.ex_buy_game_type_var.get(), "198")
+        self.assertEqual(app.ex_buy_source_suffix_var.get(), "custom_ex_buy_formation")
         self.assertEqual(app.buy_multiplier_var.get(), "75")
         self.assertEqual(app.buy_source_suffix_var.get(), "special_formation")
         self.assertTrue(app.ex_buy_group_enabled_var.get())
         self.assertIn(("game_type", "91"), calls)
+        self.assertIn(("ex_game_type", "198"), calls)
+        self.assertIn(("ex_suffix", "custom_ex_buy_formation"), calls)
         self.assertIn(("extra", options["extra_buy_groups"]), calls)
 
 

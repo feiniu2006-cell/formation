@@ -29,6 +29,24 @@ GROUP_WEIGHT_RULE_FIELD_LABELS = {
     'rebate_min': 'rebate 下限',
     'weight': '权重',
 }
+LEGACY_GROUP_WEIGHT_RULE_ALIASES = {
+    '99': 'buy',
+    '98': 'ex_buy',
+}
+
+
+def normalize_group_weight_rule_keys(rules):
+    """Return group_weight rules with legacy buy keys mapped to semantic keys."""
+    if not isinstance(rules, dict):
+        return rules
+    normalized = {}
+    for key, value in rules.items():
+        key_text = str(key)
+        mode = LEGACY_GROUP_WEIGHT_RULE_ALIASES.get(key_text, key_text)
+        if mode in normalized and key_text != mode:
+            continue
+        normalized[mode] = value
+    return normalized
 
 
 def clone_rebate_rules(rules, sample_modes):
@@ -41,6 +59,7 @@ def clone_rebate_rules(rules, sample_modes):
 
 def clone_group_weight_rules(rules, group_modes):
     """Return an editable copy of group_weight rules for all supported modes."""
+    rules = normalize_group_weight_rule_keys(rules)
     return {
         mode: [dict(rule) for rule in rules.get(mode, [])]
         for mode in group_modes
@@ -232,7 +251,8 @@ def validate_group_weight_rules(
     if not isinstance(rules, dict):
         raise ValueError("group_weight 权重规则必须是字典")
 
-    unknown_warnings = collect_unknown_config_modes(rules, group_modes, "GROUP_WEIGHT_RULES")
+    normalized_input = normalize_group_weight_rule_keys(rules)
+    unknown_warnings = collect_unknown_config_modes(normalized_input, group_modes, "GROUP_WEIGHT_RULES")
     if unknown_warnings and not warn_unknown:
         raise ValueError(unknown_warnings[0])
     for warning in unknown_warnings:
@@ -241,15 +261,15 @@ def validate_group_weight_rules(
 
     normalized = {}
     for mode in group_modes:
-        mode_name = game_type_names[mode]
-        if mode not in rules:
+        mode_name = game_type_names.get(mode, mode)
+        if mode not in normalized_input:
             if not fill_missing:
                 raise ValueError(f"缺少 {mode_name} 的 group_weight 权重规则")
             mode_rules = default_rules.get(mode)
             if mode_rules is None:
                 raise ValueError(f"缺少 {mode_name} 的 group_weight 权重规则")
         else:
-            mode_rules = rules[mode]
+            mode_rules = normalized_input[mode]
         normalized[mode] = normalize_group_weight_rule_list(mode_name, mode_rules)
     return normalized
 
@@ -262,6 +282,7 @@ def normalize_extra_buy_groups(
     buy_group_mode,
     default_buy_game_type=99,
     default_source_suffix='free_formation',
+    reserved_game_types=None,
 ):
     """Validate extra buy group config and return normalized rows."""
     from formation_tool.core import buy_group_config
@@ -273,4 +294,5 @@ def normalize_extra_buy_groups(
         buy_group_mode=buy_group_mode,
         default_buy_game_type=default_buy_game_type,
         default_source_suffix=default_source_suffix,
+        reserved_game_types=reserved_game_types,
     )

@@ -109,8 +109,8 @@ class SlotAppTaskMixin:
             f"ex普通局 {len(rules.get('6', []))} 条，"
             f"ex特殊局 {len(rules.get('7', []))} 条，"
             f"ex免费局 {len(rules.get('8', []))} 条，"
-            f"ex购买局 {len(rules.get('98', []))} 条，"
-            f"购买局 {len(rules.get('99', []))} 条\n"
+            f"ex购买局 {len(rules.get(deps.ex_purchase_mode, []))} 条，"
+            f"购买局 {len(rules.get(deps.buy_group_mode, []))} 条\n"
         )
         special_target = deps.get_special_group_target_rtp()
         if special_target is not None:
@@ -134,8 +134,13 @@ class SlotAppTaskMixin:
             self.append_log(f"\n额外购买局：{extra_text}")
         self.append_log(
             f"\nex模式：game_type=6/7/8，ex倍数：{deps.format_weighted_rtp(deps.get_ex_group_multiplier())}，"
-            f"ex购买局(98)：{'已开启' if deps.get_ex_buy_group_enabled() else '已关闭'}"
+            f"ex购买局：{'已开启' if deps.get_ex_buy_group_enabled() else '已关闭'}"
         )
+        if deps.get_ex_buy_group_enabled():
+            ex_source = deps.get_ex_buy_group_source_suffix() or "DB配置"
+            self.append_log(
+                f"，game_type={deps.get_ex_buy_group_game_type()}，source={ex_source}"
+            )
         ex_source_suffixes = getattr(deps, "get_ex_source_suffixes", lambda: {})()
         if ex_source_suffixes:
             suffix_text = ', '.join(

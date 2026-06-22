@@ -104,9 +104,12 @@ def build_buy_group_options_from_configs(
     current_buy_game_type,
     current_buy_multiplier,
     current_buy_source_suffix,
+    current_ex_buy_game_type=98,
+    current_ex_buy_source_suffix='',
     existing_extra_buy_groups=None,
     existing_source_game_types=None,
     default_buy_game_type=buy_group_config.DEFAULT_BUY_GROUP_GAME_TYPE,
+    default_ex_buy_game_type=98,
 ):
     """Convert DB game_type config rows into UI buy-group options."""
     existing_extra_by_type = _build_existing_extra_buy_lookup(existing_extra_buy_groups)
@@ -137,6 +140,20 @@ def build_buy_group_options_from_configs(
     if default_row is None and normal_buy_rows:
         default_row = normal_buy_rows[0]
 
+    ex_buy_game_type = int(current_ex_buy_game_type)
+    default_ex_buy_game_type = int(default_ex_buy_game_type)
+    ex_row = next(
+        (item for item in ex_buy_rows if int(item['game_type']) == ex_buy_game_type),
+        None,
+    )
+    if ex_row is None:
+        ex_row = next(
+            (item for item in ex_buy_rows if int(item['game_type']) == default_ex_buy_game_type),
+            None,
+        )
+    if ex_row is None and ex_buy_rows:
+        ex_row = ex_buy_rows[0]
+
     if default_row is None:
         default_game_type = current_buy_game_type
         default_buy = {
@@ -152,6 +169,19 @@ def build_buy_group_options_from_configs(
             'game_type': default_game_type,
             'multiplier': current_buy_multiplier,
             'source_suffix': default_row['source_suffix'],
+        }
+
+    if ex_row is None:
+        ex_buy = {
+            'enabled': False,
+            'game_type': ex_buy_game_type,
+            'source_suffix': current_ex_buy_source_suffix,
+        }
+    else:
+        ex_buy = {
+            'enabled': True,
+            'game_type': int(ex_row['game_type']),
+            'source_suffix': ex_row['source_suffix'],
         }
 
     extra_buy_groups = []
@@ -171,6 +201,7 @@ def build_buy_group_options_from_configs(
 
     return {
         'default_buy': default_buy,
+        'ex_buy': ex_buy,
         'extra_buy_groups': extra_buy_groups,
         'ex_buy_enabled': bool(ex_buy_rows),
         'normal_buy_game_types': [int(item['game_type']) for item in normal_buy_rows],

@@ -127,6 +127,8 @@ class SlotAppSettingsMixin:
         self.sampling_detailed_log_var.set(deps.default_sampling_detailed_log)
         self.buy_group_enabled_var.set(deps.default_buy_group_enabled)
         self.ex_buy_group_enabled_var.set(deps.default_ex_buy_group_enabled)
+        self.ex_buy_game_type_var.set(str(deps.default_ex_buy_group_game_type))
+        self.ex_buy_source_suffix_var.set(str(deps.default_ex_buy_group_source_suffix))
         self.buy_game_type_var.set(str(deps.default_buy_group_game_type))
         self.buy_multiplier_var.set(str(deps.default_buy_group_multiplier))
         self.buy_source_suffix_var.set(str(deps.default_buy_group_source_suffix))
@@ -139,8 +141,13 @@ class SlotAppSettingsMixin:
         getattr(deps, "apply_ex_group_target_rtps_config", lambda _targets: None)(
             getattr(deps, "default_ex_group_target_rtps", {})
         )
+        getattr(deps, "apply_zero_rebate_inference_modes_config", lambda _modes: None)(
+            getattr(deps, "default_zero_rebate_inference_modes", ())
+        )
         deps.apply_buy_group_game_type(deps.default_buy_group_game_type)
         deps.apply_buy_group_source_suffix(deps.default_buy_group_source_suffix)
+        deps.apply_ex_buy_group_game_type(deps.default_ex_buy_group_game_type)
+        deps.apply_ex_buy_group_source_suffix(deps.default_ex_buy_group_source_suffix)
         deps.apply_ex_source_suffixes_config({})
         deps.apply_extra_buy_groups_config(deps.default_extra_buy_groups)
         deps.apply_rebate_config_direct_count_modes([])
@@ -172,8 +179,13 @@ class SlotAppSettingsMixin:
             group_weight_options={
                 'special_target_rtp': deps.get_special_group_target_rtp(),
                 'ex_group_target_rtps': getattr(deps, "get_ex_group_target_rtps", lambda: {})(),
+                'zero_rebate_inference_modes': sorted(
+                    getattr(deps, "get_zero_rebate_inference_modes", lambda: set())()
+                ),
                 'buy_enabled': deps.get_buy_group_enabled(),
                 'ex_buy_enabled': deps.get_ex_buy_group_enabled(),
+                'ex_buy_game_type': deps.get_ex_buy_group_game_type(),
+                'ex_buy_source_suffix': deps.get_ex_buy_group_source_suffix(),
                 'buy_game_type': deps.get_buy_group_game_type(),
                 'buy_multiplier': deps.get_buy_group_multiplier(),
                 'buy_source_suffix': deps.get_buy_group_source_suffix(),
@@ -256,6 +268,8 @@ class SlotAppSettingsMixin:
                 )
             self.buy_group_enabled_var.set(bool(group_options.get('buy_enabled', deps.get_buy_group_enabled())))
             self.ex_buy_group_enabled_var.set(bool(group_options.get('ex_buy_enabled', deps.get_ex_buy_group_enabled())))
+            self.ex_buy_game_type_var.set(_format_setting_text(group_options.get('ex_buy_game_type', deps.get_ex_buy_group_game_type())))
+            self.ex_buy_source_suffix_var.set(_format_setting_text(group_options.get('ex_buy_source_suffix', deps.get_ex_buy_group_source_suffix())))
             self.buy_game_type_var.set(_format_setting_text(group_options.get('buy_game_type', deps.get_buy_group_game_type())))
             self.buy_multiplier_var.set(_format_setting_text(group_options.get('buy_multiplier', deps.get_buy_group_multiplier())))
             self.buy_source_suffix_var.set(_format_setting_text(group_options.get('buy_source_suffix', deps.get_buy_group_source_suffix())))
@@ -274,6 +288,10 @@ class SlotAppSettingsMixin:
             if 'ex_group_target_rtps' in group_options:
                 getattr(deps, "apply_ex_group_target_rtps_config", lambda _targets: None)(
                     group_options.get('ex_group_target_rtps')
+                )
+            if 'zero_rebate_inference_modes' in group_options:
+                getattr(deps, "apply_zero_rebate_inference_modes_config", lambda _modes: None)(
+                    group_options.get('zero_rebate_inference_modes')
                 )
 
         if not self.apply_selected_config():
@@ -472,11 +490,15 @@ class SlotAppSettingsMixin:
     def apply_loaded_buy_group_options(self, options):
         deps = self.settings_deps
         default_buy = options['default_buy']
+        ex_buy = options.get('ex_buy', {})
         self.buy_group_enabled_var.set(bool(default_buy['enabled']))
         self.buy_game_type_var.set(_format_setting_text(default_buy['game_type']))
         self.buy_multiplier_var.set(_format_setting_text(default_buy['multiplier']))
         self.buy_source_suffix_var.set(_format_setting_text(default_buy['source_suffix']))
         self.ex_buy_group_enabled_var.set(bool(options['ex_buy_enabled']))
+        if ex_buy:
+            self.ex_buy_game_type_var.set(_format_setting_text(ex_buy.get('game_type', self.ex_buy_game_type_var.get())))
+            self.ex_buy_source_suffix_var.set(_format_setting_text(ex_buy.get('source_suffix', self.ex_buy_source_suffix_var.get())))
         self.set_extra_buy_group_rows(options['extra_buy_groups'])
 
         try:
@@ -485,6 +507,8 @@ class SlotAppSettingsMixin:
             deps.apply_buy_group_multiplier(self.buy_multiplier_var.get())
             deps.apply_buy_group_source_suffix(self.buy_source_suffix_var.get())
             deps.apply_ex_buy_group_enabled(self.ex_buy_group_enabled_var.get())
+            deps.apply_ex_buy_group_game_type(self.ex_buy_game_type_var.get())
+            deps.apply_ex_buy_group_source_suffix(self.ex_buy_source_suffix_var.get())
             deps.apply_extra_buy_groups_config(self.collect_extra_buy_groups())
             getattr(deps, "apply_buy_groups_config", lambda _groups: None)(_build_current_buy_groups(self))
         except ValueError as e:
@@ -558,6 +582,8 @@ class SlotAppSettingsMixin:
             )
             deps.apply_buy_group_enabled(self.buy_group_enabled_var.get())
             deps.apply_ex_buy_group_enabled(self.ex_buy_group_enabled_var.get())
+            deps.apply_ex_buy_group_game_type(self.ex_buy_game_type_var.get())
+            deps.apply_ex_buy_group_source_suffix(self.ex_buy_source_suffix_var.get())
             deps.apply_buy_group_game_type(self.buy_game_type_var.get())
             deps.apply_buy_group_multiplier(self.buy_multiplier_var.get())
             deps.apply_buy_group_source_suffix(self.buy_source_suffix_var.get())

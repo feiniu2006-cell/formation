@@ -431,6 +431,65 @@ def _find_special_phrase_issues(src, tgt, lang: str | None,
     return []
 
 
+def _json_type_name(node) -> str:
+    if isinstance(node, dict):
+        return "object"
+    if isinstance(node, list):
+        return "array"
+    if isinstance(node, str):
+        return "string"
+    if isinstance(node, bool):
+        return "boolean"
+    if node is None:
+        return "null"
+    if isinstance(node, (int, float)):
+        return "number"
+    return type(node).__name__
+
+
+def _join_json_path(path: str, key: str) -> str:
+    return f"{path}.{key}" if path else key
+
+
+def _display_json_path(path: str) -> str:
+    return path or "<root>"
+
+
+def _find_structure_issues(src, tgt, path: str = "") -> list[str]:
+    issues: list[str] = []
+    current = _display_json_path(path)
+
+    if isinstance(src, dict):
+        if not isinstance(tgt, dict):
+            return [f"{current}  (类型不一致：eng=object, target={_json_type_name(tgt)})"]
+
+        src_keys = set(src.keys())
+        tgt_keys = set(tgt.keys())
+        for key in src:
+            if key not in tgt:
+                issues.append(f"{current}  (缺少 key：{key})")
+        for key in tgt:
+            if key not in src_keys:
+                issues.append(f"{current}  (多余 key：{key})")
+        for key in src:
+            if key in tgt:
+                issues.extend(_find_structure_issues(src[key], tgt[key], _join_json_path(path, key)))
+        return issues
+
+    if isinstance(src, list):
+        if not isinstance(tgt, list):
+            return [f"{current}  (类型不一致：eng=array, target={_json_type_name(tgt)})"]
+        if len(src) != len(tgt):
+            issues.append(f"{current}  (列表长度不一致：eng={len(src)}, target={len(tgt)})")
+        for i, (s, t) in enumerate(zip(src, tgt)):
+            issues.extend(_find_structure_issues(s, t, f"{path}[{i}]"))
+        return issues
+
+    if _json_type_name(src) != _json_type_name(tgt):
+        return [f"{current}  (类型不一致：eng={_json_type_name(src)}, target={_json_type_name(tgt)})"]
+    return []
+
+
 def check_translation_ok(json_path: Path, eng_data, lang: str | None = None) -> bool | list[str] | None:
     """True=完整, False=完全未翻译/占位符丢失, list=部分未翻译(含路径), None=无法判断"""
     if eng_data is None:
@@ -439,9 +498,22 @@ def check_translation_ok(json_path: Path, eng_data, lang: str | None = None) -> 
         tgt = json.loads(json_path.read_text(encoding="utf-8"))
     except Exception:
         return False
-    if _collect_placeholders(eng_data) != _collect_placeholders(tgt):
-        return False
+    issues = _find_structure_issues(eng_data, tgt)
+    src_placeholders = _collect_placeholders(eng_data)
+    tgt_placeholders = _collect_placeholders(tgt)
+    if src_placeholders != tgt_placeholders:
+        missing = sorted(src_placeholders - tgt_placeholders)
+        extra = sorted(tgt_placeholders - src_placeholders)
+        detail = []
+        if missing:
+            detail.append(f"缺少 {missing}")
+        if extra:
+            detail.append(f"多余 {extra}")
+        issues.append(f"<root>  (占位符不一致：{'; '.join(detail)})")
     if _collect_strings(eng_data) == _collect_strings(tgt):
+        if issues:
+            issues.append("<root>  (内容完全未翻译)")
+            return issues
         return False
     untranslated = _find_untranslated_paths(eng_data, tgt)
     source_name = _extract_name(eng_data)
@@ -450,7 +522,7 @@ def check_translation_ok(json_path: Path, eng_data, lang: str | None = None) -> 
         eng_data, tgt, source_name, target_name, lang
     )
     special_issues = _find_special_phrase_issues(eng_data, tgt, lang)
-    issues = untranslated + intro_issues + special_issues
+    issues.extend(untranslated + intro_issues + special_issues)
     return issues if issues else True
 
 
@@ -795,6 +867,7 @@ def save_report(report: str) -> Path:
 
 def _atomic_write_json(path: Path, data) -> None:
     """写入临时文件后重命名，保证目标文件要么完整要么不存在，防止中断产生损坏的 JSON。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8")
     tmp.replace(path)   # os.replace 在同一文件系统上是原子操作
@@ -1263,7 +1336,7 @@ def fix_game(game_dir: Path, lang_results: list, mode: str):
 
         lang_dir    = multilang / lang
         target_json = lang_dir / "GameRule.json"
-        lang_dir.mkdir(exist_ok=True)
+        lang_dir.mkdir(parents=True, exist_ok=True)
 
         if mode == MODE_FILES:
             _atomic_write_json(target_json, source_data)
