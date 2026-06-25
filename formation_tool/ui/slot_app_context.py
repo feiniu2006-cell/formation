@@ -11,6 +11,8 @@ class SlotAppDepsContext:
     vendor_type_map: Any
     random_seed: Any
     run_all_sampling_jobs: Any
+    mirror_sampling_temp_to_target: Any
+    sync_sampling_temp_results: Any
     write_common_configs: Any
     test_selected_database_connections: Any
     normalize_extra_buy_groups: Any
@@ -37,6 +39,8 @@ class SlotAppDepsContext:
     get_rebate_rules: Any
     get_sampling_append_mode: Any
     get_sampling_detailed_log: Any
+    get_sampling_use_temp_db: Any
+    get_sampling_temp_db: Any
     get_group_weight_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
@@ -94,6 +98,7 @@ class SlotAppDepsContext:
     apply_rebate_config_direct_count_tiers: Any
     apply_sampling_append_mode: Any
     apply_sampling_detailed_log: Any
+    apply_sampling_temp_db_config: Any
     format_weighted_rtp: Any
     clear_cancel_request: Any
     request_cancel: Any
@@ -152,6 +157,8 @@ REQUIRED_RUNTIME_ATTRS = (
     'rebate_rules',
     'sampling_append_mode',
     'sampling_detailed_log',
+    'sampling_use_temp_db',
+    'sampling_temp_db',
     'group_weight_rules',
     'zero_rebate_inference_modes',
     'special_group_target_rtp',
@@ -177,6 +184,8 @@ REQUIRED_MODULE_ATTRS = (
     '_VENDOR_TYPE_MAP',
     'RANDOM_SEED',
     'run_all_sampling_jobs',
+    'mirror_sampling_temp_to_target',
+    'sync_sampling_temp_results',
     'write_common_configs',
     'test_selected_database_connections',
     'normalize_extra_buy_groups',
@@ -230,6 +239,7 @@ REQUIRED_MODULE_ATTRS = (
     'apply_rebate_config_direct_count_tiers',
     'apply_sampling_append_mode',
     'apply_sampling_detailed_log',
+    'apply_sampling_temp_db_config',
     'get_rebate_config_direct_count_tiers',
     'normalize_direct_count_tiers_for_load',
     'format_weighted_rtp',
@@ -302,6 +312,8 @@ def build_slot_app_deps_context(runtime, module):
         vendor_type_map=m._VENDOR_TYPE_MAP,
         random_seed=m.RANDOM_SEED,
         run_all_sampling_jobs=m.run_all_sampling_jobs,
+        mirror_sampling_temp_to_target=m.mirror_sampling_temp_to_target,
+        sync_sampling_temp_results=m.sync_sampling_temp_results,
         write_common_configs=m.write_common_configs,
         test_selected_database_connections=m.test_selected_database_connections,
         normalize_extra_buy_groups=m.normalize_extra_buy_groups,
@@ -328,6 +340,8 @@ def build_slot_app_deps_context(runtime, module):
         get_rebate_rules=lambda: runtime.rebate_rules,
         get_sampling_append_mode=lambda: runtime.sampling_append_mode,
         get_sampling_detailed_log=lambda: runtime.sampling_detailed_log,
+        get_sampling_use_temp_db=lambda: runtime.sampling_use_temp_db,
+        get_sampling_temp_db=lambda: runtime.sampling_temp_db,
         get_group_weight_rules=lambda: runtime.group_weight_rules,
         get_special_group_target_rtp=lambda: runtime.special_group_target_rtp,
         get_ex_group_target_rtps=lambda: dict(getattr(runtime, 'ex_group_target_rtps', {})),
@@ -385,6 +399,7 @@ def build_slot_app_deps_context(runtime, module):
         apply_rebate_config_direct_count_tiers=m.apply_rebate_config_direct_count_tiers,
         apply_sampling_append_mode=m.apply_sampling_append_mode,
         apply_sampling_detailed_log=m.apply_sampling_detailed_log,
+        apply_sampling_temp_db_config=m.apply_sampling_temp_db_config,
         format_weighted_rtp=m.format_weighted_rtp,
         clear_cancel_request=m.clear_cancel_request,
         request_cancel=m.request_cancel,

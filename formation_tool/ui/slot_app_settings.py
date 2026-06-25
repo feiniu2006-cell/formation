@@ -61,9 +61,7 @@ def build_rule_import_preview(data):
         lines.append(f"- 采样规则：{_count_mapping_items(data.get('rebate_rules'))} 个模式")
     if 'sampling_options' in data:
         sampling_options = data.get('sampling_options') or {}
-        append_mode = bool(sampling_options.get('append_mode'))
         detailed_log = bool(sampling_options.get('detailed_log'))
-        lines.append(f"- 采样写入模式：{'不清空追加' if append_mode else '清空后写入'}")
         lines.append(f"- 采样详细日志：{'开启' if detailed_log else '关闭'}")
     if 'group_weight_rules' in data:
         lines.append(f"- group_weight 权重规则：{_count_mapping_items(data.get('group_weight_rules'))} 个模式")
@@ -123,8 +121,9 @@ class SlotAppSettingsMixin:
         self.special_weight_1_var.set(str(deps.default_trigger_weights['special_1']))
         self.free_weight_0_var.set(str(deps.default_trigger_weights['free_0']))
         self.free_weight_1_var.set(str(deps.default_trigger_weights['free_1']))
-        self.sampling_append_mode_var.set(deps.default_sampling_append_mode)
         self.sampling_detailed_log_var.set(deps.default_sampling_detailed_log)
+        self.sampling_use_temp_db_var.set(getattr(deps, "default_sampling_use_temp_db", False))
+        self.sampling_temp_db_var.set(getattr(deps, "default_sampling_temp_db", self.final_db_var.get()))
         self.buy_group_enabled_var.set(deps.default_buy_group_enabled)
         self.ex_buy_group_enabled_var.set(deps.default_ex_buy_group_enabled)
         self.ex_buy_game_type_var.set(str(deps.default_ex_buy_group_game_type))
@@ -173,8 +172,10 @@ class SlotAppSettingsMixin:
             runtime=deps.get_runtime_state(),
             trigger_weights=deps.get_trigger_weights(),
             rebate_rules=deps.clone_rebate_rules(deps.get_rebate_rules()),
-            sampling_append_mode=deps.get_sampling_append_mode(),
+            sampling_append_mode=False,
             sampling_detailed_log=deps.get_sampling_detailed_log(),
+            sampling_use_temp_db=getattr(deps, "get_sampling_use_temp_db", lambda: False)(),
+            sampling_temp_db=getattr(deps, "get_sampling_temp_db", lambda: None)(),
             group_weight_rules=deps.clone_group_weight_rules(deps.get_group_weight_rules()),
             group_weight_options={
                 'special_target_rtp': deps.get_special_group_target_rtp(),
@@ -216,6 +217,10 @@ class SlotAppSettingsMixin:
             self.source_db_var.set(str(runtime.get('source_db', self.source_db_var.get())))
             self.final_db_var.set(str(runtime.get('final_db', self.final_db_var.get())))
             self.config_db_var.set(str(runtime.get('config_db', self.config_db_var.get())))
+            if hasattr(self, 'sampling_temp_db_var'):
+                self.sampling_temp_db_var.set(str(runtime.get('sampling_temp_db', self.sampling_temp_db_var.get())))
+            if hasattr(self, 'sampling_use_temp_db_var'):
+                self.sampling_use_temp_db_var.set(bool(runtime.get('sampling_use_temp_db', self.sampling_use_temp_db_var.get())))
 
         if runtime_only:
             if not self.apply_selected_config():
@@ -237,13 +242,16 @@ class SlotAppSettingsMixin:
 
         sampling_options = data.get('sampling_options', {})
         if sampling_options:
-            self.sampling_append_mode_var.set(bool(sampling_options.get('append_mode', False)))
             self.sampling_detailed_log_var.set(
                 bool(sampling_options.get(
                     'detailed_log',
                     getattr(deps, 'default_sampling_detailed_log', False),
                 ))
             )
+            if hasattr(self, 'sampling_use_temp_db_var'):
+                self.sampling_use_temp_db_var.set(bool(sampling_options.get('use_temp_db', False)))
+            if hasattr(self, 'sampling_temp_db_var'):
+                self.sampling_temp_db_var.set(str(sampling_options.get('temp_db', self.sampling_temp_db_var.get())))
 
         if 'group_weight_rules' in data:
             deps.apply_group_weight_rules_config(
@@ -591,8 +599,11 @@ class SlotAppSettingsMixin:
             deps.apply_ex_source_suffixes_config(_collect_ex_source_suffixes(self))
             deps.apply_extra_buy_groups_config(self.collect_extra_buy_groups())
             getattr(deps, "apply_buy_groups_config", lambda _groups: None)(_build_current_buy_groups(self))
-            deps.apply_sampling_append_mode(self.sampling_append_mode_var.get())
             deps.apply_sampling_detailed_log(self.sampling_detailed_log_var.get())
+            getattr(deps, "apply_sampling_temp_db_config", lambda _enabled, _db: None)(
+                self.sampling_use_temp_db_var.get(),
+                self.sampling_temp_db_var.get(),
+            )
         except ValueError as e:
             messagebox.showerror("配置错误", str(e))
             return False

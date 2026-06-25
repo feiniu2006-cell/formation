@@ -9,6 +9,7 @@ class UiDeps:
     vendor_type_map: Any
     random_seed: Any
     run_all_sampling_jobs: Any
+    mirror_sampling_temp_to_target: Any
     write_common_configs: Any
     test_selected_database_connections: Any
     normalize_extra_buy_groups: Any
@@ -42,6 +43,8 @@ class SettingsDeps:
     get_rebate_rules: Any
     get_sampling_append_mode: Any
     get_sampling_detailed_log: Any
+    get_sampling_use_temp_db: Any
+    get_sampling_temp_db: Any
     get_group_weight_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
@@ -94,6 +97,7 @@ class SettingsDeps:
     apply_rebate_config_direct_count_tiers: Any
     apply_sampling_append_mode: Any
     apply_sampling_detailed_log: Any
+    apply_sampling_temp_db_config: Any
 
 
 @dataclass(frozen=True)
@@ -105,6 +109,8 @@ class TaskDeps:
     get_rebate_rules: Any
     get_sampling_append_mode: Any
     get_sampling_detailed_log: Any
+    get_sampling_use_temp_db: Any
+    get_sampling_temp_db: Any
     get_direct_count_modes: Any
     get_direct_count_tiers: Any
     get_game_configs: Any
@@ -128,6 +134,8 @@ class TaskDeps:
     request_cancel: Any
     task_cancelled_cls: Any
     run_task_preflight: Any
+    mirror_sampling_temp_to_target: Any
+    sync_sampling_temp_results: Any
 
 
 @dataclass(frozen=True)
@@ -234,9 +242,12 @@ def build_trigger_weights(special_weights, free_weights):
 
 
 def build_ready_status_text(runtime):
+    staging = ""
+    if runtime.get("sampling_use_temp_db"):
+        staging = f"，采样临时库 {runtime.get('sampling_temp_db')}"
     return (
         f"就绪：{runtime['vendor']}_{runtime['game_id']}  "
-        f"{runtime['source_db']} -> {runtime['final_db']}，配置库 {runtime['config_db']}"
+        f"{runtime['source_db']} -> {runtime['final_db']}，配置库 {runtime['config_db']}{staging}"
     )
 
 
@@ -246,6 +257,7 @@ def build_ui_deps(ctx):
         vendor_type_map=ctx.vendor_type_map,
         random_seed=ctx.random_seed,
         run_all_sampling_jobs=ctx.run_all_sampling_jobs,
+        mirror_sampling_temp_to_target=ctx.mirror_sampling_temp_to_target,
         write_common_configs=ctx.write_common_configs,
         test_selected_database_connections=ctx.test_selected_database_connections,
         normalize_extra_buy_groups=ctx.normalize_extra_buy_groups,
@@ -280,6 +292,8 @@ def build_settings_deps(ctx):
         get_rebate_rules=ctx.get_rebate_rules,
         get_sampling_append_mode=ctx.get_sampling_append_mode,
         get_sampling_detailed_log=ctx.get_sampling_detailed_log,
+        get_sampling_use_temp_db=ctx.get_sampling_use_temp_db,
+        get_sampling_temp_db=ctx.get_sampling_temp_db,
         get_group_weight_rules=ctx.get_group_weight_rules,
         get_special_group_target_rtp=ctx.get_special_group_target_rtp,
         get_ex_group_target_rtps=ctx.get_ex_group_target_rtps,
@@ -335,6 +349,7 @@ def build_settings_deps(ctx):
         apply_rebate_config_direct_count_tiers=ctx.apply_rebate_config_direct_count_tiers,
         apply_sampling_append_mode=ctx.apply_sampling_append_mode,
         apply_sampling_detailed_log=ctx.apply_sampling_detailed_log,
+        apply_sampling_temp_db_config=ctx.apply_sampling_temp_db_config,
     )
 
 
@@ -347,6 +362,8 @@ def build_task_deps(ctx):
         get_rebate_rules=ctx.get_rebate_rules,
         get_sampling_append_mode=ctx.get_sampling_append_mode,
         get_sampling_detailed_log=ctx.get_sampling_detailed_log,
+        get_sampling_use_temp_db=ctx.get_sampling_use_temp_db,
+        get_sampling_temp_db=ctx.get_sampling_temp_db,
         get_direct_count_modes=ctx.get_direct_count_modes,
         get_direct_count_tiers=ctx.get_direct_count_tiers,
         get_game_configs=ctx.get_game_configs,
@@ -370,6 +387,8 @@ def build_task_deps(ctx):
         request_cancel=ctx.request_cancel,
         task_cancelled_cls=ctx.task_cancelled_cls,
         run_task_preflight=ctx.run_task_preflight,
+        mirror_sampling_temp_to_target=ctx.mirror_sampling_temp_to_target,
+        sync_sampling_temp_results=ctx.sync_sampling_temp_results,
     )
 
 

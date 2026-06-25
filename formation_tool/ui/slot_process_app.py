@@ -39,6 +39,8 @@ class SlotProcessApp(SlotAppUiMixin, SlotAppSettingsMixin, SlotAppTaskMixin, Slo
         self.source_db_var = tk.StringVar(value=runtime['source_db'])
         self.final_db_var = tk.StringVar(value=runtime['final_db'])
         self.config_db_var = tk.StringVar(value=runtime['config_db'])
+        self.sampling_temp_db_var = tk.StringVar(value=str(runtime.get('sampling_temp_db') or runtime['final_db']))
+        self.sampling_use_temp_db_var = tk.BooleanVar(value=bool(runtime.get('sampling_use_temp_db', False)))
         self.special_weight_0_var = tk.StringVar(value=str(trigger_weights['special_0']))
         self.special_weight_1_var = tk.StringVar(value=str(trigger_weights['special_1']))
         self.free_weight_0_var = tk.StringVar(value=str(trigger_weights['free_0']))

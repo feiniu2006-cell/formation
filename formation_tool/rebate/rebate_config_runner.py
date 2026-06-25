@@ -70,7 +70,7 @@ def resolve_rebate_config_condition(names, deps):
             return None
 
         try:
-            return deps.resolve_rebate_config_game_condition(
+            game_condition = deps.resolve_rebate_config_game_condition(
                 source_conn,
                 source_table,
                 names['sample_conditions'],
@@ -78,6 +78,17 @@ def resolve_rebate_config_condition(names, deps):
         except ValueError as e:
             print(f"  {e}，跳过生成 {config_table}")
             return None
+
+        detect_end_field = getattr(deps, 'detect_end_field', None)
+        end_field = detect_end_field(source_conn, source_table) if callable(detect_end_field) else None
+        names['source_has_end_field'] = bool(end_field)
+        names['rebate_count_expr'] = "COUNT(DISTINCT `id`)" if end_field else "COUNT(*)"
+        if not end_field:
+            print_rebate_config_detail(
+                deps,
+                f"  {source_table} 未检测到 game_end/is_end，按 id 唯一表使用 COUNT(*) 统计",
+            )
+        return game_condition
     finally:
         deps.close_safely(source_conn)
 
@@ -110,8 +121,9 @@ def query_rebate_distribution(names, stats_condition, deps):
         start = time.perf_counter()
         source_engine = deps.get_engine_by_table('SOURCE_TABLE', names['table_config'])
         source_ref = deps.quote_identifier(names['source_table'], "源表名")
+        count_expr = names.get('rebate_count_expr') or "COUNT(DISTINCT `id`)"
         stats_df = pd.read_sql_query(
-            f"SELECT `rebate`, COUNT(DISTINCT `id`) AS total "
+            f"SELECT `rebate`, {count_expr} AS total "
             f"FROM {source_ref} WHERE {stats_condition} GROUP BY `rebate` ORDER BY `rebate`",
             source_engine,
         )

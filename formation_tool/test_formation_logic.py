@@ -1750,7 +1750,15 @@ class RebateConfigRunnerTests(unittest.TestCase):
             "sample_conditions": {"where_clause": "rebate = {target_rebate}"},
         }
 
-    def build_runner_deps(self, events, *, table_exists=True, write_result=True, direct_count_modes=None):
+    def build_runner_deps(
+        self,
+        events,
+        *,
+        table_exists=True,
+        write_result=True,
+        direct_count_modes=None,
+        end_field=None,
+    ):
         conn = object()
 
         def close_safely(value):
@@ -1767,6 +1775,7 @@ class RebateConfigRunnerTests(unittest.TestCase):
             connect_by_table=lambda _key, _table_config: conn,
             table_exists_exact=lambda _conn, _table: table_exists,
             resolve_rebate_config_game_condition=lambda *_args: "rebate >= 0",
+            detect_end_field=lambda _conn, _table: end_field,
             close_safely=close_safely,
             get_engine_by_table=lambda *_args: "engine",
             quote_identifier=lambda value, _label=None: f"`{value}`",
@@ -1830,6 +1839,47 @@ class RebateConfigRunnerTests(unittest.TestCase):
 
         self.assertFalse(result)
         self.assertIn(("write", "CFG", "rebate_count", [(0, 10), (1000, 5)]), events)
+
+    def test_generate_rebate_config_uses_count_star_when_source_has_no_end_field(self):
+        events = []
+        deps = self.build_runner_deps(events, end_field=None)
+        captured = []
+        pd = importlib.import_module("pandas")
+        original_read_sql_query = rebate_config_runner.pd.read_sql_query
+        try:
+            def fake_read_sql_query(query, _engine):
+                captured.append(query)
+                return pd.DataFrame([{"rebate": 0, "total": 100}])
+
+            rebate_config_runner.pd.read_sql_query = fake_read_sql_query
+            result = self.run_generate_silently(deps)
+        finally:
+            rebate_config_runner.pd.read_sql_query = original_read_sql_query
+
+        self.assertTrue(result)
+        self.assertTrue(captured)
+        self.assertIn("COUNT(*) AS total", captured[0])
+        self.assertNotIn("COUNT(DISTINCT `id`)", captured[0])
+
+    def test_generate_rebate_config_keeps_distinct_id_when_source_has_end_field(self):
+        events = []
+        deps = self.build_runner_deps(events, end_field="game_end")
+        captured = []
+        pd = importlib.import_module("pandas")
+        original_read_sql_query = rebate_config_runner.pd.read_sql_query
+        try:
+            def fake_read_sql_query(query, _engine):
+                captured.append(query)
+                return pd.DataFrame([{"rebate": 0, "total": 100}])
+
+            rebate_config_runner.pd.read_sql_query = fake_read_sql_query
+            result = self.run_generate_silently(deps)
+        finally:
+            rebate_config_runner.pd.read_sql_query = original_read_sql_query
+
+        self.assertTrue(result)
+        self.assertTrue(captured)
+        self.assertIn("COUNT(DISTINCT `id`) AS total", captured[0])
 
     def test_generate_direct_count_config_applies_tier_limits(self):
         events = []
@@ -2431,6 +2481,240 @@ class SamplingCoreWriteTests(unittest.TestCase):
         self.assertNotIn("rebate", normalized_query.lower())
         self.assertNotIn("game_end", normalized_query.lower())
 
+    def test_copy_table_between_engines_logs_copy_context_without_rebate_label(self):
+        calls = []
+        old_read_sql_query = sampling_core.pd.read_sql_query
+        old_write = sampling_core.write_dataframe_to_staging_with_retry
+        old_check_cancelled = getattr(sampling_core, "check_cancelled", None)
+        had_check_cancelled = hasattr(sampling_core, "check_cancelled")
+        old_quote_identifier = getattr(sampling_core, "quote_identifier", None)
+        had_quote_identifier = hasattr(sampling_core, "quote_identifier")
+        sampling_core.pd.read_sql_query = lambda *_args, **_kwargs: [
+            sampling_core.pd.DataFrame([{"id": 1}])
+        ]
+        sampling_core.write_dataframe_to_staging_with_retry = (
+            lambda df, target_engine, target_table_name, target_rebate=None, **kwargs:
+            calls.append((target_rebate, kwargs))
+        )
+        sampling_core.check_cancelled = lambda: None
+        sampling_core.quote_identifier = lambda value, _label: f"`{value}`"
+        try:
+            copied = sampling_core.copy_table_between_engines(
+                "source-engine",
+                "target-engine",
+                "source_tmp",
+                "target_tmp",
+                label="同步采样临时表到目标库",
+            )
+        finally:
+            sampling_core.pd.read_sql_query = old_read_sql_query
+            sampling_core.write_dataframe_to_staging_with_retry = old_write
+            if had_check_cancelled:
+                sampling_core.check_cancelled = old_check_cancelled
+            else:
+                delattr(sampling_core, "check_cancelled")
+            if had_quote_identifier:
+                sampling_core.quote_identifier = old_quote_identifier
+            else:
+                delattr(sampling_core, "quote_identifier")
+
+        self.assertEqual(copied, 1)
+        self.assertEqual(len(calls), 1)
+        target_rebate, kwargs = calls[0]
+        self.assertIsNone(target_rebate)
+        self.assertEqual(kwargs["operation_label"], "同步采样临时表到目标库：写入复制分块 1")
+        self.assertEqual(kwargs["log_context"], "同步采样临时表到目标库，复制分块 1")
+        self.assertNotIn("rebate", kwargs["operation_label"])
+        self.assertNotIn("rebate", kwargs["log_context"])
+
+    def test_dump_import_table_between_databases_uses_mysql_cli_and_rewrites_target_table(self):
+        calls = []
+        old_run = sampling_core.subprocess.run
+        old_which = sampling_core.shutil.which
+        old_print = sampling_core.print
+        old_check_cancelled = getattr(sampling_core, "check_cancelled", None)
+        had_check_cancelled = hasattr(sampling_core, "check_cancelled")
+        sampling_core.shutil.which = lambda name: f"C:\\mysql\\bin\\{name}"
+        sampling_core.print = lambda message="": calls.append(("print", message))
+        sampling_core.check_cancelled = lambda: None
+
+        def fake_run(args, stdin=None, stdout=None, stderr=None, env=None, check=False):
+            calls.append(("run", args, env, stdin is not None))
+            exe_name = Path(args[0]).name.lower()
+            if exe_name.startswith("mysqldump"):
+                dump_path = next(arg.split("=", 1)[1] for arg in args if arg.startswith("--result-file="))
+                Path(dump_path).write_bytes(b"INSERT INTO `source_table` VALUES (1);\n")
+            elif exe_name.startswith("mysql"):
+                calls.append(("import_data", stdin.read()))
+            return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+        sampling_core.subprocess.run = fake_run
+        try:
+            result = sampling_core.dump_import_table_between_databases(
+                {
+                    "host": "127.0.0.1",
+                    "port": 3306,
+                    "user": "source_user",
+                    "password": "source_secret",
+                    "database": "source_db",
+                },
+                {
+                    "host": "192.168.1.1",
+                    "port": 3307,
+                    "user": "target_user",
+                    "password": "target_secret",
+                    "database": "target_db",
+                },
+                "source_table",
+                "target_tmp",
+                label="镜像测试",
+            )
+        finally:
+            sampling_core.subprocess.run = old_run
+            sampling_core.shutil.which = old_which
+            sampling_core.print = old_print
+            if had_check_cancelled:
+                sampling_core.check_cancelled = old_check_cancelled
+            else:
+                delattr(sampling_core, "check_cancelled")
+
+        self.assertTrue(result)
+        run_calls = [call for call in calls if call[0] == "run"]
+        self.assertEqual(len(run_calls), 2)
+        dump_args = run_calls[0][1]
+        import_args = run_calls[1][1]
+        self.assertIn("--single-transaction", dump_args)
+        self.assertIn("--database=target_db", import_args)
+        self.assertNotIn("source_secret", " ".join(dump_args))
+        self.assertNotIn("target_secret", " ".join(import_args))
+        self.assertEqual(run_calls[0][2]["MYSQL_PWD"], "source_secret")
+        self.assertEqual(run_calls[1][2]["MYSQL_PWD"], "target_secret")
+        imported = next(call[1] for call in calls if call[0] == "import_data")
+        self.assertIn(b"`target_tmp`", imported)
+        self.assertNotIn(b"`source_table`", imported)
+
+    def test_dump_import_table_between_databases_retries_import_and_reprepares_target(self):
+        calls = []
+        old_run = sampling_core.subprocess.run
+        old_which = sampling_core.shutil.which
+        old_print = sampling_core.print
+        old_sleep = getattr(sampling_core, "interruptible_sleep", None)
+        had_sleep = hasattr(sampling_core, "interruptible_sleep")
+        old_check_cancelled = getattr(sampling_core, "check_cancelled", None)
+        had_check_cancelled = hasattr(sampling_core, "check_cancelled")
+        old_retries = getattr(sampling_core, "MYSQL_DUMP_IMPORT_RETRIES", None)
+        had_retries = hasattr(sampling_core, "MYSQL_DUMP_IMPORT_RETRIES")
+        old_retry_delay = getattr(sampling_core, "DB_RETRY_DELAY", None)
+        had_retry_delay = hasattr(sampling_core, "DB_RETRY_DELAY")
+        import_attempts = {"count": 0}
+        sampling_core.shutil.which = lambda name: f"C:\\mysql\\bin\\{name}"
+        sampling_core.print = lambda message="": calls.append(("print", message))
+        sampling_core.interruptible_sleep = lambda seconds: calls.append(("sleep", seconds))
+        sampling_core.check_cancelled = lambda: None
+        sampling_core.MYSQL_DUMP_IMPORT_RETRIES = 5
+        sampling_core.DB_RETRY_DELAY = 0
+
+        def fake_run(args, stdin=None, stdout=None, stderr=None, env=None, check=False):
+            exe_name = Path(args[0]).name.lower()
+            if exe_name.startswith("mysqldump"):
+                dump_path = next(arg.split("=", 1)[1] for arg in args if arg.startswith("--result-file="))
+                Path(dump_path).write_bytes(b"INSERT INTO `source_table` VALUES (1);\n")
+                return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+            import_attempts["count"] += 1
+            if import_attempts["count"] < 3:
+                return SimpleNamespace(returncode=1, stdout=b"", stderr=b"lost connection")
+            return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+        sampling_core.subprocess.run = fake_run
+        try:
+            result = sampling_core.dump_import_table_between_databases(
+                {"host": "h", "port": 3306, "user": "u", "password": "p", "database": "sdb"},
+                {"host": "h", "port": 3306, "user": "u", "password": "p", "database": "tdb"},
+                "source_table",
+                "target_tmp",
+                label="镜像测试",
+                reprepare_target=lambda: calls.append("reprepare"),
+            )
+        finally:
+            sampling_core.subprocess.run = old_run
+            sampling_core.shutil.which = old_which
+            sampling_core.print = old_print
+            if had_sleep:
+                sampling_core.interruptible_sleep = old_sleep
+            else:
+                delattr(sampling_core, "interruptible_sleep")
+            if had_check_cancelled:
+                sampling_core.check_cancelled = old_check_cancelled
+            else:
+                delattr(sampling_core, "check_cancelled")
+            if had_retries:
+                sampling_core.MYSQL_DUMP_IMPORT_RETRIES = old_retries
+            else:
+                delattr(sampling_core, "MYSQL_DUMP_IMPORT_RETRIES")
+            if had_retry_delay:
+                sampling_core.DB_RETRY_DELAY = old_retry_delay
+            else:
+                delattr(sampling_core, "DB_RETRY_DELAY")
+
+        self.assertTrue(result)
+        self.assertEqual(import_attempts["count"], 3)
+        self.assertEqual(calls.count("reprepare"), 2)
+
+    def test_finalize_temp_db_replaces_staging_formal_table_without_auto_sync(self):
+        calls = []
+        old_count = getattr(sampling_core, "count_table_rows", None)
+        old_refresh = getattr(sampling_core, "refresh_connection_read_view", None)
+        old_replace = getattr(sampling_core, "replace_table_with_staging", None)
+        old_copy = getattr(sampling_core, "copy_table_between_engines", None)
+        old_print = sampling_core.print
+        sampling_core.count_table_rows = lambda _conn, _table: 10
+        sampling_core.refresh_connection_read_view = lambda conn, _db, _label: conn
+        sampling_core.replace_table_with_staging = (
+            lambda conn, staging, target, db: calls.append(("replace", conn, staging, target, db))
+        )
+        sampling_core.copy_table_between_engines = (
+            lambda *_args, **_kwargs: self.fail("target sync should not run during sampling finalize")
+        )
+        sampling_core.print = lambda message="": calls.append(("print", message))
+        try:
+            result, final_conn = sampling_core.finalize_direct_sampling_staging(
+                None,
+                {
+                    "source_db_name": "SRC",
+                    "final_db_name": "DST",
+                    "staging_db_name": "TMP",
+                    "source_table_name": "source_table",
+                    "final_table_name": "final_table",
+                },
+                {"staging_table_name": "final_table_tmp", "base_existing_count": 0},
+                {"sampled_count": 10, "remapped_id_count": 0, "remapped_row_count": 0},
+                False,
+                table_config={"FINAL_TABLE": {"database": "DST", "name": "final_table"}},
+                staging_conn="staging-conn",
+            )
+        finally:
+            sampling_core.print = old_print
+            if old_count is not None:
+                sampling_core.count_table_rows = old_count
+            else:
+                delattr(sampling_core, "count_table_rows")
+            if old_refresh is not None:
+                sampling_core.refresh_connection_read_view = old_refresh
+            else:
+                delattr(sampling_core, "refresh_connection_read_view")
+            if old_replace is not None:
+                sampling_core.replace_table_with_staging = old_replace
+            else:
+                delattr(sampling_core, "replace_table_with_staging")
+            if old_copy is not None:
+                sampling_core.copy_table_between_engines = old_copy
+            else:
+                delattr(sampling_core, "copy_table_between_engines")
+
+        self.assertIsNone(final_conn)
+        self.assertIs(result, True)
+        self.assertIn(("replace", "staging-conn", "final_table_tmp", "final_table", "TMP"), calls)
+
     def test_resolve_direct_sample_conditions_defers_end_field_integrity_validation(self):
         old_get_table_name = getattr(sampling_core, "get_table_name", None)
         old_detect_optional = getattr(sampling_core, "detect_end_field_optional", None)
@@ -2594,6 +2878,25 @@ class SamplingCoreWriteTests(unittest.TestCase):
     def test_write_sample_chunk_uses_batched_progress_insert(self):
         calls = []
 
+        class FakeConnection:
+            pass
+
+        class FakeBegin:
+            def __init__(self):
+                self.conn = FakeConnection()
+
+            def __enter__(self):
+                calls.append("begin")
+                return self.conn
+
+            def __exit__(self, *_args):
+                calls.append("end")
+                return False
+
+        class FakeEngine:
+            def begin(self):
+                return FakeBegin()
+
         class FakeFrame:
             def __len__(self):
                 return 3
@@ -2601,23 +2904,122 @@ class SamplingCoreWriteTests(unittest.TestCase):
             def to_sql(self, *args, **kwargs):
                 calls.append(("to_sql", args, kwargs))
 
-        old_sql_with_retry = getattr(sampling_core, "sql_with_retry", None)
-        had_sql_with_retry = hasattr(sampling_core, "sql_with_retry")
-        sampling_core.sql_with_retry = lambda fn, label: calls.append(("retry", label)) or fn()
+        old_check_cancelled = getattr(sampling_core, "check_cancelled", None)
+        had_check_cancelled = hasattr(sampling_core, "check_cancelled")
+        sampling_core.check_cancelled = lambda: None
         try:
-            sampling_core.write_sample_chunk_to_staging(FakeFrame(), "engine", "tmp_table", 1000)
+            sampling_core.write_sample_chunk_to_staging(FakeFrame(), FakeEngine(), "tmp_table", 1000)
         finally:
-            if had_sql_with_retry:
-                sampling_core.sql_with_retry = old_sql_with_retry
+            if had_check_cancelled:
+                sampling_core.check_cancelled = old_check_cancelled
             else:
-                delattr(sampling_core, "sql_with_retry")
+                delattr(sampling_core, "check_cancelled")
 
         to_sql_call = next(item for item in calls if item[0] == "to_sql")
-        self.assertEqual(to_sql_call[1], ("tmp_table", "engine"))
+        self.assertEqual(to_sql_call[1][0], "tmp_table")
+        self.assertIsInstance(to_sql_call[1][1], FakeConnection)
         self.assertEqual(to_sql_call[2]["if_exists"], "append")
         self.assertFalse(to_sql_call[2]["index"])
         self.assertEqual(to_sql_call[2]["chunksize"], sampling_core.SAMPLE_ROW_WRITE_CHUNK_SIZE)
         self.assertTrue(callable(to_sql_call[2]["method"]))
+        self.assertEqual(calls[0], "begin")
+        self.assertIn("end", calls)
+
+    def test_write_sample_chunk_disposes_engine_before_retry(self):
+        calls = []
+
+        class FakeConnection:
+            pass
+
+        class FakeBegin:
+            def __init__(self, fail):
+                self.fail = fail
+                self.conn = FakeConnection()
+
+            def __enter__(self):
+                calls.append("begin")
+                return self.conn
+
+            def __exit__(self, *_args):
+                calls.append("end")
+                return False
+
+        class FakeEngine:
+            def __init__(self):
+                self.attempt = 0
+
+            def begin(self):
+                self.attempt += 1
+                return FakeBegin(self.attempt == 1)
+
+            def dispose(self):
+                calls.append("dispose")
+
+        class FakeFrame:
+            def __len__(self):
+                return 3
+
+            def to_sql(self, *_args, **_kwargs):
+                calls.append(("to_sql", _kwargs.get("chunksize")))
+                if sum(1 for item in calls if isinstance(item, tuple) and item[0] == "to_sql") == 1:
+                    raise RuntimeError("lock wait timeout")
+
+        old_check_cancelled = getattr(sampling_core, "check_cancelled", None)
+        had_check_cancelled = hasattr(sampling_core, "check_cancelled")
+        old_interruptible_sleep = getattr(sampling_core, "interruptible_sleep", None)
+        had_interruptible_sleep = hasattr(sampling_core, "interruptible_sleep")
+        old_max_retries = getattr(sampling_core, "MAX_DB_RETRIES", None)
+        had_max_retries = hasattr(sampling_core, "MAX_DB_RETRIES")
+        old_retry_delay = getattr(sampling_core, "DB_RETRY_DELAY", None)
+        had_retry_delay = hasattr(sampling_core, "DB_RETRY_DELAY")
+        old_chunk_size = getattr(sampling_core, "SAMPLE_ROW_WRITE_CHUNK_SIZE", None)
+        had_chunk_size = hasattr(sampling_core, "SAMPLE_ROW_WRITE_CHUNK_SIZE")
+        old_print = sampling_core.print
+        sampling_core.check_cancelled = lambda: calls.append("check")
+        sampling_core.interruptible_sleep = lambda seconds: calls.append(("sleep", seconds))
+        sampling_core.MAX_DB_RETRIES = 2
+        sampling_core.DB_RETRY_DELAY = 5
+        sampling_core.SAMPLE_ROW_WRITE_CHUNK_SIZE = 20
+        sampling_core.print = lambda message="": calls.append(("print", message))
+        try:
+            sampling_core.write_sample_chunk_to_staging(FakeFrame(), FakeEngine(), "tmp_table", 6300)
+        finally:
+            sampling_core.print = old_print
+            if had_check_cancelled:
+                sampling_core.check_cancelled = old_check_cancelled
+            else:
+                delattr(sampling_core, "check_cancelled")
+            if had_interruptible_sleep:
+                sampling_core.interruptible_sleep = old_interruptible_sleep
+            else:
+                delattr(sampling_core, "interruptible_sleep")
+            if had_max_retries:
+                sampling_core.MAX_DB_RETRIES = old_max_retries
+            else:
+                delattr(sampling_core, "MAX_DB_RETRIES")
+            if had_retry_delay:
+                sampling_core.DB_RETRY_DELAY = old_retry_delay
+            else:
+                delattr(sampling_core, "DB_RETRY_DELAY")
+            if had_chunk_size:
+                sampling_core.SAMPLE_ROW_WRITE_CHUNK_SIZE = old_chunk_size
+            else:
+                delattr(sampling_core, "SAMPLE_ROW_WRITE_CHUNK_SIZE")
+
+        self.assertIn("dispose", calls)
+        self.assertIn(("sleep", 5), calls)
+        self.assertEqual(
+            [item[1] for item in calls if isinstance(item, tuple) and item[0] == "to_sql"],
+            [20, 5],
+        )
+        self.assertTrue(
+            any(
+                isinstance(item, tuple)
+                and item[0] == "print"
+                and "第2次重试成功" in item[1]
+                for item in calls
+            )
+        )
 
     def test_sample_row_write_method_reports_inserted_rows(self):
         calls = []
@@ -2715,7 +3117,7 @@ class DirectSamplingRunnerTests(unittest.TestCase):
             close_safely=close_safely,
         )
 
-    def test_direct_sampling_success_passes_append_mode_and_closes_connections(self):
+    def test_direct_sampling_success_uses_replace_mode_and_closes_connections(self):
         events = []
         deps = self.build_base_deps(events, append_mode=True)
         final_conn_after = object()
@@ -2746,16 +3148,90 @@ class DirectSamplingRunnerTests(unittest.TestCase):
         result = run_direct_sampling_silently(deps)
 
         self.assertTrue(result)
-        self.assertIn(("prepare", deps.source_conn, deps.final_conn, "final_table", True), events)
-        self.assertIn(("sample", ["config-row"], True, staging_state), events)
+        self.assertIn(("prepare", deps.source_conn, deps.final_conn, "final_table", False), events)
+        self.assertIn(("sample", ["config-row"], False, staging_state), events)
         self.assertIn(("finalize", final_conn_after, "final_table", staging_state, {
             "sampled_count": 3,
             "remapped_id_count": 1,
             "remapped_row_count": 2,
-        }, True), events)
+        }, False), events)
         self.assertNotIn("cleanup", [event[0] for event in events if isinstance(event, tuple)])
         self.assertIn(("close", deps.source_conn), events)
         self.assertIn(("close", final_conn_after), events)
+
+    def test_direct_sampling_temp_db_clear_mode_skips_target_until_sync(self):
+        events = []
+        deps = self.build_base_deps(events, append_mode=False)
+        deps.names["staging_db_name"] = "TMP"
+        target_final_conn = object()
+        staging_conn = object()
+        updated_staging_conn = object()
+        staging_state = {"staging_table_name": "final_table_tmp", "base_existing_count": 0}
+
+        def connect_by_table(table_key, table_config):
+            db_name = (table_config.get("FINAL_TABLE") or {}).get("database") if isinstance(table_config, dict) else None
+            events.append(("connect", table_key, db_name))
+            if table_key == "SOURCE_TABLE":
+                return deps.source_conn
+            return staging_conn if db_name == "TMP" else target_final_conn
+
+        def get_engine_by_table(table_key, table_config):
+            db_name = (table_config.get("FINAL_TABLE") or {}).get("database") if isinstance(table_config, dict) else None
+            return f"engine:{table_key}:{db_name or 'DST'}"
+
+        def prepare_staging(source_conn, final_conn, _table_config, names, append_mode, **kwargs):
+            events.append((
+                "prepare",
+                source_conn,
+                final_conn,
+                kwargs["final_target_conn"],
+                kwargs["staging_table_config"]["FINAL_TABLE"]["database"],
+            ))
+            return staging_state
+
+        def sample_rows(_config_df, **kwargs):
+            events.append((
+                "sample",
+                kwargs["final_conn"],
+                kwargs["final_engine"],
+                kwargs["names"]["staging_db_name"],
+            ))
+            return {"sampled_count": 3, "remapped_id_count": 0, "remapped_row_count": 0}, updated_staging_conn
+
+        def finalize(final_conn, _names, _staging_state, _totals, _append_mode, **kwargs):
+            events.append((
+                "finalize",
+                final_conn,
+                kwargs["staging_conn"],
+                kwargs["final_engine"],
+                kwargs["staging_engine"],
+            ))
+            return True, final_conn
+
+        deps.connect_by_table = connect_by_table
+        deps.get_engine_by_table = get_engine_by_table
+        deps.get_sampling_staging_table_config = lambda _config: {"FINAL_TABLE": {"database": "TMP"}}
+        deps.prepare_direct_sampling_staging = prepare_staging
+        deps.sample_config_rows_to_staging = sample_rows
+        deps.finalize_direct_sampling_staging = finalize
+        deps.cleanup_direct_sampling_failure = lambda *args, **kwargs: events.append(("cleanup", args, kwargs))
+
+        result = run_direct_sampling_silently(deps)
+
+        self.assertTrue(result)
+        self.assertNotIn(("connect", "FINAL_TABLE", None), events)
+        self.assertIn(("connect", "FINAL_TABLE", "TMP"), events)
+        self.assertIn(("prepare", deps.source_conn, staging_conn, None, "TMP"), events)
+        self.assertIn(("sample", staging_conn, "engine:FINAL_TABLE:TMP", "TMP"), events)
+        self.assertIn((
+            "finalize",
+            None,
+            updated_staging_conn,
+            None,
+            "engine:FINAL_TABLE:TMP",
+        ), events)
+        self.assertIn(("close", updated_staging_conn), events)
+        self.assertNotIn(("close", target_final_conn), events)
 
     def test_direct_sampling_success_passes_clear_mode_to_staging_flow(self):
         events = []
@@ -2974,6 +3450,65 @@ class DirectSamplingRunnerTests(unittest.TestCase):
 
 
 class SamplingTaskStateTests(unittest.TestCase):
+    def test_write_state_retries_transient_replace_failure(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "state.json"
+            calls = []
+            original_replace = sampling_task_state.os.replace
+            original_print = sampling_task_state.print
+            try:
+                def flaky_replace(src, dst):
+                    calls.append((src, dst))
+                    if len(calls) <= 2:
+                        raise PermissionError(5, "拒绝访问", str(dst))
+                    return original_replace(src, dst)
+
+                sampling_task_state.os.replace = flaky_replace
+                sampling_task_state.print = lambda *_args, **_kwargs: None
+
+                result = sampling_task_state._write_state(
+                    path,
+                    {"schema_version": 1, "identity": {"table": "x"}},
+                    retries=5,
+                    retry_delay=0,
+                )
+            finally:
+                sampling_task_state.os.replace = original_replace
+                sampling_task_state.print = original_print
+
+            self.assertTrue(result)
+            self.assertEqual(len(calls), 3)
+            self.assertEqual(
+                sampling_task_state.json.loads(path.read_text(encoding="utf-8"))["identity"],
+                {"table": "x"},
+            )
+
+    def test_save_state_warns_and_continues_after_persistent_write_failure(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "state.json"
+            warnings = []
+            original_write_once = sampling_task_state._write_state_once
+            original_sleep = sampling_task_state.time.sleep
+            original_print = sampling_task_state.print
+            try:
+                def locked_write(*_args, **_kwargs):
+                    raise PermissionError(5, "拒绝访问", str(path))
+
+                sampling_task_state._write_state_once = locked_write
+                sampling_task_state.time.sleep = lambda *_args, **_kwargs: None
+                sampling_task_state.print = lambda message="": warnings.append(str(message))
+
+                state = {"identity": {"table": "x"}, "_path": str(path)}
+                result = sampling_task_state.save_state(state)
+            finally:
+                sampling_task_state._write_state_once = original_write_once
+                sampling_task_state.time.sleep = original_sleep
+                sampling_task_state.print = original_print
+
+            self.assertIs(result, state)
+            self.assertEqual(state["_path"], str(path))
+            self.assertTrue(any("将继续采样" in message for message in warnings))
+
     def test_state_roundtrip_records_completed_rebate_and_id_mapping(self):
         old_settings_dir = os.environ.get(settings_logic.APP_SETTINGS_DIR_ENV)
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -3079,7 +3614,7 @@ class RuleImportPreviewTests(unittest.TestCase):
 
         self.assertIn("规则文件版本：1", preview)
         self.assertIn("采样规则：2 个模式", preview)
-        self.assertIn("采样写入模式：不清空追加", preview)
+        self.assertNotIn("采样写入模式", preview)
         self.assertIn("采样详细日志：开启", preview)
         self.assertIn("group_weight 权重规则：2 个模式", preview)
         self.assertIn("购买局配置：1 个购买局配置", preview)
@@ -3545,7 +4080,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
 
         data = app.build_app_settings_data()
 
-        self.assertTrue(data["sampling_options"]["append_mode"])
+        self.assertNotIn("append_mode", data["sampling_options"])
         self.assertTrue(data["sampling_options"]["detailed_log"])
         self.assertEqual(data["group_weight_options"]["buy_game_type"], 99)
         self.assertEqual(data["group_weight_options"]["ex_buy_game_type"], 98)

@@ -48,6 +48,8 @@ class SlotAppTaskMixin:
             f"当前配置：厂商={runtime['vendor']}，游戏编号={runtime['game_id']}，"
             f"源库={runtime['source_db']}，目标库={runtime['final_db']}，配置库={runtime['config_db']}\n"
         )
+        if runtime.get('sampling_use_temp_db'):
+            self.append_log(f"采样临时库：{runtime.get('sampling_temp_db')}（中转开启）\n")
         external_source = deps.get_external_config_source()
         external_error = deps.get_external_config_load_error()
         if external_source:
@@ -79,13 +81,14 @@ class SlotAppTaskMixin:
             f"ex免费局 {len(rebate_rules.get('8', []))} 条\n"
         )
         self.append_log(
-            "采样写入模式："
-            + ("不清空追加（冲突id自动改写）\n" if deps.get_sampling_append_mode() else "清空后写入\n")
-        )
-        self.append_log(
             "采样详细日志："
             + ("开启\n" if deps.get_sampling_detailed_log() else "关闭\n")
         )
+        if getattr(deps, "get_sampling_use_temp_db", lambda: False)():
+            temp_db = getattr(deps, "get_sampling_temp_db", lambda: "")()
+            self.append_log(f"采样方案：写入中转库 {temp_db} 正式表，目标库不变\n")
+        else:
+            self.append_log("采样方案：直接写入目标库并替换正式表\n")
         direct_count_modes = deps.get_direct_count_modes()
         if direct_count_modes:
             game_configs = deps.get_game_configs()
@@ -229,6 +232,7 @@ class SlotAppTaskMixin:
         ok = True
         error = None
         cancelled = False
+        result = None
         preflight_blocked = False
         task_started = time.perf_counter()
         preflight_elapsed = 0.0
@@ -276,7 +280,7 @@ class SlotAppTaskMixin:
                 print(f"执行耗时：{self.format_task_duration(execute_elapsed)}")
                 print(f"总耗时：{self.format_task_duration(total_elapsed)}")
                 print(f"任务状态：{status}")
-        self.log_queue.put(('done', title, ok, error, cancelled))
+        self.log_queue.put(('done', title, ok, error, cancelled, result))
 
     def poll_log_queue(self):
         try:
@@ -286,8 +290,12 @@ class SlotAppTaskMixin:
                 if kind == 'log':
                     self.append_log(item[1])
                 elif kind == 'done':
-                    _, title, ok, error, cancelled = item
-                    self.finish_task(title, ok, error, cancelled)
+                    if len(item) >= 6:
+                        _, title, ok, error, cancelled, result = item
+                    else:
+                        _, title, ok, error, cancelled = item
+                        result = None
+                    self.finish_task(title, ok, error, cancelled, result)
         except queue.Empty:
             pass
         self.root.after(100, self.poll_log_queue)
@@ -306,7 +314,7 @@ class SlotAppTaskMixin:
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
 
-    def finish_task(self, title, ok, error, cancelled=False):
+    def finish_task(self, title, ok, error, cancelled=False, result=None):
         self.running = False
         self.task_deps.clear_cancel_request()
         self.progress.stop()

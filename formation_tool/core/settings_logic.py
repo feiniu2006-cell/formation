@@ -60,7 +60,16 @@ def get_app_profile_settings_path(vendor, game_id, *, module_file, env=None):
     return get_app_settings_base_dir(module_file=module_file, env=env) / 'formation_tool_settings' / filename
 
 
-def build_last_settings_data(*, vendor, game_id, source_db, final_db, config_db):
+def build_last_settings_data(
+    *,
+    vendor,
+    game_id,
+    source_db,
+    final_db,
+    config_db,
+    sampling_temp_db=None,
+    sampling_use_temp_db=False,
+):
     return {
         'version': CURRENT_SETTINGS_VERSION,
         'runtime': {
@@ -69,6 +78,8 @@ def build_last_settings_data(*, vendor, game_id, source_db, final_db, config_db)
             'source_db': source_db,
             'final_db': final_db,
             'config_db': config_db,
+            'sampling_temp_db': sampling_temp_db or final_db,
+            'sampling_use_temp_db': bool(sampling_use_temp_db),
         },
     }
 
@@ -80,6 +91,8 @@ def build_app_settings_data(
     rebate_rules,
     sampling_append_mode,
     sampling_detailed_log,
+    sampling_use_temp_db=formation_defaults.DEFAULT_SAMPLING_USE_TEMP_DB,
+    sampling_temp_db=None,
     group_weight_rules,
     group_weight_options,
     direct_count_modes,
@@ -102,8 +115,9 @@ def build_app_settings_data(
         'trigger_weights': dict(trigger_weights),
         'rebate_rules': rebate_rules,
         'sampling_options': {
-            'append_mode': bool(sampling_append_mode),
             'detailed_log': bool(sampling_detailed_log),
+            'use_temp_db': bool(sampling_use_temp_db),
+            'temp_db': sampling_temp_db or (runtime or {}).get('final_db') or formation_defaults.DEFAULT_SAMPLING_TEMP_DB,
         },
         'group_weight_rules': group_weight_rules,
         'group_weight_options': group_weight_options,
@@ -122,6 +136,15 @@ def migrate_settings_data(data):
         sampling_options.setdefault(
             'detailed_log',
             formation_defaults.DEFAULT_SAMPLING_DETAILED_LOG,
+        )
+        sampling_options.setdefault(
+            'use_temp_db',
+            formation_defaults.DEFAULT_SAMPLING_USE_TEMP_DB,
+        )
+        sampling_options.setdefault(
+            'temp_db',
+            (migrated.get('runtime') or {}).get('sampling_temp_db')
+            or formation_defaults.DEFAULT_SAMPLING_TEMP_DB,
         )
         migrated['sampling_options'] = sampling_options
     group_options = dict(migrated.get('group_weight_options') or {})

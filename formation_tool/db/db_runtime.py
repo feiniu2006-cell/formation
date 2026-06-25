@@ -134,7 +134,10 @@ def sql_with_retry(fn, *, label, max_retries, retry_delay, check_cancelled, slee
     for attempt in range(1, max_retries + 1):
         check_cancelled()
         try:
-            return fn()
+            result = fn()
+            if attempt > 1:
+                print(f"{label} 第{attempt}次重试成功")
+            return result
         except Exception as e:
             print(f"{label}失败 (第{attempt}次): {e}")
             if attempt < max_retries:

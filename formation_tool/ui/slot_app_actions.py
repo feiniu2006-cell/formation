@@ -17,6 +17,14 @@ def build_action_groups(app, deps):
                     ),
                 ),
                 ("单独采样", app.open_single_sampling_dialog),
+                (
+                    "镜像到目标库",
+                    lambda: app.run_task(
+                        "镜像采样中转库到目标库",
+                        deps.mirror_sampling_temp_to_target,
+                        preflight={"kind": "sampling_temp_mirror"},
+                    ),
+                ),
             ],
         ),
         (

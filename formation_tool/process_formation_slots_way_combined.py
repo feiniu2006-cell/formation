@@ -118,6 +118,8 @@ def build_cli_settings_deps():
             'source_db': SOURCE_DB,
             'final_db': FINAL_DB,
             'config_db': CONFIG_DB,
+            'sampling_temp_db': SAMPLING_TEMP_DB,
+            'sampling_use_temp_db': SAMPLING_USE_TEMP_DB,
         },
         get_trigger_weights=lambda: {
             'special_0': SPECIAL_WEIGHT_BY_LAST_DIGIT[0],
@@ -127,6 +129,8 @@ def build_cli_settings_deps():
         },
         get_sampling_append_mode=lambda: SAMPLING_APPEND_MODE,
         get_sampling_detailed_log=lambda: SAMPLING_DETAILED_LOG,
+        get_sampling_use_temp_db=lambda: SAMPLING_USE_TEMP_DB,
+        get_sampling_temp_db=lambda: SAMPLING_TEMP_DB,
         get_app_settings_path=get_app_settings_path,
         get_app_profile_settings_path=get_app_profile_settings_path,
         clear_config_warnings=clear_config_warnings,
@@ -138,6 +142,7 @@ def build_cli_settings_deps():
         apply_rebate_rules_config=apply_rebate_rules_config,
         apply_sampling_append_mode=apply_sampling_append_mode,
         apply_sampling_detailed_log=apply_sampling_detailed_log,
+        apply_sampling_temp_db_config=apply_sampling_temp_db_config,
         apply_group_weight_rules_config=apply_group_weight_rules_config,
         apply_zero_rebate_inference_modes_config=apply_zero_rebate_inference_modes_config,
         apply_rebate_config_direct_count_tiers=apply_rebate_config_direct_count_tiers,
@@ -184,6 +189,8 @@ GAME_TABLE_PREFIX, _GAME_DEFS, GAME_CONFIGS = build_game_configs(
 # ================== 权重配置表写入配置 ==================
 
 WEIGHT_CONFIG_DB = FINAL_DB  # 写入目标库
+SAMPLING_USE_TEMP_DB = formation_defaults.DEFAULT_SAMPLING_USE_TEMP_DB
+SAMPLING_TEMP_DB = formation_defaults.DEFAULT_SAMPLING_TEMP_DB
 SPECIAL_WEIGHT_TABLE   = runtime_config.SPECIAL_WEIGHT_TABLE
 FREE_GAME_CONFIG_TABLE = runtime_config.FREE_GAME_CONFIG_TABLE
 BET_AMOUNT_TABLE       = runtime_config.BET_AMOUNT_TABLE
@@ -789,9 +796,9 @@ def apply_rebate_config_direct_count_tiers(tiers):
 
 
 def apply_sampling_append_mode(enabled):
-    """Apply target-table append mode for sampling."""
+    """Deprecated: sampling append mode has been removed."""
     global SAMPLING_APPEND_MODE
-    SAMPLING_APPEND_MODE = bool(enabled)
+    SAMPLING_APPEND_MODE = False
     RUNTIME_STATE.sampling_append_mode = SAMPLING_APPEND_MODE
 
 
@@ -800,6 +807,21 @@ def apply_sampling_detailed_log(enabled):
     global SAMPLING_DETAILED_LOG
     SAMPLING_DETAILED_LOG = bool(enabled)
     RUNTIME_STATE.sampling_detailed_log = SAMPLING_DETAILED_LOG
+
+
+def apply_sampling_temp_db_config(enabled, temp_db):
+    """Apply optional sampling staging database settings."""
+    global SAMPLING_USE_TEMP_DB, SAMPLING_TEMP_DB
+    enabled = bool(enabled)
+    temp_db = str(temp_db or "").strip()
+    if enabled and temp_db not in DATABASE_CONFIGS:
+        raise ValueError(f"采样临时库配置不存在: {temp_db}，可选数据库: {list(DATABASE_CONFIGS.keys())}")
+    if not temp_db:
+        temp_db = FINAL_DB
+    SAMPLING_USE_TEMP_DB = enabled
+    SAMPLING_TEMP_DB = temp_db
+    RUNTIME_STATE.sampling_use_temp_db = enabled
+    RUNTIME_STATE.sampling_temp_db = temp_db
 
 
 def normalize_group_weight_rule_list(mode_name, mode_rules):
@@ -1291,6 +1313,7 @@ def build_sampling_core_context():
             get_table_database=get_table_database,
             get_table_max_id=get_table_max_id,
             get_table_name=get_table_name,
+            interruptible_sleep=interruptible_sleep,
             make_staging_table_name=make_staging_table_name,
             print_step_error=print_step_error,
             quote_identifier=quote_identifier,
@@ -1519,10 +1542,10 @@ def _load_index_columns(conn, source_tbl):
     }
 
 
-def _explain_rebate_stats_query(conn, source_tbl, stats_condition):
+def _explain_rebate_stats_query(conn, source_tbl, stats_condition, count_expr="COUNT(DISTINCT `id`)"):
     source_ref = quote_identifier(source_tbl, "源表名")
     sql = (
-        f"EXPLAIN SELECT `rebate`, COUNT(DISTINCT `id`) AS total "
+        f"EXPLAIN SELECT `rebate`, {count_expr} AS total "
         f"FROM {source_ref} WHERE {stats_condition} "
         f"GROUP BY `rebate` ORDER BY `rebate`"
     )
@@ -1549,7 +1572,7 @@ def _collect_explain_used_keys(explain_rows):
     return keys
 
 
-def _rebate_stats_index_warning(explain_rows, index_columns, required_prefix):
+def _rebate_stats_index_warning(explain_rows, index_columns, required_prefix, *, require_id=True):
     used_keys = _collect_explain_used_keys(explain_rows)
     if not used_keys:
         possible = sorted({
@@ -1565,11 +1588,12 @@ def _rebate_stats_index_warning(explain_rows, index_columns, required_prefix):
         if not columns:
             reasons.append(f"{key}(无法读取索引列)")
             continue
-        if columns[:len(required_prefix)] == required_prefix and 'id' in columns:
+        if columns[:len(required_prefix)] == required_prefix and (not require_id or 'id' in columns):
             return None
         reasons.append(f"{key}({', '.join(index_columns.get(key, []))})")
 
-    expected = ', '.join(required_prefix + ['id'])
+    expected_columns = required_prefix + (['id'] if require_id else [])
+    expected = ', '.join(expected_columns)
     return f"EXPLAIN 使用的索引不匹配预期列顺序；期望前缀包含 {expected}，实际使用：{'; '.join(reasons)}"
 
 
@@ -1607,12 +1631,19 @@ def get_rebate_config_index_warnings(rules_by_mode=None):
                 REBATE_CONFIG_COUNT_LIMITS,
                 direct_count_mode=False,
             )
+            end_field = detect_end_field(source_conn, source_tbl)
+            count_expr = "COUNT(DISTINCT `id`)" if end_field else "COUNT(*)"
             start = time.perf_counter()
-            explain_rows = _explain_rebate_stats_query(source_conn, source_tbl, stats_condition)
+            explain_rows = _explain_rebate_stats_query(source_conn, source_tbl, stats_condition, count_expr)
             index_columns = _load_index_columns(source_conn, source_tbl)
             elapsed = time.perf_counter() - start
             required_prefix = _detect_required_rebate_index_prefix(game_condition)
-            warning = _rebate_stats_index_warning(explain_rows, index_columns, required_prefix)
+            warning = _rebate_stats_index_warning(
+                explain_rows,
+                index_columns,
+                required_prefix,
+                require_id=bool(end_field),
+            )
             print(
                 f"  索引检查 {source_db_name}.{source_tbl}: "
                 f"使用索引={', '.join(_collect_explain_used_keys(explain_rows)) or '无'}，"
@@ -1767,6 +1798,7 @@ def generate_rebate_config_for_game(game_key, game_config, rules, count_limits=N
             close_safely=close_safely,
             table_exists_exact=table_exists_exact,
             resolve_rebate_config_game_condition=resolve_rebate_config_game_condition,
+            detect_end_field=detect_end_field,
             get_engine_by_table=get_engine_by_table,
             quote_identifier=quote_identifier,
             build_direct_rebate_config_rows=build_direct_rebate_config_rows,
@@ -2626,6 +2658,74 @@ def finalize_direct_sampling_staging(*args, **kwargs):
     return _call_sampling_core('finalize_direct_sampling_staging', *args, **kwargs)
 
 
+def sync_sampling_temp_table_to_target(*args, **kwargs):
+    return _call_sampling_core('sync_sampling_temp_table_to_target', *args, **kwargs)
+
+
+def build_sampling_temp_sync_items(modes="all", *, existing_only=False):
+    """Build mirror targets from the sampling staging DB to the final DB."""
+    temp_db = str(SAMPLING_TEMP_DB or FINAL_DB)
+    final_db = str(FINAL_DB)
+    configs = get_runtime_game_configs()
+    if modes in (None, "all"):
+        selected_modes = sorted(configs)
+    else:
+        selected_modes = [str(mode) for mode in modes if str(mode) in configs]
+
+    conn = None
+    if existing_only:
+        conn = connect_to_database(temp_db)
+        if not conn:
+            raise RuntimeError(f"无法连接采样临时库：{temp_db}")
+
+    items = []
+    seen_tables = set()
+    try:
+        for mode in selected_modes:
+            config = configs.get(mode)
+            if not config:
+                continue
+            table_config = config.get('table_config') or {}
+            if not {'SOURCE_TABLE', 'FINAL_TABLE', 'REBATE_CONFIG_TABLE'}.issubset(table_config):
+                continue
+            final_table_name = get_table_name('FINAL_TABLE', table_config)
+            if final_table_name in seen_tables:
+                continue
+            seen_tables.add(final_table_name)
+            exists = True
+            row_count = None
+            if existing_only:
+                exists = table_exists_exact(conn, final_table_name)
+                if exists:
+                    row_count = count_table_rows(conn, final_table_name)
+            if not exists:
+                continue
+            items.append({
+                'mode': mode,
+                'mode_name': config.get('name', mode),
+                'source_db': temp_db,
+                'target_db': final_db,
+                'table_name': final_table_name,
+                'row_count': row_count,
+                'names': {
+                    'source_db_name': get_table_database('SOURCE_TABLE', table_config),
+                    'final_db_name': final_db,
+                    'staging_db_name': temp_db,
+                    'config_db_name': get_table_database('REBATE_CONFIG_TABLE', table_config),
+                    'source_table_name': get_table_name('SOURCE_TABLE', table_config),
+                    'final_table_name': final_table_name,
+                    'rebate_config_table_name': get_table_name('REBATE_CONFIG_TABLE', table_config),
+                },
+                'table_config': {
+                    key: dict(value) if isinstance(value, dict) else value
+                    for key, value in copy.deepcopy(table_config).items()
+                },
+            })
+    finally:
+        close_safely(conn)
+    return items
+
+
 def cleanup_direct_sampling_failure(*args, **kwargs):
     return _call_sampling_core('cleanup_direct_sampling_failure', *args, **kwargs)
 
@@ -2727,6 +2827,53 @@ def test_selected_database_connections():
 def run_single_game_job(choice):
     """Run sampling for one selected mode."""
     return run_single_game(get_runtime_game_configs()[choice])
+
+
+def sync_sampling_temp_result(item):
+    """Synchronize one completed sampling table from staging DB to target DB."""
+    if not isinstance(item, dict):
+        raise ValueError("同步采样临时库需要有效的待同步信息")
+    table_config = item.get('table_config')
+    names = item.get('names')
+    if not table_config:
+        table_name = item.get('table_name')
+        for config in get_runtime_game_configs().values():
+            if config['table_config'].get('FINAL_TABLE', {}).get('name') == table_name:
+                table_config = config['table_config']
+                break
+    if not table_config:
+        raise ValueError(f"无法找到待同步表配置：{item}")
+    return sync_sampling_temp_table_to_target(table_config, names=names)
+
+
+def sync_sampling_temp_results(items):
+    """Synchronize completed staging-DB sampling tables after user confirmation."""
+    results = {}
+    for index, item in enumerate(items or [], start=1):
+        check_cancelled()
+        table_name = item.get('table_name') if isinstance(item, dict) else None
+        label = table_name or f"待同步表{index}"
+        log_utils.print_section(f"同步采样临时库：{label}")
+        results[label] = sync_sampling_temp_result(item)
+    if not results:
+        print("没有待同步的采样临时库结果。")
+        return False
+    log_utils.print_result_summary(
+        "采样临时库同步完毕，汇总结果",
+        results,
+        name_getter=lambda key: key,
+    )
+    return results
+
+
+def mirror_sampling_temp_to_target():
+    """Mirror existing sampling staging-DB formal tables to the target DB."""
+    items = build_sampling_temp_sync_items("all", existing_only=True)
+    if not items:
+        print(f"采样临时库 {SAMPLING_TEMP_DB} 中没有找到当前游戏可镜像的采样正式表。")
+        return False
+    print(f"发现 {len(items)} 张采样中转表，将镜像到目标库 {FINAL_DB}。")
+    return sync_sampling_temp_results(items)
 
 
 def build_slot_app_deps_context():

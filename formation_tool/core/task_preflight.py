@@ -136,6 +136,12 @@ def _check_selected_database_names(report, runtime, database_configs):
             report.add_fatal(f"{label}未选择")
         elif db_name not in database_configs:
             report.add_fatal(f"{label} {db_name} 不在当前数据库配置中")
+    if runtime.get("sampling_use_temp_db"):
+        temp_db = runtime.get("sampling_temp_db")
+        if not temp_db:
+            report.add_fatal("采样临时库未选择")
+        elif temp_db not in database_configs:
+            report.add_fatal(f"采样临时库 {temp_db} 不在当前数据库配置中")
 
 
 def _check_runtime_identity(report, runtime):
@@ -346,7 +352,7 @@ def _check_sampling_config_tables(report, modes, game_configs, connections, deps
 
 
 def _check_sampling_target_tables(report, modes, game_configs, connections, deps):
-    append_mode = bool(getattr(deps, "get_sampling_append_mode", lambda: False)())
+    append_mode = False
     for mode in modes:
         config = game_configs.get(mode)
         if not config:
@@ -403,6 +409,44 @@ def _check_sampling_source_indexes(report, modes, game_configs, connections, dep
             report.add_warning(f"{config['name']} 源表索引风险：{source_db}.{source_table}，{warning}")
         else:
             report.add_info(f"{config['name']} 源表采样读取索引已检查：{source_db}.{source_table}")
+
+
+def _collect_sampling_databases(game_configs, modes, deps):
+    db_names = set()
+    use_temp = bool(getattr(deps, "get_sampling_use_temp_db", lambda: False)())
+    temp_db = getattr(deps, "get_sampling_temp_db", lambda: None)()
+    for mode in modes:
+        config = game_configs.get(mode)
+        if not config:
+            continue
+        table_config = config.get("table_config", {})
+        for table_key, table_info in table_config.items():
+            if not isinstance(table_info, dict) or "database" not in table_info:
+                continue
+            if use_temp and table_key == "FINAL_TABLE":
+                if temp_db:
+                    db_names.add(temp_db)
+                continue
+            db_names.add(table_info["database"])
+    return db_names
+
+
+def _with_sampling_target_db(game_configs, modes, target_db):
+    updated = dict(game_configs)
+    for mode in modes:
+        config = game_configs.get(mode)
+        if not config:
+            continue
+        table_config = {
+            key: dict(value) if isinstance(value, dict) else value
+            for key, value in (config.get("table_config") or {}).items()
+        }
+        if "FINAL_TABLE" in table_config:
+            table_config["FINAL_TABLE"]["database"] = target_db
+        cloned = dict(config)
+        cloned["table_config"] = table_config
+        updated[mode] = cloned
+    return updated
 
 
 def _check_rebate_config_source_indexes(report, modes, deps):
@@ -464,7 +508,13 @@ def preflight_rebate_config(report, metadata, deps):
     if not modes:
         report.add_fatal("没有可生成采样配置的局类型")
         return
-    connections = _connect_required_databases(report, _collect_table_databases(game_configs, modes), deps)
+    db_names = _collect_table_databases(game_configs, modes)
+    if getattr(deps, "get_sampling_use_temp_db", lambda: False)():
+        temp_db = getattr(deps, "get_sampling_temp_db", lambda: None)()
+        if temp_db:
+            db_names.add(temp_db)
+            report.add_info(f"采样临时库中转已开启：{temp_db}")
+    connections = _connect_required_databases(report, db_names, deps)
     try:
         formation_exists = deps.get_sampling_formation_exists()
         _check_source_tables(report, modes, game_configs, formation_exists, deps)
@@ -484,7 +534,13 @@ def preflight_sampling(report, metadata, deps):
         report.add_fatal("没有可采样的局类型")
         return
     all_modes_requested = metadata.get("modes") in (None, "all")
-    connections = _connect_required_databases(report, _collect_table_databases(game_configs, modes), deps)
+    use_temp = bool(getattr(deps, "get_sampling_use_temp_db", lambda: False)())
+    temp_db = getattr(deps, "get_sampling_temp_db", lambda: None)()
+    target_game_configs = game_configs
+    if use_temp and temp_db:
+        target_game_configs = _with_sampling_target_db(game_configs, modes, temp_db)
+        report.add_info(f"采样中转库已开启：本次采样只检查并写入 {temp_db}，目标库不参与采样预检查")
+    connections = _connect_required_databases(report, _collect_sampling_databases(game_configs, modes, deps), deps)
     try:
         formation_exists = deps.get_sampling_formation_exists()
         existing_modes = [mode for mode in modes if formation_exists.get(mode, False)]
@@ -499,7 +555,7 @@ def preflight_sampling(report, metadata, deps):
         if all_modes_requested and not existing_modes:
             report.add_fatal("全部采样未检测到任何可采样源表")
         _check_sampling_config_tables(report, existing_modes, game_configs, connections, deps)
-        _check_sampling_target_tables(report, existing_modes, game_configs, connections, deps)
+        _check_sampling_target_tables(report, existing_modes, target_game_configs, connections, deps)
         _check_sampling_source_indexes(report, existing_modes, game_configs, connections, deps)
     finally:
         _close_connections(connections, deps)
@@ -525,6 +581,48 @@ def preflight_common_config(report, _metadata, deps):
     _close_connections(connections, deps)
 
 
+def preflight_sampling_temp_mirror(report, _metadata, deps):
+    runtime = deps.get_runtime_state()
+    temp_db = runtime.get("sampling_temp_db")
+    final_db = runtime.get("final_db")
+    if not temp_db:
+        report.add_fatal("未配置采样临时库，无法镜像到目标库")
+        return
+    if temp_db == final_db:
+        report.add_fatal("采样临时库与目标库相同，无需镜像")
+        return
+    connections = _connect_required_databases(report, {temp_db, final_db}, deps)
+    try:
+        temp_conn = connections.get(temp_db)
+        if temp_conn is None:
+            return
+        found = 0
+        seen_tables = set()
+        for mode, config in sorted(deps.get_game_configs().items()):
+            table_config = config.get("table_config", {})
+            if not {"SOURCE_TABLE", "FINAL_TABLE", "REBATE_CONFIG_TABLE"}.issubset(table_config):
+                continue
+            table_name = deps.get_table_name("FINAL_TABLE", table_config)
+            if table_name in seen_tables:
+                continue
+            seen_tables.add(table_name)
+            try:
+                if not deps.table_exists_exact(temp_conn, table_name):
+                    continue
+                row_count = _safe_count_rows(temp_conn, table_name, deps)
+            except Exception as exc:
+                report.add_warning(f"{config['name']} 中转表检查失败：{temp_db}.{table_name}，{exc}")
+                continue
+            found += 1
+            report.add_info(
+                f"{config['name']} 将镜像：{temp_db}.{table_name} -> {final_db}.{table_name}，{row_count} 行"
+            )
+        if found <= 0:
+            report.add_fatal(f"采样临时库 {temp_db} 中没有找到当前游戏可镜像的采样正式表")
+    finally:
+        _close_connections(connections, deps)
+
+
 def run_task_preflight(title, metadata=None, *, deps):
     """Run task-specific preflight checks and return a report."""
     metadata = dict(metadata or {})
@@ -544,6 +642,8 @@ def run_task_preflight(title, metadata=None, *, deps):
         preflight_group_weight(report, metadata, deps)
     elif kind == "common_config":
         preflight_common_config(report, metadata, deps)
+    elif kind == "sampling_temp_mirror":
+        preflight_sampling_temp_mirror(report, metadata, deps)
     else:
         report.add_info("当前任务无需额外预检查")
     return report

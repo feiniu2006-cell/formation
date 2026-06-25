@@ -65,6 +65,8 @@ def build_task_preflight_deps(module):
         get_table_database=module.get_table_database,
         get_table_name=module.get_table_name,
         get_sampling_append_mode=lambda: module.RUNTIME_STATE.sampling_append_mode,
+        get_sampling_use_temp_db=lambda: module.RUNTIME_STATE.sampling_use_temp_db,
+        get_sampling_temp_db=lambda: module.RUNTIME_STATE.sampling_temp_db,
         get_group_weight_formation_exists=module.get_group_weight_formation_exists,
         get_active_group_weight_modes=module.get_active_group_weight_modes,
         build_group_weight_generation_context=module.build_group_weight_generation_context,

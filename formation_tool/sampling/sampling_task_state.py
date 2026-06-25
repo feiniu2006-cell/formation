@@ -4,15 +4,21 @@ import hashlib
 import json
 import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from formation_tool.core import settings_logic
+from formation_tool.utils import log_utils
+
+print = log_utils.emit
 
 STATE_SCHEMA_VERSION = 1
 STATE_DIR_NAME = 'formation_sampling_tasks'
 COMPLETED_STATUSES = {'completed', 'completed_no_data'}
 DEFAULT_COMPLETED_STATE_RETENTION_DAYS = 14
+STATE_WRITE_RETRIES = 5
+STATE_WRITE_RETRY_DELAY_SECONDS = 0.2
 
 
 def utc_now_text():
@@ -43,6 +49,7 @@ def build_sampling_identity(names, sample_conditions, append_mode):
         'source_table_name': names.get('source_table_name'),
         'final_db_name': names.get('final_db_name'),
         'final_table_name': names.get('final_table_name'),
+        'staging_db_name': names.get('staging_db_name', names.get('final_db_name')),
         'config_db_name': names.get('config_db_name'),
         'rebate_config_table_name': names.get('rebate_config_table_name'),
         'where_clause': sample_conditions.get('where_clause'),
@@ -58,12 +65,37 @@ def build_state_path(identity):
     return get_state_base_dir() / f"{db}_{table}_{digest}.json"
 
 
-def _write_state(path, state):
+def _write_state_once(path, text):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(path.name + '.tmp')
-    tmp_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
+    tmp_path.write_text(text, encoding='utf-8')
     os.replace(tmp_path, path)
+
+
+def _write_state(path, state, *, retries=STATE_WRITE_RETRIES, retry_delay=STATE_WRITE_RETRY_DELAY_SECONDS):
+    path = Path(path)
+    text = json.dumps(state, ensure_ascii=False, indent=2)
+    retries = max(0, int(retries))
+    for attempt in range(retries + 1):
+        try:
+            _write_state_once(path, text)
+            return True
+        except OSError as exc:
+            if attempt < retries:
+                retry_index = attempt + 1
+                print(
+                    f"[WARN] 采样任务状态文件写入失败，准备第 {retry_index}/{retries} 次重试："
+                    f"{path}，错误：{exc}"
+                )
+                if retry_delay > 0:
+                    time.sleep(float(retry_delay))
+                continue
+            print(
+                f"[WARN] 采样任务状态文件写入失败，已重试 {retries} 次，将继续采样；"
+                f"本次进度可能无法用于断点恢复：{path}，错误：{exc}"
+            )
+            return False
 
 
 def load_state(identity):
@@ -91,6 +123,7 @@ def new_state(identity, staging_state, *, config_row_count):
         'identity': identity,
         'staging': {
             'staging_table_name': staging_state.get('staging_table_name'),
+            'staging_db_name': staging_state.get('staging_db_name'),
             'base_existing_count': int(staging_state.get('base_existing_count') or 0),
             'next_id': int((staging_state.get('next_id_state') or [1])[0]),
             'id_mapping': {
@@ -125,6 +158,7 @@ def save_state(state):
 def update_staging_snapshot(state, staging_state):
     staging = state.setdefault('staging', {})
     staging['staging_table_name'] = staging_state.get('staging_table_name')
+    staging['staging_db_name'] = staging_state.get('staging_db_name')
     staging['base_existing_count'] = int(staging_state.get('base_existing_count') or 0)
     staging['next_id'] = int((staging_state.get('next_id_state') or [1])[0])
     staging['id_mapping'] = {
@@ -197,6 +231,7 @@ def build_staging_state_from_saved(state):
     staging = state.get('staging') or {}
     return {
         'staging_table_name': staging.get('staging_table_name'),
+        'staging_db_name': staging.get('staging_db_name'),
         'base_existing_count': int(staging.get('base_existing_count') or 0),
         'id_mapping': {
             int(k): int(v)

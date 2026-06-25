@@ -35,6 +35,7 @@ class RunnerDeps:
     close_safely: Callable[[Any], None]
     table_exists_exact: Callable[[Any, str], bool]
     resolve_rebate_config_game_condition: Callable[..., str]
+    detect_end_field: Callable[[Any, str], str | None] | None
     get_engine_by_table: Callable[[str, dict], Any]
     quote_identifier: Callable[..., str]
     direct_count_modes: set
@@ -84,6 +85,7 @@ def build_runner_deps(callbacks, runtime):
         close_safely=callbacks.close_safely,
         table_exists_exact=callbacks.table_exists_exact,
         resolve_rebate_config_game_condition=callbacks.resolve_rebate_config_game_condition,
+        detect_end_field=getattr(callbacks, 'detect_end_field', None),
         get_engine_by_table=callbacks.get_engine_by_table,
         quote_identifier=callbacks.quote_identifier,
         direct_count_modes=set(runtime.direct_count_modes),

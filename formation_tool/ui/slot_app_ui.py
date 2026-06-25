@@ -51,7 +51,7 @@ class SlotAppUiMixin:
         deps = self.ui_deps
         config_frame = ttk.LabelFrame(root_frame, text="当前配置", padding=(8, 6))
         config_frame.grid(row=0, column=0, sticky="ew")
-        for col in range(5):
+        for col in range(6):
             config_frame.columnconfigure(col, weight=1)
 
         db_options = sorted(deps.database_configs.keys())
@@ -61,6 +61,7 @@ class SlotAppUiMixin:
             ("源库", self.source_db_var, db_options, "readonly", "combo"),
             ("目标库", self.final_db_var, db_options, "readonly", "combo"),
             ("配置库", self.config_db_var, db_options, "readonly", "combo"),
+            ("采样临时库", self.sampling_temp_db_var, db_options, "readonly", "combo"),
         ]
         for col, (label, variable, values, state, widget_type) in enumerate(config_items):
             ttk.Label(config_frame, text=label).grid(
@@ -79,8 +80,16 @@ class SlotAppUiMixin:
             widget.grid(row=1, column=col, sticky="ew", padx=(0, 8))
             self.config_widgets.append((widget, state))
 
+        temp_db_check = ttk.Checkbutton(
+            config_frame,
+            text="采样通过临时库中转",
+            variable=self.sampling_use_temp_db_var,
+        )
+        temp_db_check.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self.config_widgets.append((temp_db_check, "normal"))
+
         seed_label = ttk.Label(config_frame, text=f"随机种子: {deps.random_seed}")
-        seed_label.grid(row=2, column=0, columnspan=5, sticky="w", pady=(4, 0))
+        seed_label.grid(row=2, column=2, columnspan=4, sticky="w", pady=(4, 0))
 
     def build_weight_section(self, root_frame):
         weight_frame = ttk.LabelFrame(root_frame, text="权重配置", padding=(8, 6))
@@ -134,32 +143,19 @@ class SlotAppUiMixin:
             self.build_sampling_mode_toggle(group_frame, len(actions))
 
     def build_sampling_mode_toggle(self, group_frame, action_count):
-        sampling_mode_check = ttk.Checkbutton(
-            group_frame,
-            text="不清空追加",
-            variable=self.sampling_append_mode_var,
-        )
         detail_log_check = ttk.Checkbutton(
             group_frame,
             text="详细日志",
             variable=self.sampling_detailed_log_var,
         )
         toggle_row = (action_count + 1) // 2
-        sampling_mode_check.grid(
+        detail_log_check.grid(
             row=toggle_row,
             column=0,
             sticky="w",
             padx=2,
             pady=(3, 0),
         )
-        detail_log_check.grid(
-            row=toggle_row,
-            column=1,
-            sticky="w",
-            padx=2,
-            pady=(3, 0),
-        )
-        self.config_widgets.append((sampling_mode_check, "normal"))
         self.config_widgets.append((detail_log_check, "normal"))
 
     def build_log_section(self, root_frame):
@@ -194,6 +190,7 @@ class SlotAppUiMixin:
                 ("源库", self.source_db_var.get()),
                 ("目标库", self.final_db_var.get()),
                 ("配置库", self.config_db_var.get()),
+                ("采样临时库", self.sampling_temp_db_var.get()),
             ),
         )
         if missing_databases:

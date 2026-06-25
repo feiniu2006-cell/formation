@@ -1,7 +1,12 @@
 """Direct sampling core helpers for formation source tables."""
 
 import contextlib
+import os
 import random
+import re
+import shutil
+import subprocess
+import tempfile
 import time
 from types import SimpleNamespace
 
@@ -21,7 +26,9 @@ SAMPLE_ID_RANDOM_RANGE_ATTEMPTS = 8
 SAMPLE_ID_RANDOM_RANGE_MAX_ATTEMPTS = 20
 SAMPLE_ID_RANDOM_RANGE_MAX_CANDIDATES_PER_QUERY = 20000
 SAMPLE_ID_FETCH_CHUNK_SIZE = formation_defaults.DEFAULT_SAMPLE_ID_FETCH_CHUNK_SIZE
-SAMPLE_ROW_WRITE_CHUNK_SIZE = 100
+SAMPLE_ROW_WRITE_CHUNK_SIZE = 20
+SAMPLE_TABLE_COPY_CHUNK_SIZE = 1000
+MYSQL_DUMP_IMPORT_RETRIES = 5
 SAMPLING_DETAILED_LOG = False
 SLOW_REBATE_SUMMARY_LIMIT = 5
 SAMPLING_TIMING_KEYS = (
@@ -824,8 +831,25 @@ def remap_sample_chunk_for_append_mode(
     return current_df, len(changed_pairs), changed_row_count, final_conn
 
 
-def _make_sample_row_write_method(total_rows, target_rebate):
-    total_batches = max(1, (int(total_rows) + SAMPLE_ROW_WRITE_CHUNK_SIZE - 1) // SAMPLE_ROW_WRITE_CHUNK_SIZE)
+def _format_write_context(target_rebate=None, log_context=None):
+    if log_context:
+        return str(log_context)
+    return f"rebate={target_rebate}"
+
+
+def _make_sample_row_write_method(
+    total_rows,
+    target_rebate,
+    chunk_size=None,
+    *,
+    log_context=None,
+    table_label="临时表",
+):
+    if chunk_size is None:
+        chunk_size = globals().get('SAMPLE_ROW_WRITE_CHUNK_SIZE', 1)
+    chunk_size = max(1, int(chunk_size))
+    total_batches = max(1, (int(total_rows) + chunk_size - 1) // chunk_size)
+    context_text = _format_write_context(target_rebate, log_context)
     state = {
         'batch_index': 0,
         'written_rows': 0,
@@ -840,17 +864,17 @@ def _make_sample_row_write_method(total_rows, target_rebate):
         batch_index = state['batch_index']
         before_rows = state['written_rows']
         print_sampling_detail(
-            f"  开始写入临时表批次 {batch_index}/{total_batches}："
-            f"本批 {len(rows)} 行，已完成 {before_rows}/{total_rows} (rebate={target_rebate})"
+            f"  开始写入{table_label}批次 {batch_index}/{total_batches}："
+            f"本批 {len(rows)} 行，已完成 {before_rows}/{total_rows} ({context_text})"
         )
         start = time.perf_counter()
         result = conn.execute(table.table.insert(), rows)
         elapsed = time.perf_counter() - start
         state['written_rows'] += len(rows)
         print_sampling_detail(
-            f"  完成写入临时表批次 {batch_index}/{total_batches}："
+            f"  完成写入{table_label}批次 {batch_index}/{total_batches}："
             f"本批 {len(rows)} 行，累计 {state['written_rows']}/{total_rows}，耗时 {elapsed:.2f} 秒 "
-            f"(rebate={target_rebate})"
+            f"({context_text})"
         )
         check_cancelled()
         rowcount = getattr(result, 'rowcount', None)
@@ -861,6 +885,97 @@ def _make_sample_row_write_method(total_rows, target_rebate):
     return write_method
 
 
+def _dispose_engine_safely(engine):
+    with contextlib.suppress(Exception):
+        engine.dispose()
+
+
+def _next_sample_row_write_chunk_size(chunk_size):
+    chunk_size = max(1, int(chunk_size))
+    if chunk_size > 20:
+        return 20
+    if chunk_size > 5:
+        return 5
+    if chunk_size > 1:
+        return 1
+    return 1
+
+
+def _write_dataframe_to_staging_once(
+    current_df,
+    final_engine,
+    staging_table_name,
+    target_rebate,
+    chunk_size,
+    *,
+    log_context=None,
+    table_label="临时表",
+):
+    row_count = len(current_df)
+    chunk_size = max(1, int(chunk_size))
+    with final_engine.begin() as conn:
+        current_df.to_sql(
+            staging_table_name,
+            conn,
+            if_exists='append',
+            index=False,
+            chunksize=chunk_size,
+            method=_make_sample_row_write_method(
+                row_count,
+                target_rebate,
+                chunk_size,
+                log_context=log_context,
+                table_label=table_label,
+            ),
+        )
+
+
+def write_dataframe_to_staging_with_retry(
+    current_df,
+    final_engine,
+    staging_table_name,
+    target_rebate=None,
+    *,
+    operation_label=None,
+    log_context=None,
+    table_label="临时表",
+):
+    label = operation_label or f"写入数据 (rebate={target_rebate})"
+    max_retries = int(globals().get('MAX_DB_RETRIES', 1) or 1)
+    retry_delay = int(globals().get('DB_RETRY_DELAY', 0) or 0)
+    chunk_size = max(1, int(globals().get('SAMPLE_ROW_WRITE_CHUNK_SIZE', 1) or 1))
+    for attempt in range(1, max_retries + 1):
+        check_cancelled()
+        try:
+            _write_dataframe_to_staging_once(
+                current_df,
+                final_engine,
+                staging_table_name,
+                target_rebate,
+                chunk_size,
+                log_context=log_context,
+                table_label=table_label,
+            )
+            if attempt > 1:
+                print(f"{label} 第{attempt}次重试成功")
+            return
+        except Exception as e:
+            print(f"{label}失败 (第{attempt}次): {e}")
+            _dispose_engine_safely(final_engine)
+            if attempt < max_retries:
+                next_chunk_size = _next_sample_row_write_chunk_size(chunk_size)
+                chunk_note = (
+                    f"下次写入批次降为 {next_chunk_size}，"
+                    if next_chunk_size < chunk_size
+                    else ""
+                )
+                chunk_size = next_chunk_size
+                print(f"已回滚并重建写入连接，{chunk_note}等待{retry_delay}秒后重试...")
+                interruptible_sleep(retry_delay)
+            else:
+                raise
+
+
 def write_sample_chunk_to_staging(current_df, final_engine, staging_table_name, target_rebate, *, timing=None):
     start = time.perf_counter()
     row_count = len(current_df)
@@ -869,23 +984,233 @@ def write_sample_chunk_to_staging(current_df, final_engine, staging_table_name, 
         f"准备写入临时表：行数={row_count}，"
         f"批次={total_batches}，每批最多 {SAMPLE_ROW_WRITE_CHUNK_SIZE} 行 (rebate={target_rebate})"
     )
-    sql_with_retry(
-        lambda: current_df.to_sql(
-            staging_table_name,
-            final_engine,
-            if_exists='append',
-            index=False,
-            chunksize=SAMPLE_ROW_WRITE_CHUNK_SIZE,
-            method=_make_sample_row_write_method(row_count, target_rebate),
-        ),
-        f"写入数据 (rebate={target_rebate})",
-    )
+    write_dataframe_to_staging_with_retry(current_df, final_engine, staging_table_name, target_rebate)
     elapsed = time.perf_counter() - start
     add_sampling_timing(timing, 'row_write_seconds', elapsed)
     print_sampling_detail(
         f"写入临时表耗时：{elapsed:.2f} 秒，"
         f"行数={len(current_df)} (rebate={target_rebate})"
     )
+
+
+def copy_table_between_engines(source_engine, target_engine, source_table_name, target_table_name, *, label):
+    source_ref = quote_identifier(source_table_name, "复制源表名")
+    query = f"SELECT * FROM {source_ref}"
+    copied_rows = 0
+    chunk_index = 0
+    print(f"{label}：开始分块复制 {source_table_name} -> {target_table_name}")
+    for chunk in pd.read_sql_query(query, source_engine, chunksize=SAMPLE_TABLE_COPY_CHUNK_SIZE):
+        check_cancelled()
+        chunk_index += 1
+        if chunk.empty:
+            continue
+        write_dataframe_to_staging_with_retry(
+            chunk,
+            target_engine,
+            target_table_name,
+            operation_label=f"{label}：写入复制分块 {chunk_index}",
+            log_context=f"{label}，复制分块 {chunk_index}",
+            table_label="目标表",
+        )
+        copied_rows += len(chunk)
+        print_sampling_detail(f"{label}：已复制 {copied_rows} 行")
+    print(f"{label}：完成复制 {copied_rows} 行")
+    return copied_rows
+
+
+def find_mysql_cli_executable(executable_name):
+    """Find mysql/mysqldump without requiring users to type the full path."""
+    names = [executable_name]
+    if not executable_name.lower().endswith('.exe'):
+        names.append(f"{executable_name}.exe")
+
+    candidates = []
+    for name in names:
+        found = shutil.which(name)
+        if found:
+            candidates.append(found)
+
+    for env_key in ('ProgramFiles', 'ProgramFiles(x86)'):
+        base_dir = os.environ.get(env_key)
+        if not base_dir:
+            continue
+        for version in ('8.4', '8.0', '5.7'):
+            for name in names:
+                candidates.append(os.path.join(base_dir, 'MySQL', f'MySQL Server {version}', 'bin', name))
+
+    for path in candidates:
+        if path and os.path.exists(path):
+            return path
+    raise RuntimeError(f"未找到 {executable_name}，请确认 MySQL Client 已安装并加入 PATH")
+
+
+def mysql_cli_env(db_config):
+    env = os.environ.copy()
+    password = db_config.get('password')
+    if password:
+        env['MYSQL_PWD'] = str(password)
+    return env
+
+
+def mysql_cli_common_args(executable_path, db_config):
+    return [
+        executable_path,
+        f"--host={db_config['host']}",
+        f"--port={int(db_config['port'])}",
+        f"--user={db_config['user']}",
+        "--protocol=TCP",
+        "--default-character-set=utf8mb4",
+    ]
+
+
+def decode_cli_output(value):
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode('utf-8', errors='replace').strip()
+    return str(value).strip()
+
+
+def run_mysql_cli_command(args, *, env, label, input_path=None):
+    input_file = None
+    try:
+        if input_path:
+            input_file = open(input_path, 'rb')
+        completed = subprocess.run(
+            args,
+            stdin=input_file,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            check=False,
+        )
+    finally:
+        if input_file is not None:
+            input_file.close()
+
+    if completed.returncode != 0:
+        stdout_text = decode_cli_output(completed.stdout)
+        stderr_text = decode_cli_output(completed.stderr)
+        detail = stderr_text or stdout_text or "无错误输出"
+        raise RuntimeError(f"{label}失败，退出码 {completed.returncode}：{detail[-2000:]}")
+    return completed
+
+
+def dump_mysql_table_data(source_db_config, source_table_name, dump_path, *, label):
+    mysqldump_path = find_mysql_cli_executable('mysqldump')
+    args = mysql_cli_common_args(mysqldump_path, source_db_config) + [
+        "--column-statistics=0",
+        "--single-transaction",
+        "--quick",
+        "--skip-lock-tables",
+        "--no-create-info",
+        "--skip-triggers",
+        "--skip-add-locks",
+        "--skip-comments",
+        "--compact",
+        "--hex-blob",
+        f"--result-file={dump_path}",
+        source_db_config['database'],
+        source_table_name,
+    ]
+    env = mysql_cli_env(source_db_config)
+    try:
+        return run_mysql_cli_command(args, env=env, label=label)
+    except RuntimeError as exc:
+        if "column-statistics" not in str(exc):
+            raise
+        retry_args = [arg for arg in args if arg != "--column-statistics=0"]
+        return run_mysql_cli_command(retry_args, env=env, label=label)
+
+
+def backticked_identifier_bytes(table_name):
+    return f"`{table_name}`".encode('utf-8')
+
+
+def rewrite_dump_table_name(dump_path, import_path, source_table_name, target_table_name):
+    source_token = backticked_identifier_bytes(source_table_name)
+    target_token = backticked_identifier_bytes(target_table_name)
+    with open(dump_path, 'rb') as source_file, open(import_path, 'wb') as target_file:
+        for line in source_file:
+            target_file.write(line.replace(source_token, target_token))
+
+
+def import_mysql_dump_file(target_db_config, import_path, *, label):
+    mysql_path = find_mysql_cli_executable('mysql')
+    args = mysql_cli_common_args(mysql_path, target_db_config) + [
+        f"--database={target_db_config['database']}",
+        "--binary-mode",
+    ]
+    return run_mysql_cli_command(
+        args,
+        env=mysql_cli_env(target_db_config),
+        label=label,
+        input_path=import_path,
+    )
+
+
+def dump_import_table_between_databases(
+    source_db_config,
+    target_db_config,
+    source_table_name,
+    target_table_name,
+    *,
+    label,
+    reprepare_target=None,
+):
+    temp_dir = tempfile.mkdtemp(prefix='formation_mysql_dump_')
+    dump_path = os.path.join(temp_dir, 'source.sql')
+    import_path = os.path.join(temp_dir, 'target.sql')
+    try:
+        max_retries = max(1, int(globals().get('MYSQL_DUMP_IMPORT_RETRIES', MYSQL_DUMP_IMPORT_RETRIES) or 1))
+        retry_delay = int(globals().get('DB_RETRY_DELAY', 0) or 0)
+        for attempt in range(1, max_retries + 1):
+            check_cancelled()
+            try:
+                with contextlib.suppress(Exception):
+                    os.remove(dump_path)
+                print(f"{label}：使用 mysqldump 导出 {source_table_name} (第 {attempt}/{max_retries} 次)")
+                dump_mysql_table_data(
+                    source_db_config,
+                    source_table_name,
+                    dump_path,
+                    label=f"{label} dump导出",
+                )
+                if attempt > 1:
+                    print(f"{label}：第 {attempt} 次重试导出成功")
+                break
+            except Exception as exc:
+                if attempt >= max_retries:
+                    raise
+                print(f"{label}：dump导出失败 (第{attempt}次)：{exc}")
+                print(f"等待{retry_delay}秒后重试...")
+                interruptible_sleep(retry_delay)
+        check_cancelled()
+        rewrite_dump_table_name(dump_path, import_path, source_table_name, target_table_name)
+        for attempt in range(1, max_retries + 1):
+            check_cancelled()
+            if attempt > 1 and callable(reprepare_target):
+                reprepare_target()
+            try:
+                print(f"{label}：导入到目标临时表 {target_table_name} (第 {attempt}/{max_retries} 次)")
+                import_mysql_dump_file(
+                    target_db_config,
+                    import_path,
+                    label=f"{label} dump导入",
+                )
+                if attempt > 1:
+                    print(f"{label}：第 {attempt} 次重试导入成功")
+                return True
+            except Exception as exc:
+                if attempt >= max_retries:
+                    raise
+                print(f"{label}：dump导入失败 (第{attempt}次)：{exc}")
+                print(f"等待{retry_delay}秒后重试...")
+                interruptible_sleep(retry_delay)
+        return False
+    finally:
+        with contextlib.suppress(Exception):
+            shutil.rmtree(temp_dir)
 
 
 def fetch_and_write_sample_rows_in_chunks(
@@ -1048,14 +1373,47 @@ def sample_rebate_to_staging(
 
 def get_direct_sampling_names(table_config):
     """汇总直接采样流程使用到的库名和表名。"""
+    final_db_name = get_table_database('FINAL_TABLE', table_config)
+    staging_db_name = get_sampling_staging_db_name(final_db_name)
     return {
         'source_db_name': get_table_database('SOURCE_TABLE', table_config),
-        'final_db_name': get_table_database('FINAL_TABLE', table_config),
+        'final_db_name': final_db_name,
+        'staging_db_name': staging_db_name,
         'config_db_name': get_table_database('REBATE_CONFIG_TABLE', table_config),
         'source_table_name': get_table_name('SOURCE_TABLE', table_config),
         'final_table_name': get_table_name('FINAL_TABLE', table_config),
         'rebate_config_table_name': get_table_name('REBATE_CONFIG_TABLE', table_config),
     }
+
+
+def get_sampling_staging_db_name(final_db_name):
+    if bool(globals().get('SAMPLING_USE_TEMP_DB', False)):
+        return str(globals().get('SAMPLING_TEMP_DB') or final_db_name)
+    return final_db_name
+
+
+def get_sampling_staging_table_config(table_config):
+    staging_config = {
+        key: dict(value) if isinstance(value, dict) else value
+        for key, value in dict(table_config).items()
+    }
+    if 'FINAL_TABLE' in staging_config:
+        staging_config['FINAL_TABLE'] = dict(staging_config['FINAL_TABLE'])
+        staging_config['FINAL_TABLE']['database'] = get_sampling_staging_db_name(
+            staging_config['FINAL_TABLE'].get('database')
+        )
+    return staging_config
+
+
+def get_table_config_with_final_database(table_config, database):
+    updated = {
+        key: dict(value) if isinstance(value, dict) else value
+        for key, value in dict(table_config).items()
+    }
+    if 'FINAL_TABLE' in updated:
+        updated['FINAL_TABLE'] = dict(updated['FINAL_TABLE'])
+        updated['FINAL_TABLE']['database'] = database
+    return updated
 
 
 def reject_same_physical_sampling_table(table_config, names):
@@ -1069,11 +1427,25 @@ def reject_same_physical_sampling_table(table_config, names):
     return True
 
 
-def prepare_direct_sampling_staging(source_conn, final_conn, table_config, names, append_mode):
+def prepare_direct_sampling_staging(
+    source_conn,
+    final_conn,
+    table_config,
+    names,
+    append_mode,
+    *,
+    final_target_conn=None,
+    staging_table_config=None,
+    final_engine=None,
+    staging_engine=None,
+):
     """创建直接采样临时表，并在追加模式下复制旧数据。"""
     final_db_name = names['final_db_name']
+    staging_db_name = names.get('staging_db_name') or final_db_name
     final_table_name = names['final_table_name']
     source_table_name = names['source_table_name']
+    final_target_conn = final_target_conn or final_conn
+    staging_table_config = staging_table_config or table_config
     staging_table_name = None
     try:
         final_conn.ping(reconnect=True, attempts=MAX_DB_RETRIES, delay=DB_RETRY_DELAY)
@@ -1082,20 +1454,21 @@ def prepare_direct_sampling_staging(source_conn, final_conn, table_config, names
         create_table_like_source(
             final_conn,
             source_conn,
-            table_config,
+            staging_table_config,
             staging_table_name,
         )
         final_conn.commit()
 
         staging_state = {
             'staging_table_name': staging_table_name,
+            'staging_db_name': staging_db_name,
             'base_existing_count': 0,
             'id_mapping': {},
             'next_id_state': [1],
         }
-        final_table_exists = table_exists_exact(final_conn, final_table_name)
+        final_table_exists = table_exists_exact(final_target_conn, final_table_name)
         if append_mode and final_table_exists:
-            if not same_table_structure(source_conn, final_conn, source_table_name, final_table_name):
+            if not same_table_structure(source_conn, final_target_conn, source_table_name, final_table_name):
                 print(
                     f"追加写入要求目标表结构与源表一致；"
                     f"{final_db_name}.{final_table_name} 结构不同，目标表未替换"
@@ -1104,8 +1477,19 @@ def prepare_direct_sampling_staging(source_conn, final_conn, table_config, names
                 final_conn.commit()
                 staging_state['staging_table_name'] = None
                 return None
-            print(f"采样写入模式：不清空追加。正在复制旧数据到临时表 {final_db_name}.{staging_table_name}...")
-            copy_table_rows(final_conn, final_table_name, staging_table_name)
+            print(f"采样写入模式：不清空追加。正在复制旧数据到临时表 {staging_db_name}.{staging_table_name}...")
+            if staging_db_name == final_db_name:
+                copy_table_rows(final_conn, final_table_name, staging_table_name)
+            else:
+                if final_engine is None or staging_engine is None:
+                    raise RuntimeError("临时库中转追加模式需要目标库和临时库 engine")
+                copy_table_between_engines(
+                    final_engine,
+                    staging_engine,
+                    final_table_name,
+                    staging_table_name,
+                    label="复制旧目标表到采样临时库",
+                )
             final_conn.commit()
             staging_state['base_existing_count'] = count_table_rows(final_conn, staging_table_name)
             staging_state['next_id_state'][0] = get_table_max_id(final_conn, staging_table_name) + 1
@@ -1120,16 +1504,16 @@ def prepare_direct_sampling_staging(source_conn, final_conn, table_config, names
         elif final_table_exists:
             structure_text = (
                 "结构一致"
-                if same_table_structure(source_conn, final_conn, source_table_name, final_table_name)
+                if same_table_structure(source_conn, final_target_conn, source_table_name, final_table_name)
                 else "结构不同，将以源表结构替换"
             )
             print(
-                f"采样写入模式：清空后写入。已创建临时目标表 {final_db_name}.{staging_table_name}；"
+                f"采样写入模式：清空后写入。已创建临时目标表 {staging_db_name}.{staging_table_name}；"
                 f"正式表 {final_table_name} 存在，{structure_text}，采样成功后整体替换。"
             )
         else:
             print(
-                f"采样写入模式：清空后写入。已创建临时目标表 {final_db_name}.{staging_table_name}；"
+                f"采样写入模式：清空后写入。已创建临时目标表 {staging_db_name}.{staging_table_name}；"
                 f"正式表 {final_table_name} 不存在，采样成功后创建。"
             )
         return staging_state
@@ -1190,7 +1574,7 @@ def sample_config_rows_to_staging(
             source_engine=source_engine,
             final_engine=final_engine,
             final_conn=final_conn,
-            final_db_name=names['final_db_name'],
+            final_db_name=names.get('staging_db_name', names['final_db_name']),
             staging_table_name=staging_state['staging_table_name'],
             source_db_name=names['source_db_name'],
             source_table_name=names['source_table_name'],
@@ -1243,13 +1627,21 @@ def start_sampling_task_state(identity, staging_state, config_df):
 def try_resume_direct_sampling_staging(final_conn, names, state):
     staging_state = sampling_task_state.build_staging_state_from_saved(state)
     staging_table_name = staging_state.get('staging_table_name')
+    staging_db_name = staging_state.get('staging_db_name') or names.get('staging_db_name') or names['final_db_name']
+    if staging_db_name != (names.get('staging_db_name') or names['final_db_name']):
+        print(
+            f"检测到历史采样状态，但临时库不匹配：状态={staging_db_name}，"
+            f"当前={names.get('staging_db_name') or names['final_db_name']}，本次重新采样"
+        )
+        return None
+    staging_state['staging_db_name'] = staging_db_name
     if not staging_table_name:
         print("检测到历史采样状态，但状态文件没有记录临时表，本次重新采样")
         return None
 
-    final_conn = ensure_database_connection(final_conn, names['final_db_name'], "目标库")
+    final_conn = ensure_database_connection(final_conn, staging_db_name, "采样临时库")
     if not table_exists_exact(final_conn, staging_table_name):
-        print(f"检测到历史采样状态，但临时表 {names['final_db_name']}.{staging_table_name} 不存在，本次重新采样")
+        print(f"检测到历史采样状态，但临时表 {staging_db_name}.{staging_table_name} 不存在，本次重新采样")
         return None
 
     totals = sampling_task_state.totals_from_state(state)
@@ -1263,7 +1655,7 @@ def try_resume_direct_sampling_staging(final_conn, names, state):
 
     completed_count = len(sampling_task_state.completed_rebate_set(state))
     print(
-        f"检测到可恢复采样任务：临时表 {names['final_db_name']}.{staging_table_name}，"
+        f"检测到可恢复采样任务：临时表 {staging_db_name}.{staging_table_name}，"
         f"已完成 {completed_count} 个 rebate，已写入 {totals['sampled_count']} 行，将继续剩余采样"
     )
     return staging_state, totals
@@ -1277,24 +1669,38 @@ def mark_sampling_task_failed(task_state, error):
     sampling_task_state.mark_failed(task_state, error)
 
 
-def finalize_direct_sampling_staging(final_conn, names, staging_state, totals, append_mode):
+def finalize_direct_sampling_staging(
+    final_conn,
+    names,
+    staging_state,
+    totals,
+    append_mode,
+    *,
+    source_conn=None,
+    table_config=None,
+    staging_conn=None,
+    staging_engine=None,
+    final_engine=None,
+):
     """校验临时表写入数量，并用临时表替换正式表。"""
     final_db_name = names['final_db_name']
+    staging_db_name = names.get('staging_db_name') or final_db_name
     final_table_name = names['final_table_name']
     staging_table_name = staging_state['staging_table_name']
     total_sampled_count = totals['sampled_count']
     base_existing_count = staging_state['base_existing_count']
-    final_conn = ensure_database_connection(final_conn, final_db_name, "目标库")
+    staging_conn = staging_conn or final_conn
     if total_sampled_count <= 0:
-        print(f"\n本次未采样到任何数据，目标表 {final_db_name}.{final_table_name} 未替换")
-        drop_table_if_exists(final_conn, staging_table_name)
-        final_conn.commit()
+        target_db_name = staging_db_name if staging_db_name != final_db_name else final_db_name
+        print(f"\n本次未采样到任何数据，目标表 {target_db_name}.{final_table_name} 未替换")
+        drop_table_if_exists(staging_conn, staging_table_name)
+        staging_conn.commit()
         staging_state['staging_table_name'] = None
         return False, final_conn
 
     print("\n采样循环已完成，正在校验临时表并准备替换正式表...")
-    final_conn = refresh_connection_read_view(final_conn, final_db_name, "目标库")
-    staging_count = count_table_rows(final_conn, staging_table_name)
+    staging_conn = refresh_connection_read_view(staging_conn, staging_db_name, "采样临时库")
+    staging_count = count_table_rows(staging_conn, staging_table_name)
     expected_staging_count = base_existing_count + total_sampled_count
     if staging_count != expected_staging_count:
         raise RuntimeError(f"临时目标表写入数量不一致：预期 {expected_staging_count}，实际 {staging_count}")
@@ -1306,14 +1712,45 @@ def finalize_direct_sampling_staging(final_conn, names, staging_state, totals, a
         )
     else:
         print(f"\n采样写入临时表完成：{staging_count} 条。")
+
+    replace_staging_table_name = staging_table_name
+    if staging_db_name != final_db_name:
+        print(
+            f"正在将采样临时表 {staging_db_name}.{staging_table_name} "
+            f"转为临时库正式表 {staging_db_name}.{final_table_name}..."
+        )
+        replace_table_with_staging(
+            staging_conn,
+            staging_table_name,
+            final_table_name,
+            staging_db_name,
+        )
+        staging_state['staging_table_name'] = None
+        staging_conn = refresh_connection_read_view(staging_conn, staging_db_name, "采样临时库")
+        temp_final_count = count_table_rows(staging_conn, final_table_name)
+        if temp_final_count != staging_count:
+            raise RuntimeError(
+                f"临时库正式表数量不一致：临时表 {staging_count}，正式表 {temp_final_count}"
+            )
+        print(
+            f"采样处理完成！已写入临时库正式表 {staging_db_name}.{final_table_name}，"
+            f"共 {temp_final_count} 条；目标库 {final_db_name}.{final_table_name} 尚未同步。"
+        )
+        return True, final_conn
+
+    final_conn = ensure_database_connection(final_conn, final_db_name, "目标库")
     print(f"正在替换正式表 {final_db_name}.{final_table_name}...")
     replace_table_with_staging(
         final_conn,
-        staging_table_name,
+        replace_staging_table_name,
         final_table_name,
         final_db_name,
     )
     staging_state['staging_table_name'] = None
+    if staging_db_name != final_db_name:
+        with contextlib.suppress(Exception):
+            drop_table_if_exists(staging_conn, staging_table_name)
+            staging_conn.commit()
     if append_mode:
         print(
             f"采样处理完成！保留旧数据 {base_existing_count} 条，"
@@ -1324,17 +1761,135 @@ def finalize_direct_sampling_staging(final_conn, names, staging_state, totals, a
     return True, final_conn
 
 
-def cleanup_direct_sampling_failure(error, final_conn, names, staging_state, total_sampled_count):
+def create_table_like_existing(source_conn, source_table_name, target_conn, target_table_name):
+    """Create an empty target table with the same structure as an existing source table."""
+    source_ref = quote_identifier(source_table_name, "source table")
+    target_ref = quote_identifier(target_table_name, "target table")
+    with source_conn.cursor() as cur:
+        cur.execute(f"SHOW CREATE TABLE {source_ref}")
+        row = cur.fetchone()
+    if not row:
+        raise RuntimeError(f"source table does not exist or cannot read structure: {source_table_name}")
+    create_sql = re.sub(
+        r'^CREATE TABLE `[^`]+`',
+        f'CREATE TABLE {target_ref}',
+        row[1],
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    with target_conn.cursor() as cur:
+        cur.execute(create_sql)
+
+
+def sync_sampling_temp_table_to_target(table_config, names=None):
+    """Copy the completed formal sampling table from staging DB to target DB."""
+    names = dict(names or get_direct_sampling_names(table_config))
+    final_db_name = names['final_db_name']
+    staging_db_name = names.get('staging_db_name') or final_db_name
+    final_table_name = names['final_table_name']
+    if staging_db_name == final_db_name:
+        print(f"采样临时库与目标库相同，无需额外同步：{final_db_name}.{final_table_name}")
+        return True
+
+    source_conn = None
+    staging_conn = None
+    final_conn = None
+    replace_staging_table_name = None
+    try:
+        source_conn = object()
+        if not source_conn:
+            print(f"无法建立 {names['source_db_name']} 连接，目标库同步终止")
+            return False
+
+        staging_table_config = get_table_config_with_final_database(table_config, staging_db_name)
+        final_table_config = get_table_config_with_final_database(table_config, final_db_name)
+        staging_conn = connect_by_table('FINAL_TABLE', staging_table_config)
+        if not staging_conn:
+            print(f"无法建立采样临时库 {staging_db_name} 连接，目标库同步终止")
+            return False
+        final_conn = connect_by_table('FINAL_TABLE', final_table_config)
+        if not final_conn:
+            print(f"无法建立目标库 {final_db_name} 连接，目标库同步终止")
+            return False
+
+        if not table_exists_exact(staging_conn, final_table_name):
+            print(f"采样临时库正式表不存在：{staging_db_name}.{final_table_name}，目标库未同步")
+            return False
+
+        staging_count = count_table_rows(staging_conn, final_table_name)
+        replace_staging_table_name = make_staging_table_name(final_table_name, 'tmp_sync')
+        print(
+            f"正在从采样临时库正式表 {staging_db_name}.{final_table_name} "
+            f"同步到目标库 {final_db_name}.{replace_staging_table_name}..."
+        )
+
+        def prepare_target_sync_table():
+            nonlocal final_conn
+            final_conn = ensure_database_connection(final_conn, final_db_name, "目标库")
+            drop_table_if_exists(final_conn, replace_staging_table_name)
+            create_table_like_existing(
+                staging_conn,
+                final_table_name,
+                final_conn,
+                replace_staging_table_name,
+            )
+            final_conn.commit()
+
+        prepare_target_sync_table()
+        dump_import_table_between_databases(
+            get_db_config_by_name(staging_db_name),
+            get_db_config_by_name(final_db_name),
+            final_table_name,
+            replace_staging_table_name,
+            label="同步采样正式表到目标库",
+            reprepare_target=prepare_target_sync_table,
+        )
+        final_conn = refresh_connection_read_view(final_conn, final_db_name, "目标库")
+        final_staging_count = count_table_rows(final_conn, replace_staging_table_name)
+        if final_staging_count != staging_count:
+            raise RuntimeError(
+                f"同步目标库临时表数量不一致：临时库 {staging_count}，"
+                f"目标库 {final_staging_count}"
+            )
+
+        print(f"正在替换目标库正式表 {final_db_name}.{final_table_name}...")
+        replace_table_with_staging(
+            final_conn,
+            replace_staging_table_name,
+            final_table_name,
+            final_db_name,
+        )
+        replace_staging_table_name = None
+        print(
+            f"目标库同步完成！已写入 {staging_count} 条数据到 "
+            f"{final_db_name}.{final_table_name}"
+        )
+        return True
+    except Exception:
+        if final_conn is not None and replace_staging_table_name:
+            with contextlib.suppress(Exception):
+                drop_table_if_exists(final_conn, replace_staging_table_name)
+                final_conn.commit()
+        raise
+    finally:
+        close_safely(source_conn)
+        close_safely(staging_conn)
+        close_safely(final_conn)
+
+
+def cleanup_direct_sampling_failure(error, final_conn, names, staging_state, total_sampled_count, *, staging_conn=None):
     """采样失败时清理或保留临时表。"""
     if not staging_state or not staging_state.get('staging_table_name'):
         return final_conn
     staging_table_name = staging_state['staging_table_name']
+    staging_db_name = staging_state.get('staging_db_name') or names.get('staging_db_name') or names['final_db_name']
+    staging_conn = staging_conn or final_conn
     if isinstance(error, TaskCancelled) or total_sampled_count <= 0:
         with contextlib.suppress(Exception):
-            final_conn = ensure_database_connection(final_conn, names['final_db_name'], "目标库")
-            drop_table_if_exists(final_conn, staging_table_name)
-            final_conn.commit()
-            print(f"已清理临时目标表：{staging_table_name}")
+            staging_conn = ensure_database_connection(staging_conn, staging_db_name, "采样临时库")
+            drop_table_if_exists(staging_conn, staging_table_name)
+            staging_conn.commit()
+            print(f"已清理临时目标表：{staging_db_name}.{staging_table_name}")
         return final_conn
 
     target_text = (
@@ -1344,7 +1899,7 @@ def cleanup_direct_sampling_failure(error, final_conn, names, staging_state, tot
     )
     print(
         f"目标表 {target_text} 未替换；已写入 {total_sampled_count} 条数据的临时表 "
-        f"{names['final_db_name']}.{staging_table_name} 已保留，可检查后手动恢复。"
+        f"{staging_db_name}.{staging_table_name} 已保留，可检查后手动恢复。"
     )
     return final_conn
 
@@ -1354,6 +1909,7 @@ def direct_sample_from_source(table_config, sample_conditions):
     deps = SimpleNamespace(
         check_cancelled=check_cancelled,
         get_direct_sampling_names=get_direct_sampling_names,
+        get_sampling_staging_table_config=get_sampling_staging_table_config,
         reject_same_physical_sampling_table=reject_same_physical_sampling_table,
         connect_by_table=connect_by_table,
         resolve_direct_sample_conditions=resolve_direct_sample_conditions,
@@ -1370,6 +1926,7 @@ def direct_sample_from_source(table_config, sample_conditions):
         prepare_direct_sampling_staging=prepare_direct_sampling_staging,
         sample_config_rows_to_staging=sample_config_rows_to_staging,
         finalize_direct_sampling_staging=finalize_direct_sampling_staging,
+        sync_sampling_temp_table_to_target=sync_sampling_temp_table_to_target,
         cleanup_direct_sampling_failure=cleanup_direct_sampling_failure,
         print_step_error=print_step_error,
         close_safely=close_safely,

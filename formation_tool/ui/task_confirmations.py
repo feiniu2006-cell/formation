@@ -35,19 +35,51 @@ def build_dangerous_task_confirmation(title, preflight, *, deps):
         ]
         return "\n".join(lines)
     if kind == "sampling":
-        append_mode = deps.get_sampling_append_mode()
-        action = "追加写入目标阵型表" if append_mode else "清空/替换目标阵型表"
+        use_temp = getattr(deps, "get_sampling_use_temp_db", lambda: False)()
+        temp_db = getattr(deps, "get_sampling_temp_db", lambda: "")()
+        action = f"写入中转库 {temp_db} 正式表" if use_temp else "清空/替换目标阵型表"
         lines = [
             f"即将执行采样并{action}：{title}",
             "",
             *build_mode_target_lines(preflight.get("modes"), "FINAL_TABLE", get_game_configs=deps.get_game_configs),
         ]
-        if append_mode:
-            lines.append("")
-            lines.append("追加模式下，如新采样 id 与旧数据冲突，会自动改写新数据 id。")
+        if use_temp:
+            lines.extend([
+                "",
+                "本次采样完成后目标库不会变化；需要同步时请手动点击“镜像到目标库”。",
+            ])
         else:
             lines.append("")
-            lines.append("当前不是追加模式，正式表会被新采样结果替换。")
+            lines.append("目标库正式表会被新采样结果替换。")
+        return "\n".join(lines)
+    if kind == "sampling_temp_mirror":
+        temp_db = getattr(deps, "get_sampling_temp_db", lambda: "")()
+        final_db = runtime.get("final_db")
+        lines = [
+            "即将把采样中转库中的正式表镜像到目标库：",
+            "",
+            f"  - 中转库：{temp_db}",
+            f"  - 目标库：{final_db}",
+            "",
+            "继续后会扫描当前游戏在中转库中已存在的采样正式表，并安全替换目标库同名正式表。",
+        ]
+        return "\n".join(lines)
+    if kind == "sampling_temp_sync":
+        items = list(preflight.get("items") or [])
+        lines = [
+            "即将把采样临时库中的正式表同步到目标库：",
+            "",
+        ]
+        for item in items:
+            lines.append(
+                f"  - {item.get('source_db')}.{item.get('table_name')} -> "
+                f"{item.get('target_db')}.{item.get('table_name')} "
+                f"({int(item.get('row_count') or 0)} 行)"
+            )
+        lines.extend([
+            "",
+            "继续后会使用目标库临时表安全替换目标库正式表。",
+        ])
         return "\n".join(lines)
     if kind == "group_weight":
         table_name = f"{runtime['vendor']}_{runtime['game_id']}_group_weight"

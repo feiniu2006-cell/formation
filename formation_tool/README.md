@@ -28,7 +28,7 @@
 
 ## 配置参数详细注释
 
-代码默认参数集中在 `core/formation_defaults.py`。主界面保存的房间配置会覆盖其中一部分运行参数；如果只改代码默认值，已经保存过的房间配置不会自动跟着变化，需要在 GUI 中重新保存或删除对应房间配置文件。
+代码默认参数主要集中在 `core/formation_defaults.py`，group_weight 模式定义和 rebate=0 反推默认模式在 `core/formation_modes.py`。主界面保存的房间配置会覆盖其中一部分运行参数；如果只改代码默认值，已经保存过的房间配置不会自动跟着变化，需要在 GUI 中重新保存或删除对应房间配置文件。
 
 ### 基础运行参数
 
@@ -70,10 +70,11 @@
 | 参数 | 默认值 | 作用 | 调整影响 |
 | --- | --- | --- | --- |
 | `DEFAULT_SAMPLE_ID_FETCH_CHUNK_SIZE` | `500` | 直接采样读取完整行时，每批 `id IN (...)` 的 id 数。 | 调小会减少单次 SQL 和 DataFrame 大小，但批次变多；调大可能减少批次，但会增加单次查询压力。 |
-| `DEFAULT_SAMPLING_APPEND_MODE` | `False` | 采样目标表写入模式。`False` 表示清空/替换目标表；`True` 表示不清空追加，并自动处理 id 冲突。 | GUI 中的“不清空追加”会覆盖该值并随房间配置保存。 |
 | `DEFAULT_SAMPLING_DETAILED_LOG` | `False` | 采样详细日志开关。 | 关闭时只输出关键进度、异常和最终汇总；开启后额外输出查询、校验、读写耗时等明细。 |
+| `DEFAULT_SAMPLING_USE_TEMP_DB` | `False` | 采样是否写入采样临时库中转。 | GUI 中“采样通过临时库中转”会覆盖该值；开启后采样只写入中转库并替换中转库正式表，目标库不变。需要同步时手动点击“镜像到目标库”。 |
+| `DEFAULT_SAMPLING_TEMP_DB` | `DEFAULT_FINAL_DB` | 默认采样临时库。 | 建议配置为本地或更稳定的数据库；关闭中转时不参与采样写入。 |
 
-采样核心还有几个内部常量在 `sampling/sampling_core.py`：`SAMPLE_ID_RANDOM_RANGE_ATTEMPTS=8`、`SAMPLE_ID_RANDOM_RANGE_MAX_ATTEMPTS=20`、`SAMPLE_ID_RANDOM_RANGE_MAX_CANDIDATES_PER_QUERY=20000`、`SAMPLE_ROW_WRITE_CHUNK_SIZE=100`。这些用于控制随机范围候选查询和临时表写入批次，通常不建议改；需要排查性能时优先打开“详细日志”观察瓶颈。
+采样核心还有几个内部常量在 `sampling/sampling_core.py`：`SAMPLE_ID_RANDOM_RANGE_ATTEMPTS=8`、`SAMPLE_ID_RANDOM_RANGE_MAX_ATTEMPTS=20`、`SAMPLE_ID_RANDOM_RANGE_MAX_CANDIDATES_PER_QUERY=20000`、`SAMPLE_ROW_WRITE_CHUNK_SIZE=20`。这些用于控制随机范围候选查询和临时表写入批次，通常不建议改；临时表写入失败时会自动将批次降为 `5`、再降为 `1` 后重试。需要排查性能时优先打开“详细日志”观察瓶颈。
 
 ### group_weight 和购买局参数
 
@@ -85,13 +86,16 @@
 | `DEFAULT_SPECIAL_GROUP_TARGET_RTP` | `6` | 特殊局存在 `rebate=0` 时，用于反推特殊局 0 权重的目标 RTP。 | 只影响特殊局独立反推；不存在 `rebate=0` 时不会反推。 |
 | `DEFAULT_EX_GROUP_TARGET_RTPS` | `{}` | ex 独立目标 RTP 默认值，目前用于 ex特殊局。 | 通常通过 group_weight 权重配置弹窗输入并保存。 |
 | `DEFAULT_BUY_GROUP_ENABLED` | `False` | 默认购买局开关。 | GUI 中“购买局配置”会覆盖并保存。 |
-| `DEFAULT_EX_BUY_GROUP_ENABLED` | `False` | 默认 ex购买局开关。 | 只控制 `game_type=98` 的 ex购买局写入。 |
-| `DEFAULT_BUY_GROUP_GAME_TYPE` | `99` | 默认购买局写入 `group_weight.game_type` 的类型。 | 可以在 GUI 手动改为 91、92、93 等。 |
+| `DEFAULT_EX_BUY_GROUP_ENABLED` | `False` | 默认 ex购买局开关。 | GUI 中“购买局配置”会覆盖并保存；ex购买局类型不是固定 98。 |
+| `DEFAULT_EX_BUY_GROUP_GAME_TYPE` | `98` | 默认 ex购买局写入 `group_weight.game_type` 的类型。 | 只是默认值，可以在 GUI 手动改为其它 ex购买类型。 |
+| `DEFAULT_EX_BUY_GROUP_SOURCE_SUFFIX` | `""` | ex购买局手动阵型后缀。 | 留空时优先按当前 ex购买类型读取 `game_room_game_type_config`；填写后仅覆盖 group_weight 生成。 |
+| `DEFAULT_BUY_GROUP_GAME_TYPE` | `99` | 默认购买局写入 `group_weight.game_type` 的类型。 | 只是默认值，可以在 GUI 手动改为 91、92、93 等。 |
 | `DEFAULT_BUY_GROUP_MULTIPLIER` | `75` | 购买局 RTP 展示/折算倍数。 | 用于购买局独立 RTP 计算和预览。 |
-| `DEFAULT_BUY_GROUP_SOURCE_SUFFIX` | `"free_formation"` | 默认购买局读取的阵型表后缀。 | 例如指向 `{vendor}_{game_id}_free_formation`。 |
+| `DEFAULT_BUY_GROUP_SOURCE_SUFFIX` | `"free_formation"` | 默认购买局读取的阵型表后缀。 | 例如指向 `{vendor}_{game_id}_free_formation`；主界面手动后缀优先于 DB 配置。 |
 | `DEFAULT_EX_GROUP_MULTIPLIER` | `1.5` | ex 模式 RTP 折算倍数。 | ex普通、ex特殊、ex免费、ex购买局预览/生成会按该倍数折算最终 RTP。 |
 | `DEFAULT_EX_SOURCE_SUFFIXES` | `{}` | ex普通/ex特殊/ex免费手动后缀覆盖默认值。 | 只服务 group_weight 生成，不影响采样配置生成和采样功能。 |
 | `DEFAULT_EXTRA_BUY_GROUPS` | `[]` | 额外购买局默认列表。 | GUI 中新增购买局类型后会保存到房间配置。 |
+| `DEFAULT_ZERO_REBATE_INFERENCE_MODES` | `('1', '2', '6', '7')` | 默认启用 rebate=0 反推的 group_weight 模式。 | 购买局和 ex购买局支持手动开启反推，但默认关闭；免费局和 ex免费局不反推。 |
 
 ### 规则字段说明
 
@@ -108,6 +112,18 @@
 
 `GROUP_WEIGHT_RULES` 是 group_weight 区间权重规则，区间语义为“当前 `rebate_min <= rebate < 下一条 rebate_min`”。`weight=0` 的 rebate 会写入数据库，但不参与 RTP 权重计算。
 
+group_weight 内部模式使用语义 key：普通购买局是 `buy`，ex购买局是 `ex_buy`。`99` 和 `98` 只是默认写入的 `game_type`，不是固定业务类型；旧配置文件里保存的 `group_weight_rules["99"]` 和 `group_weight_rules["98"]` 会在加载时自动映射到 `buy` 和 `ex_buy`。固定不可占用的内置类型只有 `1/2/3/6/7/8`。
+
+购买局和 ex购买局的源表后缀优先级：
+
+1. 主界面手动填写的后缀优先。
+2. 未填写时，按当前配置的购买类型或 ex购买类型读取目标库 `game_room_game_type_config.source_suffix`。
+3. 仍未取到时，购买局使用 `DEFAULT_BUY_GROUP_SOURCE_SUFFIX`，ex购买局回退到 ex免费局来源。
+
+ex普通/ex特殊/ex免费手动后缀只服务 group_weight 生成，不影响采样配置生成和采样功能；例如把 ex普通局手动指向 `formation`，不会额外生成 ex普通局采样配置页。
+
+rebate=0 反推必须同时满足两个条件：当前采样配置存在 `rebate=0`，并且在 group_weight 权重配置界面手动开启该模式的“rebate=0 反推”开关。普通局、特殊局、ex普通局、ex特殊局默认开启；购买局和 ex购买局支持但默认关闭；免费局和 ex免费局不反推。
+
 ## 采样配置生成
 
 采样配置表通常是 `rebate_count`、`rebate_special_count`、`rebate_free_count` 等表，核心字段为 `rebate` 和 `count`。
@@ -123,14 +139,17 @@
 执行顺序：
 
 1. 从采样配置表读取 `rebate/count`。
-2. 为目标表创建临时表；追加模式会先把旧目标表复制到临时表。
+2. 按当前方案创建采样临时表：关闭中转时在目标库创建，开启中转时在采样临时库创建。
 3. 逐个 rebate 处理，按 `rebate = {target_rebate}` 和结束字段条件挑选候选 `id`。
 4. 优先使用稀疏探测、随机 id 范围查询和候选抽样，候选不足时回退到全量 `DISTINCT id` 查询。
 5. 只对本次已采样的 id 做结束字段完整性校验，确认这些 id 下 `game_end=1` 或 `is_end=1` 的行数恰好为 1；不再对整张源表做全表 `GROUP BY id` 校验。
 6. 对选中的 id，读取 SQL 只保留 `WHERE id IN (...)`，确保一局或一组 formation 数据被完整写入。
 7. 分批读取和写入临时表，避免过长 `IN` 查询和过大的 DataFrame。
-8. 追加模式下处理新旧数据 id 冲突，必要时为新采样数据分配新 id。
-9. 采样完成后校验临时表行数，再用临时表整体替换正式目标表。
+8. 采样完成后校验临时表行数。
+9. 关闭中转时，用临时表整体替换目标库正式表；开启中转时，只替换中转库正式表，目标库保持不变。
+10. 需要把中转库数据写到目标库时，在主界面采样按钮区点击“镜像到目标库”，确认后会优先使用 `mysqldump`/`mysql` 将中转库正式表导出并导入目标库临时表，导出和导入失败都会最多重试 5 次，校验行数后再整体替换目标库正式表。镜像功能需要本机能调用 MySQL Client 工具。
+
+生成采样配置统计 rebate 分布时，会按源表结构选择计数方式：源表存在 `game_end` 或 `is_end` 字段时使用 `COUNT(DISTINCT id)`，用于多行组成同一局的数据；源表不存在这两个字段时，按 `id` 唯一表处理，使用 `COUNT(*)` 降低大表统计开销。
 
 如果需要修改 `sampling/sampling_core.py`，必须保留第 6 点的完整 id 组读取语义；相关回归测试为 `SamplingCoreWriteTests.test_read_sample_rows_by_ids_reads_complete_id_groups`。已采样 id 局部完整性校验的回归测试为 `SamplingCoreWriteTests.test_sampled_id_end_field_validation_checks_only_selected_ids`。
 
@@ -152,6 +171,7 @@
 py -3 formation_tool\run_tests.py
 py -3 formation_tool\build_formation_exe.py --check
 py -3 formation_tool\build_formation_exe.py --check --test
+py -3 formation_tool\build_formation_exe.py --list-modules
 ```
 
 真正打包：
@@ -166,15 +186,15 @@ py -3 formation_tool\build_formation_exe.py
 py -3 formation_tool\build_formation_exe.py --clean
 ```
 
-`build_formation_exe.py` 会递归发现生产模块，因此新增业务模块后通常不需要手工维护加密模块清单；但仍建议执行 `--check` 确认模块、编译和 `db_config.json` 自检都通过。
+`build_formation_exe.py` 会递归发现生产模块，因此新增业务模块后通常不需要手工维护加密模块清单；`--list-modules` 可以查看本次会加密进 exe 的模块。`--check` 会检查依赖模块、加密模块清单、源码编译、内置 `db_config.py` 和可选外部 `db_config.json`。脚本已显式包含 `tkinter.filedialog`、`tkinter.messagebox`、`tkinter.scrolledtext`、`tkinter.ttk` 等 hiddenimports，避免打包后 GUI 弹窗导入失败。
 
 ## 配置文件
 
 | 路径 | 作用 |
 | --- | --- |
 | `formation_tool_settings.json` | 上次选择配置。 |
-| `formation_tool_settings/` | 按厂商和游戏编号保存的房间配置，包括采样追加模式、详细日志开关、采样规则、group_weight 规则、购买局配置和直接计数阶梯。 |
-| `formation_sampling_tasks/` | 直接采样任务状态，记录临时表、已完成 rebate 和追加模式 id 映射，用于失败后恢复。 |
+| `formation_tool_settings/` | 按厂商和游戏编号保存的房间配置，包括采样中转库、详细日志开关、采样规则、group_weight 规则、购买局配置和直接计数阶梯。 |
+| `formation_sampling_tasks/` | 直接采样任务状态，记录临时表和已完成 rebate，用于失败后恢复。 |
 | `dist_encrypted/db_config.json` | exe 同目录外部数据库配置，优先用于打包程序运行。 |
 | `dist_encrypted/db_config.example.json` | 示例数据库配置。 |
 
