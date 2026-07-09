@@ -1,6 +1,7 @@
 """Original 1/2/3 mode group_weight generation."""
 
 from formation_tool.group_weight.group_weight_logic import (
+    build_independent_group_weight_rows_for_group,
     build_normal_group_weight_rows_for_group,
     calculate_weighted_rtp,
     format_weighted_rtp,
@@ -77,33 +78,53 @@ def append_original_normal_group_weight_rows(rows, rebates_by_mode, mode_exists,
         globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
     )
     print(f"[普通局] rebate=0 反推：{'开启' if normal_should_infer else '关闭'}")
+    independent_rtp = game_type in {str(mode) for mode in globals().get('INDEPENDENT_RTP_MODES', set())}
+    if independent_rtp:
+        print("[普通局] 独立计算RTP：开启，RTP目标=当前组，不扣除特殊局/免费局触发贡献")
     normal_rows = 0
     for group_id in WEIGHT_GROUP_IDS:
         check_cancelled()
         try:
-            group_rows, group_info = build_normal_group_weight_rows_for_group(
-                group_id,
-                mode_pairs[game_type],
-                trigger_context['free_rtp'],
-                trigger_context['free_enabled'],
-                trigger_context['special_rtp'],
-                trigger_context['special_enabled'],
-                infer_zero_rebate=normal_should_infer,
-            )
+            if independent_rtp:
+                group_rows, group_info = build_independent_group_weight_rows_for_group(
+                    group_id,
+                    get_group_weight_write_game_type(game_type),
+                    mode_pairs[game_type],
+                    normal_should_infer,
+                    get_group_target_rtp_ratio(group_id),
+                )
+            else:
+                group_rows, group_info = build_normal_group_weight_rows_for_group(
+                    group_id,
+                    mode_pairs[game_type],
+                    trigger_context['free_rtp'],
+                    trigger_context['free_enabled'],
+                    trigger_context['special_rtp'],
+                    trigger_context['special_enabled'],
+                    infer_zero_rebate=normal_should_infer,
+                )
         except ValueError as e:
             print(f"  ⚠ {e}，跳过 group_id={group_id}")
             continue
 
         rows.extend(group_rows)
         normal_rows += len(group_rows)
-        print(
-            f"  group_id={group_info['group_id']} "
-            f"目标总RTP={format_weighted_rtp(get_group_target_rtp_ratio(group_info['group_id']))}，"
-            f"免费触发={group_info['free_rate']:.4f}，特殊触发={group_info['special_rate']:.4f}，"
-            f"普通目标RTP={format_weighted_rtp(group_info['normal_target_rtp'])}，"
-            f"rebate=0 weight={group_info['zero_weight']}，"
-            f"普通实际RTP={format_weighted_rtp(group_info['actual_normal_rtp'])}"
-        )
+        if independent_rtp:
+            print(
+                f"  group_id={group_info['group_id']} "
+                f"目标RTP={format_weighted_rtp(group_info['target_rtp'])}，"
+                f"rebate=0 weight={group_info['zero_weight']}，"
+                f"普通实际RTP={format_weighted_rtp(group_info['actual_rtp'])}"
+            )
+        else:
+            print(
+                f"  group_id={group_info['group_id']} "
+                f"目标总RTP={format_weighted_rtp(get_group_target_rtp_ratio(group_info['group_id']))}，"
+                f"免费触发={group_info['free_rate']:.4f}，特殊触发={group_info['special_rate']:.4f}，"
+                f"普通目标RTP={format_weighted_rtp(group_info['normal_target_rtp'])}，"
+                f"rebate=0 weight={group_info['zero_weight']}，"
+                f"普通实际RTP={format_weighted_rtp(group_info['actual_normal_rtp'])}"
+            )
     print(f"  普通局准备写入 {normal_rows} 行")
     return normal_rows
 

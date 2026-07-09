@@ -256,6 +256,72 @@ class GroupWeightLogicTests(unittest.TestCase):
         self.assertFalse(group_weight_logic.should_infer_zero_rebate("1", [1000, 2000], {"1"}))
         self.assertFalse(group_weight_logic.should_infer_zero_rebate("1", [0, 1000], set()))
 
+    def test_group_weight_preview_points_use_actual_rebates(self):
+        preview = group_weight_builder.group_weight_preview
+        names = ("BUY_GROUP_MODE", "get_group_weight_rebate_source_mode", "get_group_weight_rtp_role")
+        missing = object()
+        old_values = {name: getattr(preview, name, missing) for name in names}
+        try:
+            preview.BUY_GROUP_MODE = "buy"
+            preview.get_group_weight_rebate_source_mode = lambda mode: mode
+            preview.get_group_weight_rtp_role = lambda _mode: "special"
+
+            points = preview.build_group_weight_preview_points(
+                "2",
+                9650,
+                {
+                    "2": [
+                        {"rebate_min": 0, "weight": 0},
+                        {"rebate_min": 5000, "weight": 3000},
+                        {"rebate_min": 10000, "weight": 1000},
+                    ]
+                },
+                {},
+                {"2": [0, 5500, 8300, 12000]},
+                {},
+                {"2": True},
+            )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(preview, name):
+                        delattr(preview, name)
+                else:
+                    setattr(preview, name, value)
+
+        self.assertEqual(points, [(0, 0), (5500, 3000), (8300, 3000), (12000, 1000)])
+
+    def test_group_weight_preview_points_use_inferred_zero_rebate_weight(self):
+        preview = group_weight_builder.group_weight_preview
+        names = ("BUY_GROUP_MODE", "get_group_weight_rebate_source_mode", "get_group_weight_rtp_role")
+        missing = object()
+        old_values = {name: getattr(preview, name, missing) for name in names}
+        try:
+            preview.BUY_GROUP_MODE = "buy"
+            preview.get_group_weight_rebate_source_mode = lambda mode: mode
+            preview.get_group_weight_rtp_role = lambda _mode: "special"
+
+            points = preview.build_group_weight_preview_points(
+                "2",
+                9650,
+                {"2": [{"rebate_min": 0, "weight": 0}, {"rebate_min": 1, "weight": 10}]},
+                {},
+                {"2": [0, 1000]},
+                {},
+                {"2": True},
+                special_target_rtp=0.5,
+                zero_rebate_inference_modes={"2"},
+            )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(preview, name):
+                        delattr(preview, name)
+                else:
+                    setattr(preview, name, value)
+
+        self.assertEqual(points, [(0, 10), (1000, 10)])
+
     def test_buy_modes_support_manual_zero_rebate_inference_but_default_off(self):
         from formation_tool.core import formation_modes
 
@@ -267,6 +333,101 @@ class GroupWeightLogicTests(unittest.TestCase):
         self.assertTrue(formation_modes.supports_zero_rebate_inference("98"))
         self.assertNotIn("buy", formation_modes.DEFAULT_ZERO_REBATE_INFERENCE_MODES)
         self.assertNotIn("ex_buy", formation_modes.DEFAULT_ZERO_REBATE_INFERENCE_MODES)
+
+    def test_only_normal_modes_support_independent_rtp_option(self):
+        self.assertTrue(formation_modes.supports_independent_rtp("1"))
+        self.assertTrue(formation_modes.supports_independent_rtp("6"))
+        self.assertFalse(formation_modes.supports_independent_rtp("2"))
+        self.assertFalse(formation_modes.supports_independent_rtp("buy"))
+        self.assertEqual(formation_modes.normalize_independent_rtp_modes(["1", "2", "6", "buy"]), {"1", "6"})
+        self.assertEqual(formation_modes.DEFAULT_INDEPENDENT_RTP_MODES, ())
+
+    def test_normal_preview_independent_rtp_ignores_trigger_parse_errors(self):
+        preview = group_weight_builder.group_weight_preview
+        names = (
+            "BUY_GROUP_MODE",
+            "get_group_weight_rebate_source_mode",
+            "get_group_weight_rtp_role",
+            "get_group_weight_write_game_type",
+            "get_group_target_rtp_ratio",
+        )
+        missing = object()
+        old_values = {name: getattr(preview, name, missing) for name in names}
+        try:
+            preview.BUY_GROUP_MODE = "buy"
+            preview.get_group_weight_rebate_source_mode = lambda mode: mode
+            preview.get_group_weight_rtp_role = lambda mode: "normal" if str(mode) == "1" else "static"
+            preview.get_group_weight_write_game_type = lambda mode: int(mode)
+            preview.get_group_target_rtp_ratio = lambda _group_id: 0.5
+
+            text = preview.build_group_weight_preview_text(
+                "1",
+                9650,
+                {"1": [{"rebate_min": 0, "weight": 0}, {"rebate_min": 1, "weight": 10}]},
+                {"2": "特殊局配置错误"},
+                {"1": [0, 1000]},
+                {},
+                {"1": True, "2": True},
+                zero_rebate_inference_modes={"1"},
+                independent_rtp_modes={"1"},
+            )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(preview, name):
+                        delattr(preview, name)
+                else:
+                    setattr(preview, name, value)
+
+        self.assertIn("独立RTP开启", text)
+        self.assertIn("目标=0.5", text)
+        self.assertIn("反推0权重=10", text)
+        self.assertNotIn("特殊局配置错误", text)
+
+    def test_ex_normal_preview_independent_rtp_uses_group_target_times_multiplier(self):
+        preview = group_weight_builder.group_weight_preview
+        names = (
+            "BUY_GROUP_MODE",
+            "get_group_weight_rebate_source_mode",
+            "get_group_weight_rtp_role",
+            "get_group_weight_write_game_type",
+            "get_group_target_rtp_ratio",
+        )
+        missing = object()
+        old_values = {name: getattr(preview, name, missing) for name in names}
+        try:
+            preview.BUY_GROUP_MODE = "buy"
+            preview.get_group_weight_rebate_source_mode = lambda mode: mode
+            preview.get_group_weight_rtp_role = lambda mode: "ex_normal" if str(mode) == "6" else "static"
+            preview.get_group_weight_write_game_type = lambda mode: int(mode)
+            preview.get_group_target_rtp_ratio = lambda _group_id: 1
+
+            text = preview.build_group_weight_preview_text(
+                "6",
+                9650,
+                {"6": [{"rebate_min": 0, "weight": 0}, {"rebate_min": 1, "weight": 10}]},
+                {"7": "ex特殊局配置错误"},
+                {"6": [0, 4000]},
+                {},
+                {"6": True, "7": True},
+                ex_multiplier=2,
+                zero_rebate_inference_modes={"6"},
+                independent_rtp_modes={"6"},
+            )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(preview, name):
+                        delattr(preview, name)
+                else:
+                    setattr(preview, name, value)
+
+        self.assertIn("独立RTP开启", text)
+        self.assertIn("目标=1", text)
+        self.assertIn("反推目标=2", text)
+        self.assertIn("反推0权重=10", text)
+        self.assertIn("最终RTP=1", text)
+        self.assertNotIn("ex特殊局配置错误", text)
 
     def test_buy_like_rows_can_infer_zero_rebate_per_group_target(self):
         row_helpers = group_weight_builder.group_weight_row_helpers
@@ -433,6 +594,96 @@ class GroupWeightLogicTests(unittest.TestCase):
         self.assertEqual(ex_info_by_mode["8"][9000]["zero_weight"], 0)
         self.assertEqual(ex_info_by_mode["8"][9000]["actual_rtp"], 12)
         self.assertEqual(ex_info_by_mode["8"][9000]["display_rtp"], 6)
+
+    def test_original_normal_generation_can_use_independent_rtp(self):
+        original_modes = group_weight_builder.group_weight_original_modes
+        names = (
+            "WEIGHT_GROUP_IDS",
+            "ZERO_REBATE_INFERENCE_MODES",
+            "INDEPENDENT_RTP_MODES",
+            "get_group_weight_write_game_type",
+            "get_group_target_rtp_ratio",
+            "check_cancelled",
+        )
+        missing = object()
+        old_values = {name: getattr(original_modes, name, missing) for name in names}
+        try:
+            original_modes.WEIGHT_GROUP_IDS = (9000,)
+            original_modes.ZERO_REBATE_INFERENCE_MODES = {"1"}
+            original_modes.INDEPENDENT_RTP_MODES = {"1"}
+            original_modes.get_group_weight_write_game_type = lambda mode: int(mode)
+            original_modes.get_group_target_rtp_ratio = lambda _group_id: 0.5
+            original_modes.check_cancelled = lambda: None
+            rows = []
+
+            count = original_modes.append_original_normal_group_weight_rows(
+                rows,
+                rebates_by_mode={"1": [0, 1000]},
+                mode_exists={"1": True},
+                mode_pairs={"1": [(1000, 10)]},
+                trigger_context={
+                    "free_rtp": 100,
+                    "free_enabled": True,
+                    "special_rtp": 100,
+                    "special_enabled": True,
+                },
+            )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(original_modes, name):
+                        delattr(original_modes, name)
+                else:
+                    setattr(original_modes, name, value)
+
+        self.assertEqual(count, 2)
+        self.assertEqual(rows, [(1, 9000, 0, 10), (1, 9000, 1000, 10)])
+
+    def test_ex_normal_generation_can_use_independent_rtp(self):
+        ex_modes = group_weight_builder.group_weight_ex_modes
+        names = (
+            "WEIGHT_GROUP_IDS",
+            "GAME_TYPE_NAMES",
+            "ZERO_REBATE_INFERENCE_MODES",
+            "INDEPENDENT_RTP_MODES",
+            "EX_GROUP_MULTIPLIER",
+            "get_group_weight_write_game_type",
+            "get_group_target_rtp_ratio",
+            "check_cancelled",
+        )
+        missing = object()
+        old_values = {name: getattr(ex_modes, name, missing) for name in names}
+        try:
+            ex_modes.WEIGHT_GROUP_IDS = (9000,)
+            ex_modes.GAME_TYPE_NAMES = {"6": "ex普通局"}
+            ex_modes.ZERO_REBATE_INFERENCE_MODES = {"6"}
+            ex_modes.INDEPENDENT_RTP_MODES = {"6"}
+            ex_modes.EX_GROUP_MULTIPLIER = 2
+            ex_modes.get_group_weight_write_game_type = lambda mode: int(mode)
+            ex_modes.get_group_target_rtp_ratio = lambda _group_id: 0.5
+            ex_modes.check_cancelled = lambda: None
+            rows = []
+
+            ex_modes.append_ex_normal_group_weight_mode(
+                rows,
+                formation_exists={"6": True},
+                rebates_by_mode={"6": [0, 4000]},
+                mode_exists={"6": True, "7": True, "8": True},
+                mode_pairs={"6": [(4000, 10)], "7": [], "8": []},
+                ex_info_by_mode={
+                    "7": {9000: {"actual_rtp": 100}},
+                    "8": {9000: {"actual_rtp": 100}},
+                },
+            )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(ex_modes, name):
+                        delattr(ex_modes, name)
+                else:
+                    setattr(ex_modes, name, value)
+
+        self.assertEqual(rows, [(6, 9000, 0, 30), (6, 9000, 4000, 10)])
 
     def test_ex_static_preview_shows_final_rtp_after_ex_multiplier(self):
         preview = group_weight_builder.group_weight_preview.build_ex_static_group_weight_preview(
@@ -1177,6 +1428,7 @@ class BuyGroupConfigTests(unittest.TestCase):
         self.assertEqual(migrated["version"], settings_logic.CURRENT_SETTINGS_VERSION)
         self.assertEqual(group_options["buy_game_type"], 99)
         self.assertEqual(group_options["buy_source_suffix"], "free_formation")
+        self.assertEqual(group_options["independent_rtp_modes"], [])
         self.assertEqual(group_options["extra_buy_groups"][0]["source_suffix"], "free_formation")
         self.assertEqual(group_options["buy_groups"][0]["game_type"], 99)
         self.assertEqual(group_options["buy_groups"][1]["game_type"], 120)
@@ -3454,6 +3706,7 @@ class SamplingTaskStateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir) / "state.json"
             calls = []
+            messages = []
             original_replace = sampling_task_state.os.replace
             original_print = sampling_task_state.print
             try:
@@ -3464,7 +3717,7 @@ class SamplingTaskStateTests(unittest.TestCase):
                     return original_replace(src, dst)
 
                 sampling_task_state.os.replace = flaky_replace
-                sampling_task_state.print = lambda *_args, **_kwargs: None
+                sampling_task_state.print = lambda message="", *_args, **_kwargs: messages.append(str(message))
 
                 result = sampling_task_state._write_state(
                     path,
@@ -3478,6 +3731,8 @@ class SamplingTaskStateTests(unittest.TestCase):
 
             self.assertTrue(result)
             self.assertEqual(len(calls), 3)
+            self.assertTrue(any("暂时保存失败" in message for message in messages))
+            self.assertTrue(any("保存成功" in message for message in messages))
             self.assertEqual(
                 sampling_task_state.json.loads(path.read_text(encoding="utf-8"))["identity"],
                 {"table": "x"},
@@ -3508,6 +3763,7 @@ class SamplingTaskStateTests(unittest.TestCase):
             self.assertIs(result, state)
             self.assertEqual(state["_path"], str(path))
             self.assertTrue(any("将继续采样" in message for message in warnings))
+            self.assertTrue(any("不影响已写入的采样数据" in message for message in warnings))
 
     def test_state_roundtrip_records_completed_rebate_and_id_mapping(self):
         old_settings_dir = os.environ.get(settings_logic.APP_SETTINGS_DIR_ENV)
@@ -3853,6 +4109,9 @@ class SlotAppDepsTests(unittest.TestCase):
             "DEFAULT_TRIGGER_WEIGHTS": {},
             "DEFAULT_SAMPLING_APPEND_MODE": False,
             "DEFAULT_SAMPLING_DETAILED_LOG": False,
+            "DEFAULT_SAMPLING_USE_TEMP_DB": True,
+            "DEFAULT_SAMPLING_TEMP_DB": "MY",
+            "DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET": False,
             "DEFAULT_BUY_GROUP_ENABLED": False,
             "DEFAULT_EX_BUY_GROUP_ENABLED": False,
             "DEFAULT_BUY_GROUP_GAME_TYPE": 99,
@@ -3880,6 +4139,7 @@ class SlotAppDepsTests(unittest.TestCase):
             "GAME_TYPE_NAMES": {},
             "GROUP_WEIGHT_RULE_FIELDS": (),
             "GROUP_WEIGHT_RULE_FIELD_LABELS": {},
+            "build_group_weight_preview_points": lambda *_args, **_kwargs: [],
         })
         module = SimpleNamespace(**module_values)
         ctx = slot_app_context.build_slot_app_deps_context(runtime, module)
@@ -3893,6 +4153,16 @@ class SlotAppDepsTests(unittest.TestCase):
         self.assertEqual(ctx.get_buy_group_game_type(), 91)
         self.assertEqual(ctx.get_buy_group_multiplier(), 45)
         self.assertEqual(ctx.get_buy_group_source_suffix(), "special_formation")
+        self.assertTrue(ctx.default_sampling_use_temp_db)
+        self.assertEqual(ctx.default_sampling_temp_db, "MY")
+        self.assertFalse(ctx.default_sampling_auto_sync_to_target)
+        self.assertFalse(ctx.get_sampling_auto_sync_to_target())
+
+        settings_deps = slot_app_deps.build_settings_deps(ctx)
+        self.assertTrue(settings_deps.default_sampling_use_temp_db)
+        self.assertEqual(settings_deps.default_sampling_temp_db, "MY")
+        self.assertFalse(settings_deps.default_sampling_auto_sync_to_target)
+        self.assertFalse(settings_deps.get_sampling_auto_sync_to_target())
 
     def test_process_app_deps_include_gui_entrypoints(self):
         ctx = SimpleNamespace(
@@ -3946,6 +4216,7 @@ class SlotAppDepsTests(unittest.TestCase):
             parse_non_negative_int_text=lambda text, _label: int(text),
             parse_positive_float_text=lambda text, _label: float(text),
             build_group_weight_preview_text=lambda *_args, **_kwargs: "ok",
+            build_group_weight_preview_points=lambda *_args, **_kwargs: [],
             validate_group_weight_rules=lambda rules: rules,
             normalize_extra_buy_groups=lambda groups: groups,
             apply_special_group_target_rtp=lambda _value: None,
@@ -4002,6 +4273,9 @@ class FakeSettingsApp(SlotAppSettingsMixin):
         self.free_weight_1_var = tk.StringVar(master=master, value="40")
         self.sampling_append_mode_var = tk.BooleanVar(master=master, value=False)
         self.sampling_detailed_log_var = tk.BooleanVar(master=master, value=False)
+        self.sampling_auto_sync_to_target_var = tk.BooleanVar(master=master, value=False)
+        self.sampling_use_temp_db_var = self.sampling_auto_sync_to_target_var
+        self.sampling_temp_db_var = tk.StringVar(master=master, value="DST")
         self.buy_group_enabled_var = tk.BooleanVar(master=master, value=False)
         self.ex_buy_group_enabled_var = tk.BooleanVar(master=master, value=False)
         self.ex_buy_game_type_var = tk.StringVar(master=master, value="98")
@@ -4036,6 +4310,49 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
     def tearDown(self):
         tk._default_root = self.original_default_root
 
+    def test_sampling_temp_db_defaults_to_configured_default_not_final_db(self):
+        last_data = settings_logic.build_last_settings_data(
+            vendor="pg",
+            game_id="100",
+            source_db="SRC",
+            final_db="DB1",
+            config_db="CFG",
+        )
+        app_data = settings_logic.build_app_settings_data(
+            runtime={
+                "vendor": "pg",
+                "game_id": "100",
+                "source_db": "SRC",
+                "final_db": "DB1",
+                "config_db": "CFG",
+            },
+            trigger_weights={},
+            rebate_rules={},
+            sampling_append_mode=False,
+            sampling_detailed_log=False,
+            group_weight_rules={},
+            group_weight_options={},
+            direct_count_modes=[],
+            direct_count_tiers=[],
+        )
+
+        self.assertEqual(last_data["runtime"]["sampling_temp_db"], "MY")
+        self.assertTrue(last_data["runtime"]["sampling_use_temp_db"])
+        self.assertFalse(last_data["runtime"]["sampling_auto_sync_to_target"])
+        self.assertEqual(app_data["sampling_options"]["temp_db"], "MY")
+        self.assertTrue(app_data["sampling_options"]["use_temp_db"])
+        self.assertFalse(app_data["sampling_options"]["auto_sync_to_target"])
+
+    def test_old_temp_db_switch_does_not_enable_auto_sync(self):
+        migrated = settings_logic.migrate_settings_data({
+            "version": settings_logic.CURRENT_SETTINGS_VERSION,
+            "runtime": {"sampling_temp_db": "MY", "sampling_use_temp_db": True},
+            "sampling_options": {"use_temp_db": True, "temp_db": "MY"},
+        })
+
+        self.assertTrue(migrated["sampling_options"]["use_temp_db"])
+        self.assertFalse(migrated["sampling_options"]["auto_sync_to_target"])
+
     def test_build_app_settings_data_persists_buy_and_sampling_options(self):
         extra_groups = [
             {"game_type": 120, "multiplier": 80, "source_suffix": "bonus_formation", "rules": []}
@@ -4058,10 +4375,12 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             clone_rebate_rules=lambda rules: {key: [dict(item) for item in value] for key, value in rules.items()},
             get_sampling_append_mode=lambda: True,
             get_sampling_detailed_log=lambda: True,
+            get_sampling_auto_sync_to_target=lambda: True,
             get_group_weight_rules=lambda: {"99": [{"rebate_min": 0, "weight": 10}]},
             clone_group_weight_rules=lambda rules: {key: [dict(item) for item in value] for key, value in rules.items()},
             get_special_group_target_rtp=lambda: 8.5,
             get_zero_rebate_inference_modes=lambda: {"1", "7"},
+            get_independent_rtp_modes=lambda: {"1", "6"},
             get_buy_group_enabled=lambda: True,
             get_ex_buy_group_enabled=lambda: True,
             get_ex_buy_group_game_type=lambda: 98,
@@ -4082,12 +4401,15 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
 
         self.assertNotIn("append_mode", data["sampling_options"])
         self.assertTrue(data["sampling_options"]["detailed_log"])
+        self.assertTrue(data["sampling_options"]["use_temp_db"])
+        self.assertTrue(data["sampling_options"]["auto_sync_to_target"])
         self.assertEqual(data["group_weight_options"]["buy_game_type"], 99)
         self.assertEqual(data["group_weight_options"]["ex_buy_game_type"], 98)
         self.assertEqual(data["group_weight_options"]["ex_buy_source_suffix"], "ex_free_formation")
         self.assertEqual(data["group_weight_options"]["buy_multiplier"], 50)
         self.assertEqual(data["group_weight_options"]["buy_source_suffix"], "free_formation")
         self.assertEqual(data["group_weight_options"]["zero_rebate_inference_modes"], ["1", "7"])
+        self.assertEqual(data["group_weight_options"]["independent_rtp_modes"], ["1", "6"])
         self.assertEqual(data["group_weight_options"]["ex_source_suffixes"], {"6": "manual_ex_formation"})
         self.assertEqual(data["group_weight_options"]["extra_buy_groups"], extra_groups)
         self.assertEqual(data["group_weight_options"]["buy_groups"][0]["game_type"], 99)
@@ -4119,6 +4441,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             apply_extra_buy_groups_config=lambda groups: calls.append(("extra", [dict(group) for group in groups])),
             apply_special_group_target_rtp=lambda value: calls.append(("special_rtp", value)),
             apply_zero_rebate_inference_modes_config=lambda modes: calls.append(("zero_infer", list(modes))),
+            apply_independent_rtp_modes_config=lambda modes: calls.append(("independent_rtp", list(modes))),
             apply_rebate_config_direct_count_modes=lambda modes: calls.append(("direct", list(modes))),
             normalize_direct_count_tiers_for_load=lambda tiers: [dict(rule) for rule in tiers],
             apply_rebate_config_direct_count_tiers=lambda tiers: calls.append(("direct_tiers", [dict(rule) for rule in tiers])),
@@ -4136,10 +4459,12 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             rebate_rules={"1": [{"rebate": 0, "count": 2}]},
             sampling_append_mode=True,
             sampling_detailed_log=True,
+            sampling_auto_sync_to_target=True,
             group_weight_rules={"99": [{"rebate_min": 0, "weight": 9}]},
             group_weight_options={
                 "special_target_rtp": 7.25,
                 "zero_rebate_inference_modes": ["1", "7"],
+                "independent_rtp_modes": ["1", "6"],
                 "buy_enabled": True,
                 "ex_buy_enabled": True,
                 "ex_buy_game_type": 198,
@@ -4165,12 +4490,14 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertEqual(app.buy_multiplier_var.get(), "60")
         self.assertEqual(app.buy_source_suffix_var.get(), "custom_free_formation")
         self.assertTrue(app.sampling_detailed_log_var.get())
+        self.assertTrue(app.sampling_auto_sync_to_target_var.get())
         self.assertEqual(app.ex_source_suffix_vars["6"].get(), "custom_ex_formation")
         self.assertEqual(app.ex_source_suffix_vars["8"].get(), "custom_ex_free_formation")
         self.assertEqual(app.extra_buy_rows, extra_groups)
         self.assertTrue(app.apply_selected_config_called)
         self.assertIn(("special_rtp", 7.25), calls)
         self.assertIn(("zero_infer", ["1", "7"]), calls)
+        self.assertIn(("independent_rtp", ["1", "6"]), calls)
         self.assertIn(("direct", ["1", "6"]), calls)
         self.assertIn(("direct_tiers", [{"rebate_min": 1, "rebate_max": 999, "count": 88}]), calls)
         self.assertIn(("extra", extra_groups), calls)
@@ -4244,6 +4571,86 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertIn(("ex_game_type", "198"), calls)
         self.assertIn(("ex_suffix", "custom_ex_buy_formation"), calls)
         self.assertIn(("extra", options["extra_buy_groups"]), calls)
+
+
+class SamplingAutoSyncTests(unittest.TestCase):
+    def test_all_sampling_auto_syncs_only_successful_modes(self):
+        module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
+        saved = {
+            "SAMPLING_AUTO_SYNC_TO_TARGET": module.SAMPLING_AUTO_SYNC_TO_TARGET,
+            "FINAL_DB": module.FINAL_DB,
+            "build_all_sampling_jobs_deps": module.build_all_sampling_jobs_deps,
+            "run_all_sampling_jobs": module.task_entrypoints.run_all_sampling_jobs,
+            "build_sampling_temp_sync_items": module.build_sampling_temp_sync_items,
+            "sync_sampling_temp_results": module.sync_sampling_temp_results,
+        }
+        calls = []
+        try:
+            module.SAMPLING_AUTO_SYNC_TO_TARGET = True
+            module.FINAL_DB = "DB1"
+            module.build_all_sampling_jobs_deps = lambda: object()
+            module.task_entrypoints.run_all_sampling_jobs = lambda *, deps: {
+                "1": True,
+                "2": False,
+                "3": None,
+            }
+            module.build_sampling_temp_sync_items = (
+                lambda modes, existing_only=False: calls.append(("items", list(modes), existing_only))
+                or [{"table_name": "pg_1_formation"}]
+            )
+            module.sync_sampling_temp_results = (
+                lambda items: calls.append(("sync", [dict(item) for item in items])) or {"pg_1_formation": True}
+            )
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = module.run_all_sampling_jobs()
+        finally:
+            module.SAMPLING_AUTO_SYNC_TO_TARGET = saved["SAMPLING_AUTO_SYNC_TO_TARGET"]
+            module.FINAL_DB = saved["FINAL_DB"]
+            module.build_all_sampling_jobs_deps = saved["build_all_sampling_jobs_deps"]
+            module.task_entrypoints.run_all_sampling_jobs = saved["run_all_sampling_jobs"]
+            module.build_sampling_temp_sync_items = saved["build_sampling_temp_sync_items"]
+            module.sync_sampling_temp_results = saved["sync_sampling_temp_results"]
+
+        self.assertEqual(result, {"1": True, "2": False, "3": None})
+        self.assertEqual(calls[0], ("items", ["1"], True))
+        self.assertEqual(calls[1], ("sync", [{"table_name": "pg_1_formation"}]))
+
+    def test_single_sampling_auto_syncs_selected_mode_after_success(self):
+        module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
+        saved = {
+            "SAMPLING_AUTO_SYNC_TO_TARGET": module.SAMPLING_AUTO_SYNC_TO_TARGET,
+            "get_runtime_game_configs": module.get_runtime_game_configs,
+            "run_single_game": module.run_single_game,
+            "build_sampling_temp_sync_items": module.build_sampling_temp_sync_items,
+            "sync_sampling_temp_results": module.sync_sampling_temp_results,
+        }
+        calls = []
+        try:
+            module.SAMPLING_AUTO_SYNC_TO_TARGET = True
+            module.get_runtime_game_configs = lambda: {"2": {"name": "特殊局"}}
+            module.run_single_game = lambda config: calls.append(("sample", config["name"])) or True
+            module.build_sampling_temp_sync_items = (
+                lambda modes, existing_only=False: calls.append(("items", list(modes), existing_only))
+                or [{"table_name": "pg_1_special_formation"}]
+            )
+            module.sync_sampling_temp_results = (
+                lambda items: calls.append(("sync", [dict(item) for item in items])) or {"pg_1_special_formation": True}
+            )
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = module.run_single_game_job("2")
+        finally:
+            module.SAMPLING_AUTO_SYNC_TO_TARGET = saved["SAMPLING_AUTO_SYNC_TO_TARGET"]
+            module.get_runtime_game_configs = saved["get_runtime_game_configs"]
+            module.run_single_game = saved["run_single_game"]
+            module.build_sampling_temp_sync_items = saved["build_sampling_temp_sync_items"]
+            module.sync_sampling_temp_results = saved["sync_sampling_temp_results"]
+
+        self.assertTrue(result)
+        self.assertEqual(calls[0], ("sample", "特殊局"))
+        self.assertEqual(calls[1], ("items", ["2"], True))
+        self.assertEqual(calls[2], ("sync", [{"table_name": "pg_1_special_formation"}]))
 
 
 class BuildFormationExeTests(unittest.TestCase):
@@ -4624,6 +5031,30 @@ class GroupWeightRulesDialogTests(unittest.TestCase):
                 formatter,
             ),
             "10000 - target",
+        )
+
+    def test_weight_curve_points_are_sorted_and_ignore_invalid_rows(self):
+        points = group_weight_rules_dialog.normalize_weight_curve_points([
+            {"rebate_min": "3000", "weight": "4"},
+            {"rebate_min": "bad", "weight": "9"},
+            {"rebate_min": "1000", "weight": "10"},
+            {"rebate_min": "3000", "weight": "5"},
+            {"rebate_min": "-1", "weight": "1"},
+            {"rebate_min": "5000", "weight": "-2"},
+        ])
+
+        self.assertEqual(points, [(1000, 10), (3000, 5)])
+
+    def test_weight_curve_can_hide_zero_rebate_point(self):
+        points = [(0, 999), (1000, 10), (2000, 5)]
+
+        self.assertEqual(
+            group_weight_rules_dialog.filter_weight_curve_points(points, hide_zero_rebate=True),
+            [(1000, 10), (2000, 5)],
+        )
+        self.assertEqual(
+            group_weight_rules_dialog.filter_weight_curve_points(points, hide_zero_rebate=False),
+            points,
         )
 
     def test_missing_zero_rebate_locks_zero_weight_entry_and_parses_as_zero(self):

@@ -12,6 +12,38 @@ ZERO_REBATE_MISSING_TEXT = "不存在rebate=0"
 DEFAULT_RTP_GROUP_ID = 9650
 
 
+def normalize_weight_curve_points(rules):
+    """Return sorted (rebate, weight) points that can be drawn on the chart."""
+    points_by_rebate = {}
+    for rule in rules or []:
+        try:
+            rebate = int(rule.get('rebate_min'))
+            weight = int(rule.get('weight'))
+        except (TypeError, ValueError):
+            continue
+        if rebate < 0 or weight < 0:
+            continue
+        points_by_rebate[rebate] = weight
+    return sorted(points_by_rebate.items())
+
+
+def filter_weight_curve_points(points, *, hide_zero_rebate=False):
+    if not hide_zero_rebate:
+        return list(points or [])
+    return [
+        (rebate, weight)
+        for rebate, weight in (points or [])
+        if int(rebate) != 0
+    ]
+
+
+def format_chart_axis_value(value):
+    value = int(round(float(value)))
+    if abs(value) >= 10000 and value % 10000 == 0:
+        return f"{value // 10000}万"
+    return str(value)
+
+
 def choose_default_rtp_group_option(group_ids, formatter, default_group_id=DEFAULT_RTP_GROUP_ID):
     """Return the dialog's initial RTP group option."""
     group_ids = list(group_ids or [])
@@ -40,10 +72,14 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         self.special_target_rtp_var = None
         self.ex_target_rtp_vars = {}
         self.zero_rebate_inference_vars = {}
+        self.independent_rtp_vars = {}
         self.special_target_entry = None
         self.ex_target_entries = {}
         self.special_has_zero_for_config = False
         self._updating_zero_rebate_state = False
+        self.weight_chart_canvases = {}
+        self.weight_chart_points = {}
+        self.hide_zero_rebate_chart_var = None
 
     def open(self):
         self.create_dialog(
@@ -113,6 +149,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             and 0 in {int(value) for value in preview_rebates.get('2', [])}
         )
         self.initialize_zero_rebate_inference_vars()
+        self.initialize_independent_rtp_vars()
 
         self.show_missing_config_warning()
         self.build_header()
@@ -202,6 +239,18 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             if supports(mode)
         }
 
+    def initialize_independent_rtp_vars(self):
+        if hasattr(self.deps, 'independent_rtp_modes'):
+            enabled_modes = {str(mode) for mode in (self.deps.independent_rtp_modes or set())}
+        else:
+            enabled_modes = {str(mode) for mode in getattr(self.deps, 'default_independent_rtp_modes', ())}
+        supports = getattr(self.deps, 'supports_independent_rtp', lambda _mode: False)
+        self.independent_rtp_vars = {
+            mode: tk.BooleanVar(value=str(mode) in enabled_modes)
+            for mode in self.dialog_modes
+            if supports(mode)
+        }
+
     def build_rule_tabs(self):
         self.notebook = ttk.Notebook(self.frame)
         self.notebook.grid(row=3, column=0, sticky="nsew")
@@ -223,9 +272,42 @@ class GroupWeightRulesDialog(LoadingDialogBase):
                 self.get_initial_rules_for_mode(mode),
                 add_button_text=f"新增{mode_name}区间",
                 options_builder=self.build_mode_options,
+                side_panel_builder=self.build_weight_chart_panel,
             )
         self.apply_zero_rebate_entry_states()
         self.refresh_zero_rebate_option_states()
+
+    def build_weight_chart_panel(self, mode, parent):
+        if self.hide_zero_rebate_chart_var is None:
+            self.hide_zero_rebate_chart_var = tk.BooleanVar(master=self.dialog, value=True)
+
+        chart_frame = ttk.Frame(parent)
+        chart_frame.grid(row=0, column=0, sticky="nsew")
+        chart_frame.rowconfigure(1, weight=1)
+        chart_frame.columnconfigure(0, weight=1)
+
+        header = ttk.Frame(chart_frame)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        header.columnconfigure(0, weight=1)
+        ttk.Label(header, text="权重柱状图", foreground="#444444").grid(row=0, column=0, sticky="w")
+        ttk.Checkbutton(
+            header,
+            text="不显示rebate=0",
+            variable=self.hide_zero_rebate_chart_var,
+            command=self.redraw_all_weight_charts,
+        ).grid(row=0, column=1, sticky="e", padx=(10, 12))
+        ttk.Label(header, text="X: rebate    Y: 权重", foreground="#777777").grid(row=0, column=2, sticky="e")
+
+        canvas = tk.Canvas(
+            chart_frame,
+            background="#ffffff",
+            highlightthickness=1,
+            highlightbackground="#d0d0d0",
+        )
+        canvas.grid(row=1, column=0, sticky="nsew")
+        self.weight_chart_canvases[mode] = canvas
+        canvas.bind("<Configure>", lambda _event, m=mode: self.redraw_weight_chart(m))
+        return True
 
     def mode_has_rebate_zero(self, mode):
         try:
@@ -244,6 +326,17 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             if var.get()
         }
 
+    def mode_independent_rtp_enabled(self, mode):
+        var = getattr(self, 'independent_rtp_vars', {}).get(str(mode))
+        return bool(var is not None and var.get())
+
+    def collect_independent_rtp_modes(self):
+        return {
+            str(mode)
+            for mode, var in getattr(self, 'independent_rtp_vars', {}).items()
+            if var.get()
+        }
+
     def refresh_zero_rebate_option_states(self):
         special_target_entry = getattr(self, 'special_target_entry', None)
         if special_target_entry is not None:
@@ -259,6 +352,9 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         self.refresh_zero_rebate_option_states()
         self.update_rtp_info()
 
+    def on_independent_rtp_changed(self, mode):
+        self.update_rtp_info()
+
     def build_zero_rebate_inference_option(self, mode, options_frame, row=0):
         var = getattr(self, 'zero_rebate_inference_vars', {}).get(str(mode))
         if var is None:
@@ -272,6 +368,24 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             state="normal" if has_zero else "disabled",
         ).grid(row=row, column=0, sticky="w", padx=(0, 8))
         note_text = "采样配置存在 rebate=0" if has_zero else "不存在 rebate=0，本次不会反推"
+        ttk.Label(options_frame, text=note_text, foreground="#555555").grid(
+            row=row, column=1, columnspan=2, sticky="w"
+        )
+        return row + 1
+
+    def build_independent_rtp_option(self, mode, options_frame, row=0):
+        var = getattr(self, 'independent_rtp_vars', {}).get(str(mode))
+        if var is None:
+            return row
+        ttk.Checkbutton(
+            options_frame,
+            text="独立计算RTP",
+            variable=var,
+            command=lambda m=mode: self.on_independent_rtp_changed(m),
+        ).grid(row=row, column=0, sticky="w", padx=(0, 8))
+        note_text = "开启后不扣除其它局触发贡献，RTP目标=当前RTP组"
+        if str(mode) == "6":
+            note_text += "，反推目标按 ex倍数折算"
         ttk.Label(options_frame, text=note_text, foreground="#555555").grid(
             row=row, column=1, columnspan=2, sticky="w"
         )
@@ -361,11 +475,17 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         }
         for mode, var in getattr(self, 'zero_rebate_inference_vars', {}).items():
             var.set(str(mode) in default_inference_modes)
+        default_independent_modes = {
+            str(mode) for mode in getattr(self.deps, 'default_independent_rtp_modes', ())
+        }
+        for mode, var in getattr(self, 'independent_rtp_vars', {}).items():
+            var.set(str(mode) in default_independent_modes)
         self.refresh_zero_rebate_option_states()
         self.update_rtp_info()
 
     def build_mode_options(self, mode, options_frame):
         row = self.build_zero_rebate_inference_option(mode, options_frame, row=0)
+        row = self.build_independent_rtp_option(mode, options_frame, row=row)
         if mode == '2':
             ttk.Label(options_frame, text="特殊局目标RTP").grid(row=row, column=0, sticky="w", padx=(0, 8))
             special_target_entry = ttk.Entry(options_frame, textvariable=self.special_target_rtp_var, width=14)
@@ -426,6 +546,157 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             parsed_rules.append({'rebate_min': rebate, 'weight': weight})
         return sorted(parsed_rules, key=lambda item: item['rebate_min']), None
 
+    def get_current_mode(self):
+        try:
+            return self.displayed_modes[self.notebook.index("current")]
+        except Exception:
+            return self.displayed_modes[0] if self.displayed_modes else self.deps.buy_group_mode
+
+    def collect_weight_chart_rules(self, mode):
+        rules = []
+        if self.rule_editor is None:
+            return rules
+        for row_info in self.rule_editor.get_rows(mode):
+            rebate_text = row_info.get('vars', {}).get('rebate_min')
+            weight_text = row_info.get('vars', {}).get('weight')
+            if rebate_text is None or weight_text is None:
+                continue
+            rebate_value = rebate_text.get().strip()
+            weight_value = weight_text.get().strip()
+            if not rebate_value:
+                continue
+            try:
+                rebate = int(rebate_value)
+                weight = 0 if self.is_missing_zero_rebate_rule_row(mode, row_info) else int(weight_value)
+            except (TypeError, ValueError):
+                continue
+            rules.append({'rebate_min': rebate, 'weight': weight})
+        return rules
+
+    def update_current_weight_chart(self):
+        self.update_weight_chart(self.get_current_mode())
+
+    def update_weight_chart(self, mode):
+        self.update_weight_chart_points(
+            mode,
+            normalize_weight_curve_points(self.collect_weight_chart_rules(mode)),
+        )
+
+    def update_weight_chart_points(self, mode, points):
+        if not hasattr(self, 'weight_chart_points'):
+            self.weight_chart_points = {}
+        self.weight_chart_points[mode] = list(points or [])
+        self.redraw_weight_chart(mode)
+
+    def hide_zero_rebate_in_chart(self):
+        var = getattr(self, 'hide_zero_rebate_chart_var', None)
+        return bool(var is not None and var.get())
+
+    def redraw_all_weight_charts(self):
+        for mode in list(getattr(self, 'weight_chart_canvases', {})):
+            self.redraw_weight_chart(mode)
+
+    def redraw_weight_chart(self, mode):
+        canvas = getattr(self, 'weight_chart_canvases', {}).get(mode)
+        if canvas is None or not canvas.winfo_exists():
+            return
+        points = filter_weight_curve_points(
+            getattr(self, 'weight_chart_points', {}).get(mode, []),
+            hide_zero_rebate=self.hide_zero_rebate_in_chart(),
+        )
+        self.draw_weight_chart(canvas, points)
+
+    def draw_weight_chart(self, canvas, points):
+        canvas.delete("all")
+        width = max(1, int(canvas.winfo_width()))
+        height = max(1, int(canvas.winfo_height()))
+        if width < 80 or height < 80:
+            return
+
+        left = 58
+        right = 18
+        top = 24
+        bottom = 42
+        plot_width = max(1, width - left - right)
+        plot_height = max(1, height - top - bottom)
+        x0 = left
+        y0 = top + plot_height
+        x1 = left + plot_width
+        y1 = top
+
+        axis_color = "#333333"
+        grid_color = "#e5e5e5"
+        text_color = "#666666"
+        bar_color = "#d62728"
+
+        if not points:
+            canvas.create_text(
+                width // 2,
+                height // 2,
+                text="无有效权重数据",
+                fill=text_color,
+            )
+            return
+
+        rebates = [point[0] for point in points]
+        weights = [point[1] for point in points]
+        min_rebate = min(rebates)
+        max_rebate = max(rebates)
+        max_weight = max(max(weights), 1)
+        if min_rebate == max_rebate:
+            max_rebate = min_rebate + 1
+
+        for tick in range(5):
+            ratio = tick / 4
+            y = y0 - ratio * plot_height
+            value = max_weight * ratio
+            canvas.create_line(x0, y, x1, y, fill=grid_color)
+            canvas.create_text(
+                x0 - 8,
+                y,
+                text=format_chart_axis_value(value),
+                fill=text_color,
+                anchor="e",
+                font=("TkDefaultFont", 8),
+            )
+
+        for tick in range(5):
+            ratio = tick / 4
+            x = x0 + ratio * plot_width
+            value = min_rebate + (max_rebate - min_rebate) * ratio
+            canvas.create_line(x, y0, x, y1, fill=grid_color)
+            canvas.create_text(
+                x,
+                y0 + 16,
+                text=format_chart_axis_value(value),
+                fill=text_color,
+                anchor="n",
+                font=("TkDefaultFont", 8),
+            )
+
+        canvas.create_line(x0, y0, x1, y0, fill=axis_color, width=2)
+        canvas.create_line(x0, y0, x0, y1, fill=axis_color, width=2)
+        canvas.create_text(x1, y0 + 30, text="rebate", fill=text_color, anchor="e", font=("TkDefaultFont", 8))
+        canvas.create_text(x0 - 4, y1 - 8, text="权重", fill=text_color, anchor="e", font=("TkDefaultFont", 8))
+
+        if len(points) == 1:
+            bar_width = min(24, max(6, plot_width * 0.04))
+        else:
+            bar_width = max(1, min(16, plot_width / max(len(points), 1) * 0.7))
+
+        for rebate, weight in points:
+            x = x0 + ((rebate - min_rebate) / (max_rebate - min_rebate)) * plot_width
+            y = y0 - (weight / max_weight) * plot_height
+            half_width = bar_width / 2
+            canvas.create_rectangle(
+                x - half_width,
+                y,
+                x + half_width,
+                y0,
+                fill=bar_color,
+                outline=bar_color,
+            )
+
     def parse_special_target_for_preview(self):
         text = self.special_target_rtp_var.get().strip()
         if not text:
@@ -463,11 +734,9 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             group_id = int(text.split(" ", 1)[0])
         except (ValueError, IndexError):
             self.rtp_info_var.set(group_weight_ui_text.DEFAULT_PREVIEW_TEXT)
+            self.update_weight_chart_points(self.get_current_mode(), [])
             return
-        try:
-            current_mode = self.displayed_modes[self.notebook.index("current")]
-        except Exception:
-            current_mode = self.displayed_modes[0] if self.displayed_modes else self.deps.buy_group_mode
+        current_mode = self.get_current_mode()
 
         rules_by_mode = {}
         parse_errors = {}
@@ -479,6 +748,18 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         special_target, special_target_error = (
             self.parse_special_target_for_preview() if self.mode_zero_rebate_inference_enabled('2') else (None, None)
         )
+        preview_kwargs = dict(
+            special_has_zero_for_config=self.special_has_zero_for_config,
+            special_target_rtp=special_target,
+            special_target_error=special_target_error,
+            buy_multiplier=self.deps.buy_multiplier,
+            ex_multiplier=self.deps.ex_multiplier,
+            ex_target_rtps=ex_target_rtps,
+            zero_rebate_inference_modes=self.collect_zero_rebate_inference_modes(),
+            independent_rtp_modes=self.collect_independent_rtp_modes(),
+            buy_enabled=self.deps.buy_enabled or self.deps.has_extra_buy_groups(),
+        )
+        chart_points = []
         try:
             current_rtp_text = self.deps.build_preview_text(
                 current_mode,
@@ -488,20 +769,31 @@ class GroupWeightRulesDialog(LoadingDialogBase):
                 self.preview_rebates,
                 self.preview_status,
                 self.formation_exists,
-                special_has_zero_for_config=self.special_has_zero_for_config,
-                special_target_rtp=special_target,
-                special_target_error=special_target_error,
-                buy_multiplier=self.deps.buy_multiplier,
-                ex_multiplier=self.deps.ex_multiplier,
-                ex_target_rtps=ex_target_rtps,
-                zero_rebate_inference_modes=self.collect_zero_rebate_inference_modes(),
-                buy_enabled=self.deps.buy_enabled or self.deps.has_extra_buy_groups(),
+                **preview_kwargs,
             )
         except ValueError as e:
             current_rtp_text = str(e)
         except Exception as e:
             print(f"[WARN] group_weight preview failed: {e}")
             current_rtp_text = f"\u9884\u89c8\u751f\u6210\u5931\u8d25\uff1a{e}"
+        else:
+            if hasattr(self.deps, 'build_preview_points'):
+                try:
+                    chart_points = self.deps.build_preview_points(
+                        current_mode,
+                        group_id,
+                        rules_by_mode,
+                        parse_errors,
+                        self.preview_rebates,
+                        self.preview_status,
+                        self.formation_exists,
+                        **preview_kwargs,
+                    )
+                except Exception as e:
+                    print(f"[WARN] group_weight chart preview failed: {e}")
+                    chart_points = []
+            else:
+                chart_points = normalize_weight_curve_points(self.collect_weight_chart_rules(current_mode))
 
         self.rtp_info_var.set(
             group_weight_ui_text.build_rtp_info_text(
@@ -511,6 +803,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
                 current_rtp_text,
             )
         )
+        self.update_weight_chart_points(current_mode, chart_points)
 
     def parse_group_weight_rule_rows(self, mode, rows):
         mode_rules = []
@@ -592,6 +885,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         self.deps.apply_rules(rules)
         self.deps.apply_ex_group_target_rtps(ex_target_rtps)
         self.deps.apply_zero_rebate_inference_modes(self.collect_zero_rebate_inference_modes())
+        self.deps.apply_independent_rtp_modes(self.collect_independent_rtp_modes())
         self.deps.apply_extra_buy_groups(extra_buy_groups)
         self.dialog.destroy()
         self.app.run_task(

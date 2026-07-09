@@ -116,6 +116,11 @@ def build_group_weight_preview_text(*args, **kwargs):
     """Delegate preview text calculation to the preview module."""
     return group_weight_preview.build_group_weight_preview_text(*args, **kwargs)
 
+
+def build_group_weight_preview_points(*args, **kwargs):
+    """Delegate preview chart point calculation to the preview module."""
+    return group_weight_preview.build_group_weight_preview_points(*args, **kwargs)
+
 def build_group_weight_rows_from_loaded_data(formation_exists, rebates_by_mode, mode_exists, mode_pairs):
     """根据已加载的 rebate_count 数据生成 group_weight rows；返回 None 表示配置错误。"""
     rows = []

@@ -60,6 +60,7 @@ def build_original_normal_group_weight_preview(
     special_target_rtp=None,
     special_target_error=None,
     zero_rebate_inference_modes=None,
+    independent_rtp_modes=None,
 ):
     """普通局预览：按免费/特殊触发贡献反推 rebate=0 权重。"""
     normal_should_infer = should_infer_zero_rebate(
@@ -72,6 +73,23 @@ def build_original_normal_group_weight_preview(
         current_rules,
         exclude_rebate_zero=normal_should_infer,
     )
+    if '1' in {str(mode) for mode in (independent_rtp_modes or set())}:
+        group_rows, group_info = build_independent_group_weight_rows_for_group(
+            group_id,
+            get_group_weight_write_game_type('1'),
+            normal_pairs,
+            normal_should_infer,
+            get_group_target_rtp_ratio(group_id),
+        )
+        row_count = count_preview_write_rows(group_rows, skipped_zero, skipped_rebate_zero)
+        return (
+            f"独立RTP开启，目标={format_weighted_rtp(group_info['target_rtp'])}，"
+            f"反推0权重={group_info['zero_weight']}，"
+            f"实际={format_weighted_rtp(group_info['actual_rtp'])}，"
+            f"将写入 {row_count} 行"
+            f"（非0参与 {len(normal_pairs)} 个，跳过0权重 {skipped_zero} 个"
+            f"，采样表0 {skipped_rebate_zero} 个）"
+        )
     if parse_errors.get('2') or parse_errors.get('3'):
         return f"特殊局/免费局配置错误: {parse_errors.get('2') or parse_errors.get('3')}"
 
@@ -134,6 +152,7 @@ def build_ex_normal_group_weight_preview(
     ex_multiplier,
     ex_target_rtps=None,
     zero_rebate_inference_modes=None,
+    independent_rtp_modes=None,
 ):
     """ex普通局预览：ex特殊独立反推，ex免费静态计算，再反推 ex普通。"""
     normal_should_infer = should_infer_zero_rebate(
@@ -146,6 +165,28 @@ def build_ex_normal_group_weight_preview(
         current_rules,
         exclude_rebate_zero=normal_should_infer,
     )
+    if '6' in {str(mode) for mode in (independent_rtp_modes or set())}:
+        target_rtp = get_group_target_rtp_ratio(group_id) * float(ex_multiplier)
+        group_rows, group_info = build_independent_group_weight_rows_for_group(
+            group_id,
+            get_group_weight_write_game_type('6'),
+            normal_pairs,
+            normal_should_infer,
+            target_rtp,
+            display_divisor=ex_multiplier,
+        )
+        row_count = count_preview_write_rows(group_rows, skipped_zero, skipped_rebate_zero)
+        return (
+            f"独立RTP开启，目标={format_weighted_rtp(get_group_target_rtp_ratio(group_id))}，"
+            f"反推目标={format_weighted_rtp(target_rtp)}，"
+            f"ex倍数={format_weighted_rtp(ex_multiplier)}，"
+            f"反推0权重={group_info['zero_weight']}，"
+            f"实际={format_weighted_rtp(group_info['actual_rtp'])}，"
+            f"最终RTP={format_weighted_rtp(group_info['display_rtp'])}，"
+            f"将写入 {row_count} 行"
+            f"（非0参与 {len(normal_pairs)} 个，跳过0权重 {skipped_zero} 个"
+            f"，采样表0 {skipped_rebate_zero} 个）"
+        )
     if parse_errors.get('7') or parse_errors.get('8'):
         return f"ex特殊局/ex免费局配置错误: {parse_errors.get('7') or parse_errors.get('8')}"
 
@@ -449,6 +490,7 @@ def build_group_weight_preview_context(
     ex_multiplier=1,
     ex_target_rtps=None,
     zero_rebate_inference_modes=None,
+    independent_rtp_modes=None,
     buy_enabled=True,
 ):
     """组装 group_weight 预览所需上下文；message 表示可直接返回的提示文案。"""
@@ -484,6 +526,11 @@ def build_group_weight_preview_context(
             if zero_rebate_inference_modes is None
             else zero_rebate_inference_modes
         ),
+        'independent_rtp_modes': set(
+            globals().get('INDEPENDENT_RTP_MODES', set())
+            if independent_rtp_modes is None
+            else independent_rtp_modes
+        ),
     }
 
 
@@ -509,6 +556,250 @@ def build_group_weight_preview_pair_context(context):
     return enriched
 
 
+def build_actual_rebate_weight_points(sampled_rebates, rules):
+    """Build chart points from actual sampled rebate values."""
+    points = []
+    for rebate in sorted({int(value) for value in (sampled_rebates or [])}):
+        weight = 0
+        for rule in sorted(rules or [], key=lambda item: item['rebate_min']):
+            if rebate < int(rule['rebate_min']):
+                break
+            weight = int(rule['weight'])
+        if weight < 0:
+            continue
+        points.append((rebate, weight))
+    return points
+
+
+def replace_rebate_zero_weight(points, zero_weight):
+    return [
+        (rebate, int(zero_weight) if int(rebate) == 0 else weight)
+        for rebate, weight in points
+    ]
+
+
+def get_buy_like_preview_multiplier(current_mode, buy_multiplier, ex_multiplier):
+    if current_mode == EX_PURCHASE_MODE:
+        return float(buy_multiplier) * float(ex_multiplier)
+    if current_mode == BUY_GROUP_MODE:
+        return float(buy_multiplier)
+    if is_extra_buy_mode(current_mode):
+        extra_group = get_extra_buy_group_by_mode(current_mode) or {}
+        return float(extra_group.get('multiplier', buy_multiplier))
+    return 1.0
+
+
+def build_normal_chart_zero_weight(context):
+    normal_pairs, _skipped_zero, _skipped_rebate_zero = build_rebate_weight_pairs(
+        context['sampled_rebates'],
+        context['current_rules'],
+        exclude_rebate_zero=True,
+    )
+    if '1' in context.get('independent_rtp_modes', set()):
+        try:
+            _rows, info = build_independent_group_weight_rows_for_group(
+                context['group_id'],
+                get_group_weight_write_game_type('1'),
+                normal_pairs,
+                True,
+                get_group_target_rtp_ratio(context['group_id']),
+            )
+        except (TypeError, ValueError):
+            return None
+        return int(info['zero_weight'])
+    if context['parse_errors'].get('2') or context['parse_errors'].get('3'):
+        return None
+
+    special_should_infer = should_infer_zero_rebate(
+        '2',
+        context['preview_rebates'].get('2', []),
+        context['zero_rebate_inference_modes'],
+    )
+    special_pairs, _, _ = build_rebate_weight_pairs(
+        context['preview_rebates'].get('2', []),
+        context['rules_by_mode'].get('2', []),
+        exclude_rebate_zero=special_should_infer,
+    )
+    free_pairs, _, _ = build_rebate_weight_pairs(
+        context['preview_rebates'].get('3', []),
+        context['rules_by_mode'].get('3', []),
+    )
+    if special_should_infer and context['special_target_error']:
+        return None
+    try:
+        _special_zero, special_actual_rtp = infer_special_zero_weight(
+            special_pairs,
+            special_should_infer,
+            context['special_target_rtp'],
+        )
+        free_rtp = calculate_weighted_rtp(free_pairs) or 0
+        _rows, group_info = build_normal_group_weight_rows_for_group(
+            context['group_id'],
+            normal_pairs,
+            free_rtp,
+            context['formation_exists'].get('3', False) and bool(free_pairs),
+            special_actual_rtp or 0,
+            context['formation_exists'].get('2', False) and bool(special_pairs),
+            infer_zero_rebate=True,
+        )
+    except (TypeError, ValueError):
+        return None
+    return int(group_info['zero_weight'])
+
+
+def build_ex_normal_chart_zero_weight(context):
+    normal_pairs, _skipped_zero, _skipped_rebate_zero = build_rebate_weight_pairs(
+        context['sampled_rebates'],
+        context['current_rules'],
+        exclude_rebate_zero=True,
+    )
+    if '6' in context.get('independent_rtp_modes', set()):
+        try:
+            _rows, info = build_independent_group_weight_rows_for_group(
+                context['group_id'],
+                get_group_weight_write_game_type('6'),
+                normal_pairs,
+                True,
+                get_group_target_rtp_ratio(context['group_id']) * context['ex_multiplier'],
+                display_divisor=context['ex_multiplier'],
+            )
+        except (TypeError, ValueError):
+            return None
+        return int(info['zero_weight'])
+    if context['parse_errors'].get('7') or context['parse_errors'].get('8'):
+        return None
+
+    ex_special_should_infer = should_infer_zero_rebate(
+        '7',
+        context['preview_rebates'].get('7', []),
+        context['zero_rebate_inference_modes'],
+    )
+    ex_special_pairs, _, _ = build_rebate_weight_pairs(
+        context['preview_rebates'].get('7', []),
+        context['rules_by_mode'].get('7', []),
+        exclude_rebate_zero=ex_special_should_infer,
+    )
+    ex_free_pairs, _, _ = build_rebate_weight_pairs(
+        context['preview_rebates'].get('8', []),
+        context['rules_by_mode'].get('8', []),
+    )
+    special_display_target = get_ex_display_target_rtp(
+        context['group_id'],
+        7,
+        context['ex_target_rtps'],
+        target_rtp_getter=get_group_target_rtp_ratio,
+    )
+    try:
+        _special_rows, special_info = build_independent_group_weight_rows_for_group(
+            context['group_id'],
+            7,
+            ex_special_pairs,
+            ex_special_should_infer,
+            special_display_target * context['ex_multiplier'],
+            display_divisor=context['ex_multiplier'],
+        )
+        ex_free_rtp = calculate_weighted_rtp(ex_free_pairs) or 0
+        _rows, group_info = build_normal_group_weight_rows_for_group(
+            context['group_id'],
+            normal_pairs,
+            ex_free_rtp,
+            context['formation_exists'].get('8', False) and bool(ex_free_pairs),
+            special_info['actual_rtp'] or 0,
+            context['formation_exists'].get('7', False) and bool(ex_special_pairs),
+            game_type=6,
+            target_multiplier=context['ex_multiplier'],
+            display_divisor=context['ex_multiplier'],
+            infer_zero_rebate=True,
+        )
+    except (TypeError, ValueError):
+        return None
+    return int(group_info['zero_weight'])
+
+
+def build_independent_chart_zero_weight(context):
+    rtp_pairs, _skipped_zero, _skipped_rebate_zero = build_rebate_weight_pairs(
+        context['sampled_rebates'],
+        context['current_rules'],
+        exclude_rebate_zero=True,
+    )
+    role = context['role']
+    try:
+        if role == 'special':
+            if context['special_target_error']:
+                return None
+            zero_weight, _current_rtp = infer_special_zero_weight(
+                rtp_pairs,
+                True,
+                context['special_target_rtp'],
+            )
+            return int(zero_weight)
+        if role == 'ex_independent':
+            display_target = get_ex_display_target_rtp(
+                context['group_id'],
+                context['current_mode'],
+                context['ex_target_rtps'],
+                target_rtp_getter=get_group_target_rtp_ratio,
+            )
+            target_rtp = display_target * context['ex_multiplier']
+            _rows, info = build_independent_group_weight_rows_for_group(
+                context['group_id'],
+                int(context['current_mode']),
+                rtp_pairs,
+                True,
+                target_rtp,
+                display_divisor=context['ex_multiplier'],
+            )
+            return int(info['zero_weight'])
+        if role in ('buy', 'ex_buy'):
+            multiplier = get_buy_like_preview_multiplier(
+                context['current_mode'],
+                context['buy_multiplier'],
+                context['ex_multiplier'],
+            )
+            target_rtp = get_group_target_rtp_ratio(context['group_id']) * multiplier
+            _rows, info = build_independent_group_weight_rows_for_group(
+                context['group_id'],
+                get_group_weight_write_game_type(context['current_mode']),
+                rtp_pairs,
+                True,
+                target_rtp,
+                display_divisor=multiplier,
+            )
+            return int(info['zero_weight'])
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def build_group_weight_preview_points_by_role(context):
+    """Return chart points using actual sampled rebates, with inferred rebate=0 weight."""
+    if context.get('message'):
+        return []
+    points = build_actual_rebate_weight_points(
+        context['sampled_rebates'],
+        context['current_rules'],
+    )
+    should_infer_zero = should_infer_zero_rebate(
+        context['current_mode'],
+        context['sampled_rebates'],
+        context['zero_rebate_inference_modes'],
+    )
+    if not should_infer_zero:
+        return points
+
+    zero_weight = None
+    if context['role'] == 'normal':
+        zero_weight = build_normal_chart_zero_weight(context)
+    elif context['role'] == 'ex_normal':
+        zero_weight = build_ex_normal_chart_zero_weight(context)
+    elif context['role'] in ('special', 'ex_independent', 'buy', 'ex_buy'):
+        zero_weight = build_independent_chart_zero_weight(context)
+
+    if zero_weight is None:
+        return points
+    return replace_rebate_zero_weight(points, zero_weight)
+
+
 def build_normal_preview_from_context(context):
     return build_original_normal_group_weight_preview(
         context['group_id'],
@@ -522,6 +813,7 @@ def build_normal_preview_from_context(context):
         special_target_rtp=context['special_target_rtp'],
         special_target_error=context['special_target_error'],
         zero_rebate_inference_modes=context['zero_rebate_inference_modes'],
+        independent_rtp_modes=context['independent_rtp_modes'],
     )
 
 
@@ -537,6 +829,7 @@ def build_ex_normal_preview_from_context(context):
         context['ex_multiplier'],
         context['ex_target_rtps'],
         context['zero_rebate_inference_modes'],
+        context['independent_rtp_modes'],
     )
 
 
@@ -630,6 +923,7 @@ def build_group_weight_preview_text(
     ex_multiplier=1,
     ex_target_rtps=None,
     zero_rebate_inference_modes=None,
+    independent_rtp_modes=None,
     buy_enabled=True,
 ):
     """计算 group_weight 弹窗当前页的 RTP 预览文案。"""
@@ -648,8 +942,49 @@ def build_group_weight_preview_text(
         ex_multiplier=ex_multiplier,
         ex_target_rtps=ex_target_rtps,
         zero_rebate_inference_modes=zero_rebate_inference_modes,
+        independent_rtp_modes=independent_rtp_modes,
         buy_enabled=buy_enabled,
     )
     if context['message']:
         return context['message']
     return build_group_weight_preview_by_role(context)
+
+
+def build_group_weight_preview_points(
+    current_mode,
+    group_id,
+    rules_by_mode,
+    parse_errors,
+    preview_rebates,
+    preview_status,
+    formation_exists,
+    *,
+    special_has_zero_for_config=False,
+    special_target_rtp=None,
+    special_target_error=None,
+    buy_multiplier=1,
+    ex_multiplier=1,
+    ex_target_rtps=None,
+    zero_rebate_inference_modes=None,
+    independent_rtp_modes=None,
+    buy_enabled=True,
+):
+    context = build_group_weight_preview_context(
+        current_mode,
+        group_id,
+        rules_by_mode,
+        parse_errors,
+        preview_rebates,
+        preview_status,
+        formation_exists,
+        special_has_zero_for_config=special_has_zero_for_config,
+        special_target_rtp=special_target_rtp,
+        special_target_error=special_target_error,
+        buy_multiplier=buy_multiplier,
+        ex_multiplier=ex_multiplier,
+        ex_target_rtps=ex_target_rtps,
+        zero_rebate_inference_modes=zero_rebate_inference_modes,
+        independent_rtp_modes=independent_rtp_modes,
+        buy_enabled=buy_enabled,
+    )
+    return build_group_weight_preview_points_by_role(context)

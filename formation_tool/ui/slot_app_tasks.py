@@ -48,8 +48,11 @@ class SlotAppTaskMixin:
             f"当前配置：厂商={runtime['vendor']}，游戏编号={runtime['game_id']}，"
             f"源库={runtime['source_db']}，目标库={runtime['final_db']}，配置库={runtime['config_db']}\n"
         )
-        if runtime.get('sampling_use_temp_db'):
-            self.append_log(f"采样临时库：{runtime.get('sampling_temp_db')}（中转开启）\n")
+        self.append_log(f"采样临时库：{runtime.get('sampling_temp_db')}（默认中转）\n")
+        self.append_log(
+            "采样后自动镜像："
+            + ("开启\n" if runtime.get('sampling_auto_sync_to_target') else "关闭\n")
+        )
         external_source = deps.get_external_config_source()
         external_error = deps.get_external_config_load_error()
         if external_source:
@@ -84,11 +87,11 @@ class SlotAppTaskMixin:
             "采样详细日志："
             + ("开启\n" if deps.get_sampling_detailed_log() else "关闭\n")
         )
-        if getattr(deps, "get_sampling_use_temp_db", lambda: False)():
-            temp_db = getattr(deps, "get_sampling_temp_db", lambda: "")()
-            self.append_log(f"采样方案：写入中转库 {temp_db} 正式表，目标库不变\n")
+        temp_db = getattr(deps, "get_sampling_temp_db", lambda: "")()
+        if getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)():
+            self.append_log(f"采样方案：写入中转库 {temp_db} 正式表，完成后自动镜像到目标库\n")
         else:
-            self.append_log("采样方案：直接写入目标库并替换正式表\n")
+            self.append_log(f"采样方案：写入中转库 {temp_db} 正式表，目标库不变\n")
         direct_count_modes = deps.get_direct_count_modes()
         if direct_count_modes:
             game_configs = deps.get_game_configs()

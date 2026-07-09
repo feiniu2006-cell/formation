@@ -57,6 +57,8 @@ EX_INDEPENDENT_GROUP_WEIGHT_MODES = tuple(
     mode for mode, mode_def in GROUP_WEIGHT_MODE_DEFS.items()
     if mode_def.get('rtp_role') == 'ex_independent'
 )
+INDEPENDENT_RTP_CONFIG_MODES = ('1', '6')
+DEFAULT_INDEPENDENT_RTP_MODES = tuple()
 
 
 def make_extra_buy_mode(game_type):
@@ -109,6 +111,26 @@ def normalize_zero_rebate_inference_modes(modes):
         normalize_group_weight_mode_key(mode)
         for mode in values
         if supports_zero_rebate_inference(mode)
+    }
+
+
+def supports_independent_rtp(mode):
+    """Return whether this group_weight mode can ignore trigger-mode RTP contribution."""
+    return normalize_group_weight_mode_key(mode) in INDEPENDENT_RTP_CONFIG_MODES
+
+
+def normalize_independent_rtp_modes(modes):
+    """Normalize modes using independent RTP targets, dropping unsupported modes."""
+    if modes is None:
+        return set(DEFAULT_INDEPENDENT_RTP_MODES)
+    if isinstance(modes, dict):
+        values = [mode for mode, enabled in modes.items() if enabled]
+    else:
+        values = list(modes or [])
+    return {
+        normalize_group_weight_mode_key(mode)
+        for mode in values
+        if supports_independent_rtp(mode)
     }
 
 

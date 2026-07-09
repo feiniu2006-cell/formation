@@ -23,6 +23,9 @@ class SettingsDeps:
     default_trigger_weights: Any
     default_sampling_append_mode: Any
     default_sampling_detailed_log: Any
+    default_sampling_use_temp_db: Any
+    default_sampling_temp_db: Any
+    default_sampling_auto_sync_to_target: Any
     default_buy_group_enabled: Any
     default_ex_buy_group_enabled: Any
     default_ex_buy_group_game_type: Any
@@ -38,6 +41,7 @@ class SettingsDeps:
     default_special_group_target_rtp: Any
     default_ex_group_target_rtps: Any
     default_zero_rebate_inference_modes: Any
+    default_independent_rtp_modes: Any
     get_runtime_state: Any
     get_trigger_weights: Any
     get_rebate_rules: Any
@@ -45,10 +49,12 @@ class SettingsDeps:
     get_sampling_detailed_log: Any
     get_sampling_use_temp_db: Any
     get_sampling_temp_db: Any
+    get_sampling_auto_sync_to_target: Any
     get_group_weight_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
     get_zero_rebate_inference_modes: Any
+    get_independent_rtp_modes: Any
     get_buy_group_enabled: Any
     get_ex_buy_group_enabled: Any
     get_ex_buy_group_game_type: Any
@@ -81,6 +87,7 @@ class SettingsDeps:
     apply_special_group_target_rtp: Any
     apply_ex_group_target_rtps_config: Any
     apply_zero_rebate_inference_modes_config: Any
+    apply_independent_rtp_modes_config: Any
     apply_buy_group_multiplier: Any
     apply_buy_group_game_type: Any
     apply_buy_group_source_suffix: Any
@@ -98,6 +105,7 @@ class SettingsDeps:
     apply_sampling_append_mode: Any
     apply_sampling_detailed_log: Any
     apply_sampling_temp_db_config: Any
+    apply_sampling_auto_sync_to_target: Any
 
 
 @dataclass(frozen=True)
@@ -111,6 +119,7 @@ class TaskDeps:
     get_sampling_detailed_log: Any
     get_sampling_use_temp_db: Any
     get_sampling_temp_db: Any
+    get_sampling_auto_sync_to_target: Any
     get_direct_count_modes: Any
     get_direct_count_tiers: Any
     get_game_configs: Any
@@ -158,6 +167,8 @@ class GroupWeightDialogDeps:
     default_ex_group_target_rtps: Any
     zero_rebate_inference_modes: Any
     default_zero_rebate_inference_modes: Any
+    independent_rtp_modes: Any
+    default_independent_rtp_modes: Any
     buy_enabled: Any
     buy_game_type: Any
     buy_multiplier: Any
@@ -170,6 +181,7 @@ class GroupWeightDialogDeps:
     collect_preview_warnings: Any
     get_mode_name: Any
     supports_zero_rebate_inference: Any
+    supports_independent_rtp: Any
     is_extra_buy_mode: Any
     get_extra_buy_group_by_mode: Any
     get_buy_group_game_type_for_mode: Any
@@ -184,11 +196,13 @@ class GroupWeightDialogDeps:
     parse_non_negative_int_text: Any
     parse_positive_float_text: Any
     build_preview_text: Any
+    build_preview_points: Any
     validate_rules: Any
     normalize_extra_buy_groups: Any
     apply_special_target: Any
     apply_ex_group_target_rtps: Any
     apply_zero_rebate_inference_modes: Any
+    apply_independent_rtp_modes: Any
     apply_rules: Any
     apply_extra_buy_groups: Any
     generate_config: Any
@@ -272,6 +286,9 @@ def build_settings_deps(ctx):
         default_trigger_weights=ctx.default_trigger_weights,
         default_sampling_append_mode=ctx.default_sampling_append_mode,
         default_sampling_detailed_log=ctx.default_sampling_detailed_log,
+        default_sampling_use_temp_db=ctx.default_sampling_use_temp_db,
+        default_sampling_temp_db=ctx.default_sampling_temp_db,
+        default_sampling_auto_sync_to_target=ctx.default_sampling_auto_sync_to_target,
         default_buy_group_enabled=ctx.default_buy_group_enabled,
         default_ex_buy_group_enabled=ctx.default_ex_buy_group_enabled,
         default_ex_buy_group_game_type=ctx.default_ex_buy_group_game_type,
@@ -287,6 +304,7 @@ def build_settings_deps(ctx):
         default_special_group_target_rtp=ctx.default_special_group_target_rtp,
         default_ex_group_target_rtps=ctx.default_ex_group_target_rtps,
         default_zero_rebate_inference_modes=ctx.default_zero_rebate_inference_modes,
+        default_independent_rtp_modes=ctx.default_independent_rtp_modes,
         get_runtime_state=ctx.get_runtime_state,
         get_trigger_weights=ctx.get_trigger_weights,
         get_rebate_rules=ctx.get_rebate_rules,
@@ -294,10 +312,12 @@ def build_settings_deps(ctx):
         get_sampling_detailed_log=ctx.get_sampling_detailed_log,
         get_sampling_use_temp_db=ctx.get_sampling_use_temp_db,
         get_sampling_temp_db=ctx.get_sampling_temp_db,
+        get_sampling_auto_sync_to_target=ctx.get_sampling_auto_sync_to_target,
         get_group_weight_rules=ctx.get_group_weight_rules,
         get_special_group_target_rtp=ctx.get_special_group_target_rtp,
         get_ex_group_target_rtps=ctx.get_ex_group_target_rtps,
         get_zero_rebate_inference_modes=ctx.get_zero_rebate_inference_modes,
+        get_independent_rtp_modes=ctx.get_independent_rtp_modes,
         get_buy_group_enabled=ctx.get_buy_group_enabled,
         get_ex_buy_group_enabled=ctx.get_ex_buy_group_enabled,
         get_ex_buy_group_game_type=ctx.get_ex_buy_group_game_type,
@@ -333,6 +353,7 @@ def build_settings_deps(ctx):
         apply_special_group_target_rtp=ctx.apply_special_group_target_rtp,
         apply_ex_group_target_rtps_config=ctx.apply_ex_group_target_rtps_config,
         apply_zero_rebate_inference_modes_config=ctx.apply_zero_rebate_inference_modes_config,
+        apply_independent_rtp_modes_config=ctx.apply_independent_rtp_modes_config,
         apply_buy_group_multiplier=ctx.apply_buy_group_multiplier,
         apply_buy_group_game_type=ctx.apply_buy_group_game_type,
         apply_buy_group_source_suffix=ctx.apply_buy_group_source_suffix,
@@ -350,6 +371,7 @@ def build_settings_deps(ctx):
         apply_sampling_append_mode=ctx.apply_sampling_append_mode,
         apply_sampling_detailed_log=ctx.apply_sampling_detailed_log,
         apply_sampling_temp_db_config=ctx.apply_sampling_temp_db_config,
+        apply_sampling_auto_sync_to_target=ctx.apply_sampling_auto_sync_to_target,
     )
 
 
@@ -364,6 +386,7 @@ def build_task_deps(ctx):
         get_sampling_detailed_log=ctx.get_sampling_detailed_log,
         get_sampling_use_temp_db=ctx.get_sampling_use_temp_db,
         get_sampling_temp_db=ctx.get_sampling_temp_db,
+        get_sampling_auto_sync_to_target=ctx.get_sampling_auto_sync_to_target,
         get_direct_count_modes=ctx.get_direct_count_modes,
         get_direct_count_tiers=ctx.get_direct_count_tiers,
         get_game_configs=ctx.get_game_configs,
@@ -422,6 +445,8 @@ def build_group_weight_dialog_deps(ctx):
         default_ex_group_target_rtps=getattr(ctx, 'default_ex_group_target_rtps', {}),
         zero_rebate_inference_modes=getattr(ctx, 'get_zero_rebate_inference_modes', lambda: set())(),
         default_zero_rebate_inference_modes=getattr(ctx, 'default_zero_rebate_inference_modes', set()),
+        independent_rtp_modes=getattr(ctx, 'get_independent_rtp_modes', lambda: set())(),
+        default_independent_rtp_modes=getattr(ctx, 'default_independent_rtp_modes', set()),
         buy_enabled=ctx.get_buy_group_enabled(),
         buy_game_type=ctx.get_buy_group_game_type(),
         buy_multiplier=ctx.get_buy_group_multiplier(),
@@ -434,6 +459,7 @@ def build_group_weight_dialog_deps(ctx):
         collect_preview_warnings=ctx.collect_group_weight_preview_warnings,
         get_mode_name=ctx.get_group_weight_mode_name,
         supports_zero_rebate_inference=getattr(ctx, 'supports_zero_rebate_inference', lambda _mode: False),
+        supports_independent_rtp=getattr(ctx, 'supports_independent_rtp', lambda _mode: False),
         is_extra_buy_mode=ctx.is_extra_buy_mode,
         get_extra_buy_group_by_mode=ctx.get_extra_buy_group_by_mode,
         get_buy_group_game_type_for_mode=ctx.get_buy_group_game_type_for_mode,
@@ -448,6 +474,7 @@ def build_group_weight_dialog_deps(ctx):
         parse_non_negative_int_text=ctx.parse_non_negative_int_text,
         parse_positive_float_text=ctx.parse_positive_float_text,
         build_preview_text=ctx.build_group_weight_preview_text,
+        build_preview_points=ctx.build_group_weight_preview_points,
         validate_rules=ctx.validate_group_weight_rules,
         normalize_extra_buy_groups=ctx.normalize_extra_buy_groups,
         apply_special_target=ctx.apply_special_group_target_rtp,
@@ -455,6 +482,11 @@ def build_group_weight_dialog_deps(ctx):
         apply_zero_rebate_inference_modes=getattr(
             ctx,
             'apply_zero_rebate_inference_modes_config',
+            lambda _modes: None,
+        ),
+        apply_independent_rtp_modes=getattr(
+            ctx,
+            'apply_independent_rtp_modes_config',
             lambda _modes: None,
         ),
         apply_rules=ctx.apply_group_weight_rules_config,

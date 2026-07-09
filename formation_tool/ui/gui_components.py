@@ -80,13 +80,30 @@ class RuleTableEditor:
         self.refresh_rule_rows(mode)
         self._emit_change()
 
-    def add_mode_tab(self, mode, tab_text, rules, *, add_button_text, options_builder=None):
+    def add_mode_tab(
+        self,
+        mode,
+        tab_text,
+        rules,
+        *,
+        add_button_text,
+        options_builder=None,
+        side_panel_builder=None,
+    ):
         tab = ttk.Frame(self.notebook, padding=8)
-        tab.columnconfigure(0, weight=1)
+        tab.columnconfigure(0, weight=1 if side_panel_builder is None else 0)
+        if side_panel_builder is not None:
+            tab.columnconfigure(2, weight=1)
         scroll_row = 0
         if options_builder:
             options_frame = ttk.Frame(tab)
-            options_frame.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+            options_frame.grid(
+                row=0,
+                column=0,
+                columnspan=3 if side_panel_builder is not None else 1,
+                sticky="ew",
+                pady=(0, 8),
+            )
             options_frame.columnconfigure(1, weight=1)
             has_options = options_builder(mode, options_frame)
             if not has_options:
@@ -96,6 +113,8 @@ class RuleTableEditor:
 
         tab.rowconfigure(scroll_row, weight=1)
         canvas = tk.Canvas(tab, highlightthickness=0)
+        if side_panel_builder is not None:
+            canvas.configure(width=430)
         y_scroll = ttk.Scrollbar(tab, orient="vertical", command=canvas.yview)
         body = ttk.Frame(canvas)
         self.mode_bodies[mode] = body
@@ -119,6 +138,12 @@ class RuleTableEditor:
 
         canvas.grid(row=scroll_row, column=0, sticky="nsew")
         y_scroll.grid(row=scroll_row, column=1, sticky="ns")
+        if side_panel_builder is not None:
+            side_panel = ttk.Frame(tab)
+            side_panel.grid(row=scroll_row, column=2, sticky="nsew", padx=(18, 0))
+            side_panel.rowconfigure(0, weight=1)
+            side_panel.columnconfigure(0, weight=1)
+            side_panel_builder(mode, side_panel)
         if x_scroll is not None:
             x_scroll.grid(row=scroll_row + 1, column=0, sticky="ew")
             button_row = scroll_row + 2

@@ -69,6 +69,7 @@ def build_last_settings_data(
     config_db,
     sampling_temp_db=None,
     sampling_use_temp_db=False,
+    sampling_auto_sync_to_target=formation_defaults.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET,
 ):
     return {
         'version': CURRENT_SETTINGS_VERSION,
@@ -78,8 +79,9 @@ def build_last_settings_data(
             'source_db': source_db,
             'final_db': final_db,
             'config_db': config_db,
-            'sampling_temp_db': sampling_temp_db or final_db,
-            'sampling_use_temp_db': bool(sampling_use_temp_db),
+            'sampling_temp_db': sampling_temp_db or formation_defaults.DEFAULT_SAMPLING_TEMP_DB,
+            'sampling_use_temp_db': True,
+            'sampling_auto_sync_to_target': bool(sampling_auto_sync_to_target),
         },
     }
 
@@ -93,6 +95,7 @@ def build_app_settings_data(
     sampling_detailed_log,
     sampling_use_temp_db=formation_defaults.DEFAULT_SAMPLING_USE_TEMP_DB,
     sampling_temp_db=None,
+    sampling_auto_sync_to_target=formation_defaults.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET,
     group_weight_rules,
     group_weight_options,
     direct_count_modes,
@@ -116,8 +119,9 @@ def build_app_settings_data(
         'rebate_rules': rebate_rules,
         'sampling_options': {
             'detailed_log': bool(sampling_detailed_log),
-            'use_temp_db': bool(sampling_use_temp_db),
-            'temp_db': sampling_temp_db or (runtime or {}).get('final_db') or formation_defaults.DEFAULT_SAMPLING_TEMP_DB,
+            'use_temp_db': True,
+            'temp_db': sampling_temp_db or formation_defaults.DEFAULT_SAMPLING_TEMP_DB,
+            'auto_sync_to_target': bool(sampling_auto_sync_to_target),
         },
         'group_weight_rules': group_weight_rules,
         'group_weight_options': group_weight_options,
@@ -139,13 +143,19 @@ def migrate_settings_data(data):
         )
         sampling_options.setdefault(
             'use_temp_db',
-            formation_defaults.DEFAULT_SAMPLING_USE_TEMP_DB,
+            True,
         )
         sampling_options.setdefault(
             'temp_db',
             (migrated.get('runtime') or {}).get('sampling_temp_db')
             or formation_defaults.DEFAULT_SAMPLING_TEMP_DB,
         )
+        sampling_options.setdefault(
+            'auto_sync_to_target',
+            (migrated.get('runtime') or {}).get('sampling_auto_sync_to_target')
+            or formation_defaults.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET,
+        )
+        sampling_options['use_temp_db'] = True
         migrated['sampling_options'] = sampling_options
     group_options = dict(migrated.get('group_weight_options') or {})
     if group_options:
@@ -160,6 +170,10 @@ def migrate_settings_data(data):
         group_options.setdefault(
             'zero_rebate_inference_modes',
             list(formation_modes.DEFAULT_ZERO_REBATE_INFERENCE_MODES),
+        )
+        group_options.setdefault(
+            'independent_rtp_modes',
+            list(formation_modes.DEFAULT_INDEPENDENT_RTP_MODES),
         )
         if group_options.get('buy_groups'):
             split = buy_group_config.split_buy_groups_to_legacy(

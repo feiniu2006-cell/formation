@@ -80,20 +80,22 @@ def _write_state(path, state, *, retries=STATE_WRITE_RETRIES, retry_delay=STATE_
     for attempt in range(retries + 1):
         try:
             _write_state_once(path, text)
+            if attempt > 0:
+                print(f"[OK] 本地采样进度状态文件已在第 {attempt} 次重试后保存成功：{path}")
             return True
         except OSError as exc:
             if attempt < retries:
                 retry_index = attempt + 1
                 print(
-                    f"[WARN] 采样任务状态文件写入失败，准备第 {retry_index}/{retries} 次重试："
-                    f"{path}，错误：{exc}"
+                    f"[WARN] 本地采样进度状态文件暂时保存失败（不影响已写入的采样数据），"
+                    f"准备第 {retry_index}/{retries} 次重试：{path}，错误：{exc}"
                 )
                 if retry_delay > 0:
                     time.sleep(float(retry_delay))
                 continue
             print(
-                f"[WARN] 采样任务状态文件写入失败，已重试 {retries} 次，将继续采样；"
-                f"本次进度可能无法用于断点恢复：{path}，错误：{exc}"
+                f"[WARN] 本地采样进度状态文件保存失败，已重试 {retries} 次，将继续采样；"
+                f"不影响已写入的采样数据，但本次进度可能无法用于断点恢复：{path}，错误：{exc}"
             )
             return False
 

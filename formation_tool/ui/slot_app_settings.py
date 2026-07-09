@@ -4,6 +4,7 @@ import threading
 from tkinter import filedialog, messagebox
 
 from formation_tool.core import buy_group_config
+from formation_tool.core import formation_defaults
 from formation_tool.core import settings_logic
 from formation_tool.ui import ui_text
 from formation_tool.utils.file_utils import write_json_atomic
@@ -122,8 +123,12 @@ class SlotAppSettingsMixin:
         self.free_weight_0_var.set(str(deps.default_trigger_weights['free_0']))
         self.free_weight_1_var.set(str(deps.default_trigger_weights['free_1']))
         self.sampling_detailed_log_var.set(deps.default_sampling_detailed_log)
-        self.sampling_use_temp_db_var.set(getattr(deps, "default_sampling_use_temp_db", False))
-        self.sampling_temp_db_var.set(getattr(deps, "default_sampling_temp_db", self.final_db_var.get()))
+        self.sampling_auto_sync_to_target_var.set(
+            getattr(deps, "default_sampling_auto_sync_to_target", False)
+        )
+        self.sampling_temp_db_var.set(
+            getattr(deps, "default_sampling_temp_db", formation_defaults.DEFAULT_SAMPLING_TEMP_DB)
+        )
         self.buy_group_enabled_var.set(deps.default_buy_group_enabled)
         self.ex_buy_group_enabled_var.set(deps.default_ex_buy_group_enabled)
         self.ex_buy_game_type_var.set(str(deps.default_ex_buy_group_game_type))
@@ -142,6 +147,9 @@ class SlotAppSettingsMixin:
         )
         getattr(deps, "apply_zero_rebate_inference_modes_config", lambda _modes: None)(
             getattr(deps, "default_zero_rebate_inference_modes", ())
+        )
+        getattr(deps, "apply_independent_rtp_modes_config", lambda _modes: None)(
+            getattr(deps, "default_independent_rtp_modes", ())
         )
         deps.apply_buy_group_game_type(deps.default_buy_group_game_type)
         deps.apply_buy_group_source_suffix(deps.default_buy_group_source_suffix)
@@ -174,14 +182,18 @@ class SlotAppSettingsMixin:
             rebate_rules=deps.clone_rebate_rules(deps.get_rebate_rules()),
             sampling_append_mode=False,
             sampling_detailed_log=deps.get_sampling_detailed_log(),
-            sampling_use_temp_db=getattr(deps, "get_sampling_use_temp_db", lambda: False)(),
+            sampling_use_temp_db=True,
             sampling_temp_db=getattr(deps, "get_sampling_temp_db", lambda: None)(),
+            sampling_auto_sync_to_target=getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)(),
             group_weight_rules=deps.clone_group_weight_rules(deps.get_group_weight_rules()),
             group_weight_options={
                 'special_target_rtp': deps.get_special_group_target_rtp(),
                 'ex_group_target_rtps': getattr(deps, "get_ex_group_target_rtps", lambda: {})(),
                 'zero_rebate_inference_modes': sorted(
                     getattr(deps, "get_zero_rebate_inference_modes", lambda: set())()
+                ),
+                'independent_rtp_modes': sorted(
+                    getattr(deps, "get_independent_rtp_modes", lambda: set())()
                 ),
                 'buy_enabled': deps.get_buy_group_enabled(),
                 'ex_buy_enabled': deps.get_ex_buy_group_enabled(),
@@ -219,8 +231,10 @@ class SlotAppSettingsMixin:
             self.config_db_var.set(str(runtime.get('config_db', self.config_db_var.get())))
             if hasattr(self, 'sampling_temp_db_var'):
                 self.sampling_temp_db_var.set(str(runtime.get('sampling_temp_db', self.sampling_temp_db_var.get())))
-            if hasattr(self, 'sampling_use_temp_db_var'):
-                self.sampling_use_temp_db_var.set(bool(runtime.get('sampling_use_temp_db', self.sampling_use_temp_db_var.get())))
+            if hasattr(self, 'sampling_auto_sync_to_target_var'):
+                self.sampling_auto_sync_to_target_var.set(
+                    bool(runtime.get('sampling_auto_sync_to_target', self.sampling_auto_sync_to_target_var.get()))
+                )
 
         if runtime_only:
             if not self.apply_selected_config():
@@ -248,8 +262,10 @@ class SlotAppSettingsMixin:
                     getattr(deps, 'default_sampling_detailed_log', False),
                 ))
             )
-            if hasattr(self, 'sampling_use_temp_db_var'):
-                self.sampling_use_temp_db_var.set(bool(sampling_options.get('use_temp_db', False)))
+            if hasattr(self, 'sampling_auto_sync_to_target_var'):
+                self.sampling_auto_sync_to_target_var.set(
+                    bool(sampling_options.get('auto_sync_to_target', False))
+                )
             if hasattr(self, 'sampling_temp_db_var'):
                 self.sampling_temp_db_var.set(str(sampling_options.get('temp_db', self.sampling_temp_db_var.get())))
 
@@ -300,6 +316,10 @@ class SlotAppSettingsMixin:
             if 'zero_rebate_inference_modes' in group_options:
                 getattr(deps, "apply_zero_rebate_inference_modes_config", lambda _modes: None)(
                     group_options.get('zero_rebate_inference_modes')
+                )
+            if 'independent_rtp_modes' in group_options:
+                getattr(deps, "apply_independent_rtp_modes_config", lambda _modes: None)(
+                    group_options.get('independent_rtp_modes')
                 )
 
         if not self.apply_selected_config():
@@ -601,8 +621,11 @@ class SlotAppSettingsMixin:
             getattr(deps, "apply_buy_groups_config", lambda _groups: None)(_build_current_buy_groups(self))
             deps.apply_sampling_detailed_log(self.sampling_detailed_log_var.get())
             getattr(deps, "apply_sampling_temp_db_config", lambda _enabled, _db: None)(
-                self.sampling_use_temp_db_var.get(),
+                True,
                 self.sampling_temp_db_var.get(),
+            )
+            getattr(deps, "apply_sampling_auto_sync_to_target", lambda _enabled: None)(
+                self.sampling_auto_sync_to_target_var.get(),
             )
         except ValueError as e:
             messagebox.showerror("配置错误", str(e))

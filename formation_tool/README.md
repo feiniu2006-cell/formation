@@ -71,8 +71,9 @@
 | --- | --- | --- | --- |
 | `DEFAULT_SAMPLE_ID_FETCH_CHUNK_SIZE` | `500` | 直接采样读取完整行时，每批 `id IN (...)` 的 id 数。 | 调小会减少单次 SQL 和 DataFrame 大小，但批次变多；调大可能减少批次，但会增加单次查询压力。 |
 | `DEFAULT_SAMPLING_DETAILED_LOG` | `False` | 采样详细日志开关。 | 关闭时只输出关键进度、异常和最终汇总；开启后额外输出查询、校验、读写耗时等明细。 |
-| `DEFAULT_SAMPLING_USE_TEMP_DB` | `False` | 采样是否写入采样临时库中转。 | GUI 中“采样通过临时库中转”会覆盖该值；开启后采样只写入中转库并替换中转库正式表，目标库不变。需要同步时手动点击“镜像到目标库”。 |
-| `DEFAULT_SAMPLING_TEMP_DB` | `DEFAULT_FINAL_DB` | 默认采样临时库。 | 建议配置为本地或更稳定的数据库；关闭中转时不参与采样写入。 |
+| `DEFAULT_SAMPLING_USE_TEMP_DB` | `True` | 采样固定写入采样临时库中转。 | 该值保留用于兼容旧配置和内部上下文；GUI 不再提供关闭中转的开关，旧配置中的 `use_temp_db=false` 会被忽略。 |
+| `DEFAULT_SAMPLING_TEMP_DB` | `"MY"` | 默认采样临时库。 | 建议配置为本地或更稳定的数据库；采样完成后会替换中转库正式表。 |
+| `DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET` | `False` | 采样完成后是否自动镜像到目标库。 | GUI 中“采样完成后自动镜像到目标库”会覆盖并保存该值；关闭时目标库不变，需要手动点击“镜像到目标库”。 |
 
 采样核心还有几个内部常量在 `sampling/sampling_core.py`：`SAMPLE_ID_RANDOM_RANGE_ATTEMPTS=8`、`SAMPLE_ID_RANDOM_RANGE_MAX_ATTEMPTS=20`、`SAMPLE_ID_RANDOM_RANGE_MAX_CANDIDATES_PER_QUERY=20000`、`SAMPLE_ROW_WRITE_CHUNK_SIZE=20`。这些用于控制随机范围候选查询和临时表写入批次，通常不建议改；临时表写入失败时会自动将批次降为 `5`、再降为 `1` 后重试。需要排查性能时优先打开“详细日志”观察瓶颈。
 
@@ -96,6 +97,7 @@
 | `DEFAULT_EX_SOURCE_SUFFIXES` | `{}` | ex普通/ex特殊/ex免费手动后缀覆盖默认值。 | 只服务 group_weight 生成，不影响采样配置生成和采样功能。 |
 | `DEFAULT_EXTRA_BUY_GROUPS` | `[]` | 额外购买局默认列表。 | GUI 中新增购买局类型后会保存到房间配置。 |
 | `DEFAULT_ZERO_REBATE_INFERENCE_MODES` | `('1', '2', '6', '7')` | 默认启用 rebate=0 反推的 group_weight 模式。 | 购买局和 ex购买局支持手动开启反推，但默认关闭；免费局和 ex免费局不反推。 |
+| `DEFAULT_INDEPENDENT_RTP_MODES` | `()` | 默认开启“独立计算RTP”的 group_weight 模式。 | 目前只支持普通局 `1` 和 ex普通局 `6`；默认关闭以保持旧逻辑。 |
 
 ### 规则字段说明
 
@@ -124,6 +126,8 @@ ex普通/ex特殊/ex免费手动后缀只服务 group_weight 生成，不影响�
 
 rebate=0 反推必须同时满足两个条件：当前采样配置存在 `rebate=0`，并且在 group_weight 权重配置界面手动开启该模式的“rebate=0 反推”开关。普通局、特殊局、ex普通局、ex特殊局默认开启；购买局和 ex购买局支持但默认关闭；免费局和 ex免费局不反推。
 
+普通局 `game_type=1` 和 ex普通局 `game_type=6` 额外支持“独立计算RTP”开关，配置会保存到 `group_weight_options.independent_rtp_modes`。默认关闭时保持原逻辑：普通局目标会扣除特殊局/免费局触发贡献后反推；ex普通局目标会扣除 ex特殊局/ex免费局贡献后反推。开启后该页签不再和其它局一起计算 RTP，普通局直接以当前 RTP 组为目标，ex普通局以“当前 RTP 组 * ex倍数”为实际反推目标，最终显示 RTP 仍除以 ex倍数回到当前组目标。
+
 ## 采样配置生成
 
 采样配置表通常是 `rebate_count`、`rebate_special_count`、`rebate_free_count` 等表，核心字段为 `rebate` 和 `count`。
@@ -139,15 +143,16 @@ rebate=0 反推必须同时满足两个条件：当前采样配置存在 `rebate
 执行顺序：
 
 1. 从采样配置表读取 `rebate/count`。
-2. 按当前方案创建采样临时表：关闭中转时在目标库创建，开启中转时在采样临时库创建。
+2. 在采样临时库创建采样临时表；采样始终先写入中转库，不直接写目标库。
 3. 逐个 rebate 处理，按 `rebate = {target_rebate}` 和结束字段条件挑选候选 `id`。
 4. 优先使用稀疏探测、随机 id 范围查询和候选抽样，候选不足时回退到全量 `DISTINCT id` 查询。
 5. 只对本次已采样的 id 做结束字段完整性校验，确认这些 id 下 `game_end=1` 或 `is_end=1` 的行数恰好为 1；不再对整张源表做全表 `GROUP BY id` 校验。
 6. 对选中的 id，读取 SQL 只保留 `WHERE id IN (...)`，确保一局或一组 formation 数据被完整写入。
 7. 分批读取和写入临时表，避免过长 `IN` 查询和过大的 DataFrame。
 8. 采样完成后校验临时表行数。
-9. 关闭中转时，用临时表整体替换目标库正式表；开启中转时，只替换中转库正式表，目标库保持不变。
-10. 需要把中转库数据写到目标库时，在主界面采样按钮区点击“镜像到目标库”，确认后会优先使用 `mysqldump`/`mysql` 将中转库正式表导出并导入目标库临时表，导出和导入失败都会最多重试 5 次，校验行数后再整体替换目标库正式表。镜像功能需要本机能调用 MySQL Client 工具。
+9. 用临时表整体替换中转库正式表；此时目标库默认保持不变。
+10. 如果勾选“采样完成后自动镜像到目标库”，采样成功后会把本次成功采样的中转库正式表镜像到目标库；全部采样只自动镜像本次返回成功的局类型，单独采样只镜像当前局类型。
+11. 未开启自动镜像时，需要在主界面采样按钮区点击“镜像到目标库”，确认后会优先使用 `mysqldump`/`mysql` 将中转库正式表导出并导入目标库临时表，导出和导入失败都会最多重试 5 次，校验行数后再整体替换目标库正式表。镜像功能需要本机能调用 MySQL Client 工具。
 
 生成采样配置统计 rebate 分布时，会按源表结构选择计数方式：源表存在 `game_end` 或 `is_end` 字段时使用 `COUNT(DISTINCT id)`，用于多行组成同一局的数据；源表不存在这两个字段时，按 `id` 唯一表处理，使用 `COUNT(*)` 降低大表统计开销。
 

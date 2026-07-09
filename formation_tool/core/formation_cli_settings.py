@@ -42,12 +42,15 @@ def apply_cli_settings_data(data, *, deps, runtime_only=False):
             apply_detailed_log(sampling_options.get('detailed_log', default_detailed_log))
         apply_temp_db = getattr(deps, 'apply_sampling_temp_db_config', None)
         if apply_temp_db is not None:
-            default_use_temp = getattr(deps, 'get_sampling_use_temp_db', lambda: False)()
             default_temp_db = getattr(deps, 'get_sampling_temp_db', lambda: None)()
             apply_temp_db(
-                sampling_options.get('use_temp_db', default_use_temp),
+                True,
                 sampling_options.get('temp_db', default_temp_db),
             )
+        apply_auto_sync = getattr(deps, 'apply_sampling_auto_sync_to_target', None)
+        if apply_auto_sync is not None:
+            default_auto_sync = getattr(deps, 'get_sampling_auto_sync_to_target', lambda: False)()
+            apply_auto_sync(sampling_options.get('auto_sync_to_target', default_auto_sync))
 
     if 'group_weight_rules' in data:
         deps.apply_group_weight_rules_config(
@@ -76,6 +79,10 @@ def apply_cli_settings_data(data, *, deps, runtime_only=False):
             deps.apply_ex_group_target_rtps_config(group_options.get('ex_group_target_rtps'))
         if 'zero_rebate_inference_modes' in group_options:
             deps.apply_zero_rebate_inference_modes_config(group_options.get('zero_rebate_inference_modes'))
+        if 'independent_rtp_modes' in group_options:
+            apply_independent_rtp = getattr(deps, 'apply_independent_rtp_modes_config', None)
+            if apply_independent_rtp is not None:
+                apply_independent_rtp(group_options.get('independent_rtp_modes'))
         if 'ex_source_suffixes' in group_options:
             deps.apply_ex_source_suffixes_config(group_options.get('ex_source_suffixes'))
         if 'extra_buy_groups' in group_options:

@@ -35,22 +35,24 @@ def build_dangerous_task_confirmation(title, preflight, *, deps):
         ]
         return "\n".join(lines)
     if kind == "sampling":
-        use_temp = getattr(deps, "get_sampling_use_temp_db", lambda: False)()
         temp_db = getattr(deps, "get_sampling_temp_db", lambda: "")()
-        action = f"写入中转库 {temp_db} 正式表" if use_temp else "清空/替换目标阵型表"
+        auto_sync = bool(getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)())
+        action = f"写入中转库 {temp_db} 正式表"
         lines = [
             f"即将执行采样并{action}：{title}",
             "",
             *build_mode_target_lines(preflight.get("modes"), "FINAL_TABLE", get_game_configs=deps.get_game_configs),
         ]
-        if use_temp:
+        if auto_sync:
+            lines.extend([
+                "",
+                "本次采样完成后会自动把中转库正式表镜像到目标库。",
+            ])
+        else:
             lines.extend([
                 "",
                 "本次采样完成后目标库不会变化；需要同步时请手动点击“镜像到目标库”。",
             ])
-        else:
-            lines.append("")
-            lines.append("目标库正式表会被新采样结果替换。")
         return "\n".join(lines)
     if kind == "sampling_temp_mirror":
         temp_db = getattr(deps, "get_sampling_temp_db", lambda: "")()

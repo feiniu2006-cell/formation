@@ -82,8 +82,8 @@ class SlotAppUiMixin:
 
         temp_db_check = ttk.Checkbutton(
             config_frame,
-            text="采样通过临时库中转",
-            variable=self.sampling_use_temp_db_var,
+            text="采样完成后自动镜像到目标库",
+            variable=self.sampling_auto_sync_to_target_var,
         )
         temp_db_check.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
         self.config_widgets.append((temp_db_check, "normal"))

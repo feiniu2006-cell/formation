@@ -19,6 +19,9 @@ class SlotAppDepsContext:
     default_trigger_weights: Any
     default_sampling_append_mode: Any
     default_sampling_detailed_log: Any
+    default_sampling_use_temp_db: Any
+    default_sampling_temp_db: Any
+    default_sampling_auto_sync_to_target: Any
     default_buy_group_enabled: Any
     default_ex_buy_group_enabled: Any
     default_ex_buy_group_game_type: Any
@@ -34,6 +37,7 @@ class SlotAppDepsContext:
     default_special_group_target_rtp: Any
     default_ex_group_target_rtps: Any
     default_zero_rebate_inference_modes: Any
+    default_independent_rtp_modes: Any
     get_runtime_state: Any
     get_trigger_weights: Any
     get_rebate_rules: Any
@@ -41,10 +45,12 @@ class SlotAppDepsContext:
     get_sampling_detailed_log: Any
     get_sampling_use_temp_db: Any
     get_sampling_temp_db: Any
+    get_sampling_auto_sync_to_target: Any
     get_group_weight_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
     get_zero_rebate_inference_modes: Any
+    get_independent_rtp_modes: Any
     get_buy_group_enabled: Any
     get_ex_buy_group_enabled: Any
     get_ex_buy_group_game_type: Any
@@ -82,6 +88,7 @@ class SlotAppDepsContext:
     apply_special_group_target_rtp: Any
     apply_ex_group_target_rtps_config: Any
     apply_zero_rebate_inference_modes_config: Any
+    apply_independent_rtp_modes_config: Any
     apply_buy_group_multiplier: Any
     apply_buy_group_game_type: Any
     apply_buy_group_source_suffix: Any
@@ -99,6 +106,7 @@ class SlotAppDepsContext:
     apply_sampling_append_mode: Any
     apply_sampling_detailed_log: Any
     apply_sampling_temp_db_config: Any
+    apply_sampling_auto_sync_to_target: Any
     format_weighted_rtp: Any
     clear_cancel_request: Any
     request_cancel: Any
@@ -132,6 +140,7 @@ class SlotAppDepsContext:
     collect_group_weight_preview_warnings: Any
     get_group_weight_mode_name: Any
     supports_zero_rebate_inference: Any
+    supports_independent_rtp: Any
     is_extra_buy_mode: Any
     get_extra_buy_group_by_mode: Any
     get_buy_group_game_type_for_mode: Any
@@ -145,6 +154,7 @@ class SlotAppDepsContext:
     parse_non_negative_int_text: Any
     parse_positive_float_text: Any
     build_group_weight_preview_text: Any
+    build_group_weight_preview_points: Any
     validate_group_weight_rules: Any
     generate_group_weight_config: Any
     run_task_preflight: Any
@@ -159,8 +169,10 @@ REQUIRED_RUNTIME_ATTRS = (
     'sampling_detailed_log',
     'sampling_use_temp_db',
     'sampling_temp_db',
+    'sampling_auto_sync_to_target',
     'group_weight_rules',
     'zero_rebate_inference_modes',
+    'independent_rtp_modes',
     'special_group_target_rtp',
     'buy_group_enabled',
     'ex_buy_group_enabled',
@@ -192,6 +204,9 @@ REQUIRED_MODULE_ATTRS = (
     'DEFAULT_TRIGGER_WEIGHTS',
     'DEFAULT_SAMPLING_APPEND_MODE',
     'DEFAULT_SAMPLING_DETAILED_LOG',
+    'DEFAULT_SAMPLING_USE_TEMP_DB',
+    'DEFAULT_SAMPLING_TEMP_DB',
+    'DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET',
     'DEFAULT_BUY_GROUP_ENABLED',
     'DEFAULT_EX_BUY_GROUP_ENABLED',
     'DEFAULT_EX_BUY_GROUP_GAME_TYPE',
@@ -207,6 +222,7 @@ REQUIRED_MODULE_ATTRS = (
     'DEFAULT_SPECIAL_GROUP_TARGET_RTP',
     'DEFAULT_EX_GROUP_TARGET_RTPS',
     'DEFAULT_ZERO_REBATE_INFERENCE_MODES',
+    'DEFAULT_INDEPENDENT_RTP_MODES',
     'get_app_settings_path',
     'get_app_profile_settings_path',
     'clone_rebate_rules',
@@ -223,6 +239,7 @@ REQUIRED_MODULE_ATTRS = (
     'apply_special_group_target_rtp',
     'apply_ex_group_target_rtps_config',
     'apply_zero_rebate_inference_modes_config',
+    'apply_independent_rtp_modes_config',
     'apply_buy_group_multiplier',
     'apply_buy_group_game_type',
     'apply_buy_group_source_suffix',
@@ -240,6 +257,7 @@ REQUIRED_MODULE_ATTRS = (
     'apply_sampling_append_mode',
     'apply_sampling_detailed_log',
     'apply_sampling_temp_db_config',
+    'apply_sampling_auto_sync_to_target',
     'get_rebate_config_direct_count_tiers',
     'normalize_direct_count_tiers_for_load',
     'format_weighted_rtp',
@@ -277,6 +295,7 @@ REQUIRED_MODULE_ATTRS = (
     'collect_group_weight_preview_warnings',
     'get_group_weight_mode_name',
     'supports_zero_rebate_inference',
+    'supports_independent_rtp',
     'is_extra_buy_mode',
     'get_extra_buy_group_by_mode',
     'get_buy_group_game_type_for_mode',
@@ -290,6 +309,7 @@ REQUIRED_MODULE_ATTRS = (
     '_parse_non_negative_int_text',
     '_parse_positive_float_text',
     'build_group_weight_preview_text',
+    'build_group_weight_preview_points',
     'validate_group_weight_rules',
     'generate_group_weight_config',
     'run_task_preflight',
@@ -320,6 +340,9 @@ def build_slot_app_deps_context(runtime, module):
         default_trigger_weights=m.DEFAULT_TRIGGER_WEIGHTS,
         default_sampling_append_mode=m.DEFAULT_SAMPLING_APPEND_MODE,
         default_sampling_detailed_log=m.DEFAULT_SAMPLING_DETAILED_LOG,
+        default_sampling_use_temp_db=m.DEFAULT_SAMPLING_USE_TEMP_DB,
+        default_sampling_temp_db=m.DEFAULT_SAMPLING_TEMP_DB,
+        default_sampling_auto_sync_to_target=m.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET,
         default_buy_group_enabled=m.DEFAULT_BUY_GROUP_ENABLED,
         default_ex_buy_group_enabled=m.DEFAULT_EX_BUY_GROUP_ENABLED,
         default_ex_buy_group_game_type=m.DEFAULT_EX_BUY_GROUP_GAME_TYPE,
@@ -335,17 +358,20 @@ def build_slot_app_deps_context(runtime, module):
         default_special_group_target_rtp=m.DEFAULT_SPECIAL_GROUP_TARGET_RTP,
         default_ex_group_target_rtps=m.DEFAULT_EX_GROUP_TARGET_RTPS,
         default_zero_rebate_inference_modes=m.DEFAULT_ZERO_REBATE_INFERENCE_MODES,
+        default_independent_rtp_modes=m.DEFAULT_INDEPENDENT_RTP_MODES,
         get_runtime_state=r.runtime_dict,
         get_trigger_weights=r.trigger_weights_dict,
         get_rebate_rules=lambda: runtime.rebate_rules,
         get_sampling_append_mode=lambda: runtime.sampling_append_mode,
         get_sampling_detailed_log=lambda: runtime.sampling_detailed_log,
-        get_sampling_use_temp_db=lambda: runtime.sampling_use_temp_db,
+        get_sampling_use_temp_db=lambda: True,
         get_sampling_temp_db=lambda: runtime.sampling_temp_db,
+        get_sampling_auto_sync_to_target=lambda: runtime.sampling_auto_sync_to_target,
         get_group_weight_rules=lambda: runtime.group_weight_rules,
         get_special_group_target_rtp=lambda: runtime.special_group_target_rtp,
         get_ex_group_target_rtps=lambda: dict(getattr(runtime, 'ex_group_target_rtps', {})),
         get_zero_rebate_inference_modes=lambda: set(runtime.zero_rebate_inference_modes or ()),
+        get_independent_rtp_modes=lambda: set(runtime.independent_rtp_modes or ()),
         get_buy_group_enabled=lambda: runtime.buy_group_enabled,
         get_ex_buy_group_enabled=lambda: runtime.ex_buy_group_enabled,
         get_ex_buy_group_game_type=lambda: runtime.ex_buy_group_game_type,
@@ -383,6 +409,7 @@ def build_slot_app_deps_context(runtime, module):
         apply_special_group_target_rtp=m.apply_special_group_target_rtp,
         apply_ex_group_target_rtps_config=m.apply_ex_group_target_rtps_config,
         apply_zero_rebate_inference_modes_config=m.apply_zero_rebate_inference_modes_config,
+        apply_independent_rtp_modes_config=m.apply_independent_rtp_modes_config,
         apply_buy_group_multiplier=m.apply_buy_group_multiplier,
         apply_buy_group_game_type=m.apply_buy_group_game_type,
         apply_buy_group_source_suffix=m.apply_buy_group_source_suffix,
@@ -400,6 +427,7 @@ def build_slot_app_deps_context(runtime, module):
         apply_sampling_append_mode=m.apply_sampling_append_mode,
         apply_sampling_detailed_log=m.apply_sampling_detailed_log,
         apply_sampling_temp_db_config=m.apply_sampling_temp_db_config,
+        apply_sampling_auto_sync_to_target=m.apply_sampling_auto_sync_to_target,
         format_weighted_rtp=m.format_weighted_rtp,
         clear_cancel_request=m.clear_cancel_request,
         request_cancel=m.request_cancel,
@@ -433,6 +461,7 @@ def build_slot_app_deps_context(runtime, module):
         collect_group_weight_preview_warnings=m.collect_group_weight_preview_warnings,
         get_group_weight_mode_name=m.get_group_weight_mode_name,
         supports_zero_rebate_inference=m.supports_zero_rebate_inference,
+        supports_independent_rtp=m.supports_independent_rtp,
         is_extra_buy_mode=m.is_extra_buy_mode,
         get_extra_buy_group_by_mode=m.get_extra_buy_group_by_mode,
         get_buy_group_game_type_for_mode=m.get_buy_group_game_type_for_mode,
@@ -446,6 +475,7 @@ def build_slot_app_deps_context(runtime, module):
         parse_non_negative_int_text=m._parse_non_negative_int_text,
         parse_positive_float_text=m._parse_positive_float_text,
         build_group_weight_preview_text=m.build_group_weight_preview_text,
+        build_group_weight_preview_points=m.build_group_weight_preview_points,
         validate_group_weight_rules=m.validate_group_weight_rules,
         generate_group_weight_config=m.generate_group_weight_config,
         run_task_preflight=m.run_task_preflight,

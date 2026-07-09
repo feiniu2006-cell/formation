@@ -119,7 +119,8 @@ def build_cli_settings_deps():
             'final_db': FINAL_DB,
             'config_db': CONFIG_DB,
             'sampling_temp_db': SAMPLING_TEMP_DB,
-            'sampling_use_temp_db': SAMPLING_USE_TEMP_DB,
+            'sampling_use_temp_db': True,
+            'sampling_auto_sync_to_target': SAMPLING_AUTO_SYNC_TO_TARGET,
         },
         get_trigger_weights=lambda: {
             'special_0': SPECIAL_WEIGHT_BY_LAST_DIGIT[0],
@@ -129,8 +130,9 @@ def build_cli_settings_deps():
         },
         get_sampling_append_mode=lambda: SAMPLING_APPEND_MODE,
         get_sampling_detailed_log=lambda: SAMPLING_DETAILED_LOG,
-        get_sampling_use_temp_db=lambda: SAMPLING_USE_TEMP_DB,
+        get_sampling_use_temp_db=lambda: True,
         get_sampling_temp_db=lambda: SAMPLING_TEMP_DB,
+        get_sampling_auto_sync_to_target=lambda: SAMPLING_AUTO_SYNC_TO_TARGET,
         get_app_settings_path=get_app_settings_path,
         get_app_profile_settings_path=get_app_profile_settings_path,
         clear_config_warnings=clear_config_warnings,
@@ -143,8 +145,10 @@ def build_cli_settings_deps():
         apply_sampling_append_mode=apply_sampling_append_mode,
         apply_sampling_detailed_log=apply_sampling_detailed_log,
         apply_sampling_temp_db_config=apply_sampling_temp_db_config,
+        apply_sampling_auto_sync_to_target=apply_sampling_auto_sync_to_target,
         apply_group_weight_rules_config=apply_group_weight_rules_config,
         apply_zero_rebate_inference_modes_config=apply_zero_rebate_inference_modes_config,
+        apply_independent_rtp_modes_config=apply_independent_rtp_modes_config,
         apply_rebate_config_direct_count_tiers=apply_rebate_config_direct_count_tiers,
         apply_buy_group_enabled=apply_buy_group_enabled,
         apply_ex_buy_group_enabled=apply_ex_buy_group_enabled,
@@ -191,6 +195,7 @@ GAME_TABLE_PREFIX, _GAME_DEFS, GAME_CONFIGS = build_game_configs(
 WEIGHT_CONFIG_DB = FINAL_DB  # 写入目标库
 SAMPLING_USE_TEMP_DB = formation_defaults.DEFAULT_SAMPLING_USE_TEMP_DB
 SAMPLING_TEMP_DB = formation_defaults.DEFAULT_SAMPLING_TEMP_DB
+SAMPLING_AUTO_SYNC_TO_TARGET = formation_defaults.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET
 SPECIAL_WEIGHT_TABLE   = runtime_config.SPECIAL_WEIGHT_TABLE
 FREE_GAME_CONFIG_TABLE = runtime_config.FREE_GAME_CONFIG_TABLE
 BET_AMOUNT_TABLE       = runtime_config.BET_AMOUNT_TABLE
@@ -296,6 +301,7 @@ REBATE_RULES = formation_defaults.clone_rule_map(formation_defaults.REBATE_RULES
 # ==================  group_weight interval rules ==================
 GROUP_WEIGHT_RULES = formation_defaults.clone_rule_map(formation_defaults.GROUP_WEIGHT_RULES)
 ZERO_REBATE_INFERENCE_MODES = set(formation_modes.DEFAULT_ZERO_REBATE_INFERENCE_MODES)
+INDEPENDENT_RTP_MODES = set(formation_modes.DEFAULT_INDEPENDENT_RTP_MODES)
 
 # 特殊局存在 rebate=0 时，用这个手动目标 RTP 反推特殊局 rebate=0 的 weight。
 SPECIAL_GROUP_TARGET_RTP = formation_defaults.DEFAULT_SPECIAL_GROUP_TARGET_RTP
@@ -331,6 +337,9 @@ DEFAULT_EX_SOURCE_SUFFIXES = formation_defaults.clone_ex_source_suffixes()
 DEFAULT_EXTRA_BUY_GROUPS = formation_defaults.clone_extra_buy_groups()
 DEFAULT_SAMPLING_APPEND_MODE = formation_defaults.DEFAULT_SAMPLING_APPEND_MODE
 DEFAULT_SAMPLING_DETAILED_LOG = formation_defaults.DEFAULT_SAMPLING_DETAILED_LOG
+DEFAULT_SAMPLING_USE_TEMP_DB = formation_defaults.DEFAULT_SAMPLING_USE_TEMP_DB
+DEFAULT_SAMPLING_TEMP_DB = formation_defaults.DEFAULT_SAMPLING_TEMP_DB
+DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET = formation_defaults.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET
 
 # ================== 代码区域 =================
 
@@ -498,6 +507,7 @@ DEFAULT_GROUP_WEIGHT_RULES = {
     for mode in GROUP_WEIGHT_MODES
 }
 DEFAULT_ZERO_REBATE_INFERENCE_MODES = set(formation_modes.DEFAULT_ZERO_REBATE_INFERENCE_MODES)
+DEFAULT_INDEPENDENT_RTP_MODES = set(formation_modes.DEFAULT_INDEPENDENT_RTP_MODES)
 DEFAULT_TRIGGER_WEIGHTS = {
     'special_0': SPECIAL_WEIGHT_BY_LAST_DIGIT[0],
     'special_1': SPECIAL_WEIGHT_BY_LAST_DIGIT[1],
@@ -550,7 +560,7 @@ def _sync_globals_from_runtime_state():
     global GAME_TABLE_VENDOR, GAME_TABLE_GAME_ID, GAME_TABLE_PREFIX
     global _GAME_DEFS, GAME_CONFIGS, WEIGHT_TYPE_ID
     global SPECIAL_WEIGHT_BY_LAST_DIGIT, FREE_WEIGHT_BY_LAST_DIGIT
-    global REBATE_RULES, GROUP_WEIGHT_RULES, ZERO_REBATE_INFERENCE_MODES
+    global REBATE_RULES, GROUP_WEIGHT_RULES, ZERO_REBATE_INFERENCE_MODES, INDEPENDENT_RTP_MODES
     global SAMPLING_APPEND_MODE, SAMPLING_DETAILED_LOG
     global REBATE_CONFIG_DIRECT_COUNT_MODES, SPECIAL_GROUP_TARGET_RTP
     global EX_GROUP_TARGET_RTPS
@@ -578,6 +588,7 @@ def _sync_globals_from_runtime_state():
     REBATE_RULES = target.REBATE_RULES
     GROUP_WEIGHT_RULES = target.GROUP_WEIGHT_RULES
     ZERO_REBATE_INFERENCE_MODES = target.ZERO_REBATE_INFERENCE_MODES
+    INDEPENDENT_RTP_MODES = target.INDEPENDENT_RTP_MODES
     SAMPLING_APPEND_MODE = target.SAMPLING_APPEND_MODE
     SAMPLING_DETAILED_LOG = target.SAMPLING_DETAILED_LOG
     REBATE_CONFIG_DIRECT_COUNT_MODES = target.REBATE_CONFIG_DIRECT_COUNT_MODES
@@ -683,6 +694,10 @@ def supports_zero_rebate_inference(mode):
     return formation_modes.supports_zero_rebate_inference(mode)
 
 
+def supports_independent_rtp(mode):
+    return formation_modes.supports_independent_rtp(mode)
+
+
 def get_zero_rebate_inference_modes():
     _sync_group_weight_runtime_from_globals()
     return set(RUNTIME_STATE.zero_rebate_inference_modes)
@@ -693,6 +708,18 @@ def apply_zero_rebate_inference_modes_config(modes):
     ZERO_REBATE_INFERENCE_MODES = formation_modes.normalize_zero_rebate_inference_modes(modes)
     RUNTIME_STATE.zero_rebate_inference_modes = set(ZERO_REBATE_INFERENCE_MODES)
     return set(ZERO_REBATE_INFERENCE_MODES)
+
+
+def get_independent_rtp_modes():
+    _sync_group_weight_runtime_from_globals()
+    return set(RUNTIME_STATE.independent_rtp_modes)
+
+
+def apply_independent_rtp_modes_config(modes):
+    global INDEPENDENT_RTP_MODES
+    INDEPENDENT_RTP_MODES = formation_modes.normalize_independent_rtp_modes(modes)
+    RUNTIME_STATE.independent_rtp_modes = set(INDEPENDENT_RTP_MODES)
+    return set(INDEPENDENT_RTP_MODES)
 
 
 def get_extra_buy_group_by_mode(mode):
@@ -810,18 +837,26 @@ def apply_sampling_detailed_log(enabled):
 
 
 def apply_sampling_temp_db_config(enabled, temp_db):
-    """Apply optional sampling staging database settings."""
+    """Apply sampling staging database settings. Staging is always enabled."""
     global SAMPLING_USE_TEMP_DB, SAMPLING_TEMP_DB
-    enabled = bool(enabled)
     temp_db = str(temp_db or "").strip()
-    if enabled and temp_db not in DATABASE_CONFIGS:
+    if temp_db and temp_db not in DATABASE_CONFIGS:
         raise ValueError(f"采样临时库配置不存在: {temp_db}，可选数据库: {list(DATABASE_CONFIGS.keys())}")
     if not temp_db:
-        temp_db = FINAL_DB
-    SAMPLING_USE_TEMP_DB = enabled
+        temp_db = formation_defaults.DEFAULT_SAMPLING_TEMP_DB
+    if temp_db not in DATABASE_CONFIGS:
+        raise ValueError(f"采样临时库配置不存在: {temp_db}，可选数据库: {list(DATABASE_CONFIGS.keys())}")
+    SAMPLING_USE_TEMP_DB = True
     SAMPLING_TEMP_DB = temp_db
-    RUNTIME_STATE.sampling_use_temp_db = enabled
+    RUNTIME_STATE.sampling_use_temp_db = True
     RUNTIME_STATE.sampling_temp_db = temp_db
+
+
+def apply_sampling_auto_sync_to_target(enabled):
+    """Apply whether sampling should mirror staging results to the target DB after success."""
+    global SAMPLING_AUTO_SYNC_TO_TARGET
+    SAMPLING_AUTO_SYNC_TO_TARGET = bool(enabled)
+    RUNTIME_STATE.sampling_auto_sync_to_target = SAMPLING_AUTO_SYNC_TO_TARGET
 
 
 def normalize_group_weight_rule_list(mode_name, mode_rules):
@@ -2113,6 +2148,10 @@ def build_group_weight_preview_text(*args, **kwargs):
     return _call_group_weight_builder('build_group_weight_preview_text', *args, **kwargs)
 
 
+def build_group_weight_preview_points(*args, **kwargs):
+    return _call_group_weight_builder('build_group_weight_preview_points', *args, **kwargs)
+
+
 def build_group_weight_rows_from_loaded_data(*args, **kwargs):
     return _call_group_weight_builder('build_group_weight_rows_from_loaded_data', *args, **kwargs)
 
@@ -2790,8 +2829,30 @@ def build_all_sampling_jobs_deps():
     return task_dependency_factories.build_all_sampling_jobs_deps(_current_module_namespace())
 
 
+def _sync_sampling_modes_after_success(modes):
+    """Mirror completed staging results for successful sampling modes when enabled."""
+    selected_modes = [str(mode) for mode in (modes or [])]
+    if not selected_modes:
+        print("自动镜像已开启，但本次没有成功采样的局类型，跳过镜像。")
+        return False
+    items = build_sampling_temp_sync_items(selected_modes, existing_only=True)
+    if not items:
+        print("自动镜像已开启，但中转库中没有找到本次成功采样的正式表，跳过镜像。")
+        return False
+    print(f"自动镜像已开启：准备将 {len(items)} 张中转表同步到目标库 {FINAL_DB}。")
+    return sync_sampling_temp_results(items)
+
+
 def run_all_sampling_jobs():
-    return task_entrypoints.run_all_sampling_jobs(deps=build_all_sampling_jobs_deps())
+    results = task_entrypoints.run_all_sampling_jobs(deps=build_all_sampling_jobs_deps())
+    if SAMPLING_AUTO_SYNC_TO_TARGET:
+        successful_modes = [
+            mode
+            for mode, success in (results or {}).items()
+            if success is True
+        ]
+        _sync_sampling_modes_after_success(successful_modes)
+    return results
 
 
 def build_rebate_config_generation_deps():
@@ -2826,7 +2887,10 @@ def test_selected_database_connections():
 
 def run_single_game_job(choice):
     """Run sampling for one selected mode."""
-    return run_single_game(get_runtime_game_configs()[choice])
+    success = run_single_game(get_runtime_game_configs()[choice])
+    if success and SAMPLING_AUTO_SYNC_TO_TARGET:
+        _sync_sampling_modes_after_success([choice])
+    return success
 
 
 def sync_sampling_temp_result(item):

@@ -1,6 +1,7 @@
 """EX mode group_weight generation."""
 
 from formation_tool.group_weight.group_weight_logic import (
+    build_independent_group_weight_rows_for_group,
     build_normal_group_weight_rows_for_group,
     calculate_weighted_rtp,
     format_weighted_rtp,
@@ -121,6 +122,12 @@ def append_ex_normal_group_weight_mode(rows, formation_exists, rebates_by_mode, 
         rebates_by_mode[game_type],
         globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
     )
+    independent_rtp = game_type in {str(mode) for mode in globals().get('INDEPENDENT_RTP_MODES', set())}
+    if independent_rtp:
+        print(
+            f"\n[{mode_name}] 独立计算RTP：开启，最终RTP目标=当前组，"
+            f"反推目标按 ex倍数 {format_weighted_rtp(EX_GROUP_MULTIPLIER)} 折算"
+        )
     ex_special_enabled = mode_exists['7'] and bool(mode_pairs['7'])
     ex_free_enabled = mode_exists['8'] and bool(mode_pairs['8'])
     for group_id in WEIGHT_GROUP_IDS:
@@ -128,33 +135,53 @@ def append_ex_normal_group_weight_mode(rows, formation_exists, rebates_by_mode, 
         ex_special_rtp = (ex_info_by_mode['7'].get(group_id) or {}).get('actual_rtp') or 0
         ex_free_rtp = (ex_info_by_mode['8'].get(group_id) or {}).get('actual_rtp') or 0
         try:
-            group_rows, group_info = build_normal_group_weight_rows_for_group(
-                group_id,
-                mode_pairs[game_type],
-                ex_free_rtp,
-                ex_free_enabled,
-                ex_special_rtp,
-                ex_special_enabled,
-                game_type=6,
-                target_multiplier=EX_GROUP_MULTIPLIER,
-                display_divisor=EX_GROUP_MULTIPLIER,
-                infer_zero_rebate=normal_should_infer,
-            )
+            if independent_rtp:
+                group_rows, group_info = build_independent_group_weight_rows_for_group(
+                    group_id,
+                    get_group_weight_write_game_type(game_type),
+                    mode_pairs[game_type],
+                    normal_should_infer,
+                    get_group_target_rtp_ratio(group_id) * EX_GROUP_MULTIPLIER,
+                    display_divisor=EX_GROUP_MULTIPLIER,
+                )
+            else:
+                group_rows, group_info = build_normal_group_weight_rows_for_group(
+                    group_id,
+                    mode_pairs[game_type],
+                    ex_free_rtp,
+                    ex_free_enabled,
+                    ex_special_rtp,
+                    ex_special_enabled,
+                    game_type=6,
+                    target_multiplier=EX_GROUP_MULTIPLIER,
+                    display_divisor=EX_GROUP_MULTIPLIER,
+                    infer_zero_rebate=normal_should_infer,
+                )
         except ValueError as e:
             print(f"  ⚠ {e}，跳过 group_id={group_id}")
             continue
         rows.extend(group_rows)
         mode_rows += len(group_rows)
-        print(
-            f"  group_id={group_info['group_id']} "
-            f"目标总RTP={format_weighted_rtp(get_group_target_rtp_ratio(group_info['group_id']))}，"
-            f"ex反推总目标={format_weighted_rtp(get_group_target_rtp_ratio(group_info['group_id']) * EX_GROUP_MULTIPLIER)}，"
-            f"ex免费触发={group_info['free_rate']:.4f}，ex特殊触发={group_info['special_rate']:.4f}，"
-            f"ex普通目标RTP={format_weighted_rtp(group_info['normal_target_rtp'])}，"
-            f"rebate=0 weight={group_info['zero_weight']}，"
-            f"实际RTP={format_weighted_rtp(group_info['actual_normal_rtp'])}，"
-            f"最终RTP={format_weighted_rtp(group_info['display_rtp'])}"
-        )
+        if independent_rtp:
+            print(
+                f"  group_id={group_info['group_id']} "
+                f"目标RTP={format_weighted_rtp(get_group_target_rtp_ratio(group_info['group_id']))}，"
+                f"ex反推目标={format_weighted_rtp(group_info['target_rtp'])}，"
+                f"rebate=0 weight={group_info['zero_weight']}，"
+                f"实际RTP={format_weighted_rtp(group_info['actual_rtp'])}，"
+                f"最终RTP={format_weighted_rtp(group_info['display_rtp'])}"
+            )
+        else:
+            print(
+                f"  group_id={group_info['group_id']} "
+                f"目标总RTP={format_weighted_rtp(get_group_target_rtp_ratio(group_info['group_id']))}，"
+                f"ex反推总目标={format_weighted_rtp(get_group_target_rtp_ratio(group_info['group_id']) * EX_GROUP_MULTIPLIER)}，"
+                f"ex免费触发={group_info['free_rate']:.4f}，ex特殊触发={group_info['special_rate']:.4f}，"
+                f"ex普通目标RTP={format_weighted_rtp(group_info['normal_target_rtp'])}，"
+                f"rebate=0 weight={group_info['zero_weight']}，"
+                f"实际RTP={format_weighted_rtp(group_info['actual_normal_rtp'])}，"
+                f"最终RTP={format_weighted_rtp(group_info['display_rtp'])}"
+            )
     print(f"  {mode_name}准备写入 {mode_rows} 行")
 
 

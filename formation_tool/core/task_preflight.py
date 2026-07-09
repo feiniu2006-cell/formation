@@ -415,6 +415,7 @@ def _collect_sampling_databases(game_configs, modes, deps):
     db_names = set()
     use_temp = bool(getattr(deps, "get_sampling_use_temp_db", lambda: False)())
     temp_db = getattr(deps, "get_sampling_temp_db", lambda: None)()
+    auto_sync = bool(getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)())
     for mode in modes:
         config = game_configs.get(mode)
         if not config:
@@ -426,6 +427,8 @@ def _collect_sampling_databases(game_configs, modes, deps):
             if use_temp and table_key == "FINAL_TABLE":
                 if temp_db:
                     db_names.add(temp_db)
+                if auto_sync:
+                    db_names.add(table_info["database"])
                 continue
             db_names.add(table_info["database"])
     return db_names
@@ -539,7 +542,10 @@ def preflight_sampling(report, metadata, deps):
     target_game_configs = game_configs
     if use_temp and temp_db:
         target_game_configs = _with_sampling_target_db(game_configs, modes, temp_db)
-        report.add_info(f"采样中转库已开启：本次采样只检查并写入 {temp_db}，目标库不参与采样预检查")
+        if bool(getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)()):
+            report.add_info(f"采样中转库已开启：本次采样先写入 {temp_db}，完成后将自动镜像到目标库")
+        else:
+            report.add_info(f"采样中转库已开启：本次采样只检查并写入 {temp_db}，目标库不参与采样预检查")
     connections = _connect_required_databases(report, _collect_sampling_databases(game_configs, modes, deps), deps)
     try:
         formation_exists = deps.get_sampling_formation_exists()
