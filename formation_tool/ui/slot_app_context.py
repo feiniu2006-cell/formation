@@ -11,6 +11,7 @@ class SlotAppDepsContext:
     vendor_type_map: Any
     random_seed: Any
     run_all_sampling_jobs: Any
+    run_all_supplemental_sampling_jobs: Any
     mirror_sampling_temp_to_target: Any
     sync_sampling_temp_results: Any
     write_common_configs: Any
@@ -31,9 +32,11 @@ class SlotAppDepsContext:
     default_buy_group_source_suffix: Any
     default_ex_group_multiplier: Any
     default_extra_buy_groups: Any
+    default_extra_weight_groups: Any
     default_rebate_rules: Any
     default_direct_count_tiers: Any
     default_group_weight_rules: Any
+    default_group_weight_group_rules: Any
     default_special_group_target_rtp: Any
     default_ex_group_target_rtps: Any
     default_zero_rebate_inference_modes: Any
@@ -47,6 +50,7 @@ class SlotAppDepsContext:
     get_sampling_temp_db: Any
     get_sampling_auto_sync_to_target: Any
     get_group_weight_rules: Any
+    get_group_weight_group_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
     get_zero_rebate_inference_modes: Any
@@ -62,6 +66,7 @@ class SlotAppDepsContext:
     get_ex_group_multiplier: Any
     get_ex_source_suffixes: Any
     get_extra_buy_groups: Any
+    get_extra_weight_groups: Any
     get_direct_count_modes: Any
     get_direct_count_tiers: Any
     get_app_settings_path: Any
@@ -76,15 +81,20 @@ class SlotAppDepsContext:
     validate_sampling_rebate_rules: Any
     clone_rebate_rules: Any
     clone_group_weight_rules: Any
+    clone_group_weight_group_rules: Any
     clone_extra_buy_groups: Any
+    clone_extra_weight_groups: Any
     clear_config_warnings: Any
     consume_config_warnings: Any
     normalize_rebate_rules_for_load: Any
     normalize_group_weight_rules_for_load: Any
+    normalize_group_weight_group_rules_for_load: Any
+    normalize_extra_weight_groups: Any
     apply_runtime_config: Any
     apply_weight_config: Any
     apply_rebate_rules_config: Any
     apply_group_weight_rules_config: Any
+    apply_group_weight_group_rules_config: Any
     apply_special_group_target_rtp: Any
     apply_ex_group_target_rtps_config: Any
     apply_zero_rebate_inference_modes_config: Any
@@ -100,6 +110,7 @@ class SlotAppDepsContext:
     apply_ex_group_multiplier: Any
     apply_ex_source_suffixes_config: Any
     apply_extra_buy_groups_config: Any
+    apply_extra_weight_groups_config: Any
     load_buy_group_options_from_game_type_config: Any
     apply_rebate_config_direct_count_modes: Any
     apply_rebate_config_direct_count_tiers: Any
@@ -114,6 +125,7 @@ class SlotAppDepsContext:
     get_source_db: Any
     sample_game_type_names: Any
     run_single_game_job: Any
+    run_single_supplemental_game_job: Any
     get_sampling_formation_exists: Any
     rebate_rule_fields: Any
     rebate_rule_field_labels: Any
@@ -124,6 +136,7 @@ class SlotAppDepsContext:
     get_rebate_config_low_volume_infos: Any
     get_rebate_config_index_warnings: Any
     generate_all_rebate_configs: Any
+    get_weight_group_ids: Any
     weight_group_ids: Any
     group_weight_modes: Any
     group_weight_ui_modes: Any
@@ -184,6 +197,7 @@ REQUIRED_RUNTIME_ATTRS = (
     'ex_group_multiplier',
     'ex_source_suffixes',
     'extra_buy_groups',
+    'extra_weight_groups',
     'buy_groups',
     'rebate_config_direct_count_modes',
     'external_config_source',
@@ -196,6 +210,7 @@ REQUIRED_MODULE_ATTRS = (
     '_VENDOR_TYPE_MAP',
     'RANDOM_SEED',
     'run_all_sampling_jobs',
+    'run_all_supplemental_sampling_jobs',
     'mirror_sampling_temp_to_target',
     'sync_sampling_temp_results',
     'write_common_configs',
@@ -216,6 +231,7 @@ REQUIRED_MODULE_ATTRS = (
     'DEFAULT_BUY_GROUP_SOURCE_SUFFIX',
     'DEFAULT_EX_GROUP_MULTIPLIER',
     'DEFAULT_EXTRA_BUY_GROUPS',
+    'DEFAULT_EXTRA_WEIGHT_GROUPS',
     'DEFAULT_REBATE_RULES',
     'DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIERS',
     'DEFAULT_GROUP_WEIGHT_RULES',
@@ -228,10 +244,12 @@ REQUIRED_MODULE_ATTRS = (
     'clone_rebate_rules',
     'clone_group_weight_rules',
     'clone_extra_buy_groups',
+    'clone_extra_weight_groups',
     'clear_config_warnings',
     'consume_config_warnings',
     'normalize_rebate_rules_for_load',
     'normalize_group_weight_rules_for_load',
+    'normalize_extra_weight_groups',
     'apply_runtime_config',
     'apply_weight_config',
     'apply_rebate_rules_config',
@@ -251,6 +269,7 @@ REQUIRED_MODULE_ATTRS = (
     'apply_ex_group_multiplier',
     'apply_ex_source_suffixes_config',
     'apply_extra_buy_groups_config',
+    'apply_extra_weight_groups_config',
     'load_buy_group_options_from_game_type_config',
     'apply_rebate_config_direct_count_modes',
     'apply_rebate_config_direct_count_tiers',
@@ -271,6 +290,7 @@ REQUIRED_MODULE_ATTRS = (
     'clone_runtime_rebate_rules',
     'validate_runtime_rebate_rules',
     'run_single_game_job',
+    'run_single_supplemental_game_job',
     'get_sampling_formation_exists',
     'REBATE_RULE_FIELDS',
     'REBATE_RULE_FIELD_LABELS',
@@ -332,6 +352,7 @@ def build_slot_app_deps_context(runtime, module):
         vendor_type_map=m._VENDOR_TYPE_MAP,
         random_seed=m.RANDOM_SEED,
         run_all_sampling_jobs=m.run_all_sampling_jobs,
+        run_all_supplemental_sampling_jobs=m.run_all_supplemental_sampling_jobs,
         mirror_sampling_temp_to_target=m.mirror_sampling_temp_to_target,
         sync_sampling_temp_results=m.sync_sampling_temp_results,
         write_common_configs=m.write_common_configs,
@@ -352,9 +373,11 @@ def build_slot_app_deps_context(runtime, module):
         default_buy_group_source_suffix=m.DEFAULT_BUY_GROUP_SOURCE_SUFFIX,
         default_ex_group_multiplier=m.DEFAULT_EX_GROUP_MULTIPLIER,
         default_extra_buy_groups=m.DEFAULT_EXTRA_BUY_GROUPS,
+        default_extra_weight_groups=m.DEFAULT_EXTRA_WEIGHT_GROUPS,
         default_rebate_rules=m.DEFAULT_REBATE_RULES,
         default_direct_count_tiers=m.DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIERS,
         default_group_weight_rules=m.DEFAULT_GROUP_WEIGHT_RULES,
+        default_group_weight_group_rules=getattr(m, 'DEFAULT_GROUP_WEIGHT_GROUP_RULES', {}),
         default_special_group_target_rtp=m.DEFAULT_SPECIAL_GROUP_TARGET_RTP,
         default_ex_group_target_rtps=m.DEFAULT_EX_GROUP_TARGET_RTPS,
         default_zero_rebate_inference_modes=m.DEFAULT_ZERO_REBATE_INFERENCE_MODES,
@@ -368,6 +391,7 @@ def build_slot_app_deps_context(runtime, module):
         get_sampling_temp_db=lambda: runtime.sampling_temp_db,
         get_sampling_auto_sync_to_target=lambda: runtime.sampling_auto_sync_to_target,
         get_group_weight_rules=lambda: runtime.group_weight_rules,
+        get_group_weight_group_rules=lambda: getattr(runtime, 'group_weight_group_rules', {}),
         get_special_group_target_rtp=lambda: runtime.special_group_target_rtp,
         get_ex_group_target_rtps=lambda: dict(getattr(runtime, 'ex_group_target_rtps', {})),
         get_zero_rebate_inference_modes=lambda: set(runtime.zero_rebate_inference_modes or ()),
@@ -383,6 +407,7 @@ def build_slot_app_deps_context(runtime, module):
         get_ex_group_multiplier=lambda: runtime.ex_group_multiplier,
         get_ex_source_suffixes=lambda: dict(runtime.ex_source_suffixes),
         get_extra_buy_groups=lambda: runtime.extra_buy_groups,
+        get_extra_weight_groups=lambda: getattr(runtime, 'extra_weight_groups', []),
         get_direct_count_modes=lambda: runtime.rebate_config_direct_count_modes,
         get_direct_count_tiers=m.get_rebate_config_direct_count_tiers,
         get_app_settings_path=m.get_app_settings_path,
@@ -397,15 +422,32 @@ def build_slot_app_deps_context(runtime, module):
         validate_sampling_rebate_rules=m.validate_runtime_rebate_rules,
         clone_rebate_rules=m.clone_rebate_rules,
         clone_group_weight_rules=m.clone_group_weight_rules,
+        clone_group_weight_group_rules=getattr(
+            m,
+            'clone_group_weight_group_rules',
+            lambda rules: rules or {},
+        ),
         clone_extra_buy_groups=m.clone_extra_buy_groups,
+        clone_extra_weight_groups=m.clone_extra_weight_groups,
         clear_config_warnings=m.clear_config_warnings,
         consume_config_warnings=m.consume_config_warnings,
         normalize_rebate_rules_for_load=m.normalize_rebate_rules_for_load,
         normalize_group_weight_rules_for_load=m.normalize_group_weight_rules_for_load,
+        normalize_group_weight_group_rules_for_load=getattr(
+            m,
+            'normalize_group_weight_group_rules_for_load',
+            lambda rules: rules or {},
+        ),
+        normalize_extra_weight_groups=m.normalize_extra_weight_groups,
         apply_runtime_config=m.apply_runtime_config,
         apply_weight_config=m.apply_weight_config,
         apply_rebate_rules_config=m.apply_rebate_rules_config,
         apply_group_weight_rules_config=m.apply_group_weight_rules_config,
+        apply_group_weight_group_rules_config=getattr(
+            m,
+            'apply_group_weight_group_rules_config',
+            lambda _rules: None,
+        ),
         apply_special_group_target_rtp=m.apply_special_group_target_rtp,
         apply_ex_group_target_rtps_config=m.apply_ex_group_target_rtps_config,
         apply_zero_rebate_inference_modes_config=m.apply_zero_rebate_inference_modes_config,
@@ -421,6 +463,7 @@ def build_slot_app_deps_context(runtime, module):
         apply_ex_group_multiplier=m.apply_ex_group_multiplier,
         apply_ex_source_suffixes_config=m.apply_ex_source_suffixes_config,
         apply_extra_buy_groups_config=m.apply_extra_buy_groups_config,
+        apply_extra_weight_groups_config=m.apply_extra_weight_groups_config,
         load_buy_group_options_from_game_type_config=m.load_buy_group_options_from_game_type_config,
         apply_rebate_config_direct_count_modes=m.apply_rebate_config_direct_count_modes,
         apply_rebate_config_direct_count_tiers=m.apply_rebate_config_direct_count_tiers,
@@ -435,6 +478,7 @@ def build_slot_app_deps_context(runtime, module):
         get_source_db=lambda: runtime.source_db,
         sample_game_type_names=m.get_runtime_sample_game_type_names(),
         run_single_game_job=m.run_single_game_job,
+        run_single_supplemental_game_job=m.run_single_supplemental_game_job,
         get_sampling_formation_exists=m.get_sampling_formation_exists,
         rebate_rule_fields=m.REBATE_RULE_FIELDS,
         rebate_rule_field_labels=m.REBATE_RULE_FIELD_LABELS,
@@ -445,6 +489,7 @@ def build_slot_app_deps_context(runtime, module):
         get_rebate_config_low_volume_infos=m.get_rebate_config_low_volume_infos,
         get_rebate_config_index_warnings=m.get_rebate_config_index_warnings,
         generate_all_rebate_configs=m.generate_all_rebate_configs,
+        get_weight_group_ids=lambda: m.WEIGHT_GROUP_IDS,
         weight_group_ids=m.WEIGHT_GROUP_IDS,
         group_weight_modes=m.GROUP_WEIGHT_MODES,
         group_weight_ui_modes=m.GROUP_WEIGHT_UI_MODES,

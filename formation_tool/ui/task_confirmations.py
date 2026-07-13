@@ -37,12 +37,20 @@ def build_dangerous_task_confirmation(title, preflight, *, deps):
     if kind == "sampling":
         temp_db = getattr(deps, "get_sampling_temp_db", lambda: "")()
         auto_sync = bool(getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)())
+        append_mode = bool(preflight.get("append_mode"))
         action = f"写入中转库 {temp_db} 正式表"
+        if append_mode:
+            action = f"读取目标库旧正式表，重排旧 id 后补充写入中转库 {temp_db} 正式表"
         lines = [
             f"即将执行采样并{action}：{title}",
             "",
             *build_mode_target_lines(preflight.get("modes"), "FINAL_TABLE", get_game_configs=deps.get_game_configs),
         ]
+        if append_mode:
+            lines.extend([
+                "",
+                "补充采样会先复制目标库旧数据到中转库，并把旧数据 id 重排为连续值；新采样数据 id 会接在旧数据之后。",
+            ])
         if auto_sync:
             lines.extend([
                 "",

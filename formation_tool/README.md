@@ -22,7 +22,7 @@
 ## 主要流程
 
 1. 生成采样配置：`ui.RebateRulesDialog` -> `core.task_entrypoints` -> `rebate.rebate_config_runner` -> `rebate.rebate_config_logic` -> `rebate.rebate_config_storage`。
-2. 执行采样：`ui.SingleSamplingDialog` 或全部采样按钮 -> `core.task_entrypoints` -> `sampling.direct_sampling_runner` -> `sampling.sampling_core`。
+2. 执行采样：`ui.SingleSamplingDialog`、全部采样/补充采样按钮 -> `core.task_entrypoints` -> `sampling.direct_sampling_runner` -> `sampling.sampling_core`。
 3. 生成 `group_weight`：`ui.GroupWeightRulesDialog` -> `group_weight.group_weight_runner` -> `group_weight.group_weight_builder` / `group_weight.group_weight_logic` -> `group_weight.group_weight_storage`。
 4. 写通用配置：主界面按钮 -> `common.common_config_entrypoints` -> `common.common_config_runner` / `common.common_config_writer`。
 
@@ -81,9 +81,10 @@
 
 | 参数 | 默认值 | 作用 | 调整影响 |
 | --- | --- | --- | --- |
-| `DEFAULT_WEIGHT_GROUP_IDS` | `10000, 10001, ..., 9001` | group_weight 生成时遍历的 RTP 组。 | `group_id` 会决定目标 RTP 和分组；例如 `10000` 表示目标 RTP `100.0%`、分组 `0`。 |
-| `DEFAULT_SPECIAL_WEIGHT_BY_LAST_DIGIT` | `{0: 100, 1: 200}` | 写通用配置时，特殊局触发权重按 `group_id` 个位分档。 | GUI “权重配置”中的特殊局0/1 会覆盖并保存。 |
-| `DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT` | `{0: 50, 1: 100}` | 写通用配置时，免费局触发权重按 `group_id` 个位分档。 | GUI “权重配置”中的免费局0/1 会覆盖并保存。 |
+| `DEFAULT_WEIGHT_GROUP_IDS` | `10000, 10001, ..., 9001` | group_weight 生成时默认遍历的 RTP 组，默认只包含尾号分组 `0/1`。 | `group_id` 会决定目标 RTP 和分组；例如 `10000` 表示目标 RTP `100.0%`、分组 `0`。 |
+| `DEFAULT_EXTRA_WEIGHT_GROUPS` | `[]` | 额外 group_weight 分组默认值。 | 不建议直接改常量；需要新增 `9652/9653` 等分组时，在 GUI 主界面“额外权重分组”新增并保存。 |
+| `DEFAULT_SPECIAL_WEIGHT_BY_LAST_DIGIT` | `{0: 100, 1: 200}` | 写通用配置时，特殊局触发权重按 `group_id` 个位分档。 | GUI “权重配置”中的特殊局0/1 会覆盖并保存；额外分组行会按其 `group_id` 尾号补充特殊局权重。 |
+| `DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT` | `{0: 50, 1: 100}` | 写通用配置时，免费局触发权重按 `group_id` 个位分档。 | GUI “权重配置”中的免费局0/1 会覆盖并保存；额外分组行会按其 `group_id` 尾号补充免费局权重。 |
 | `DEFAULT_SPECIAL_GROUP_TARGET_RTP` | `6` | 特殊局存在 `rebate=0` 时，用于反推特殊局 0 权重的目标 RTP。 | 只影响特殊局独立反推；不存在 `rebate=0` 时不会反推。 |
 | `DEFAULT_EX_GROUP_TARGET_RTPS` | `{}` | ex 独立目标 RTP 默认值，目前用于 ex特殊局。 | 通常通过 group_weight 权重配置弹窗输入并保存。 |
 | `DEFAULT_BUY_GROUP_ENABLED` | `False` | 默认购买局开关。 | GUI 中“购买局配置”会覆盖并保存。 |
@@ -128,6 +129,8 @@ rebate=0 反推必须同时满足两个条件：当前采样配置存在 `rebate
 
 普通局 `game_type=1` 和 ex普通局 `game_type=6` 额外支持“独立计算RTP”开关，配置会保存到 `group_weight_options.independent_rtp_modes`。默认关闭时保持原逻辑：普通局目标会扣除特殊局/免费局触发贡献后反推；ex普通局目标会扣除 ex特殊局/ex免费局贡献后反推。开启后该页签不再和其它局一起计算 RTP，普通局直接以当前 RTP 组为目标，ex普通局以“当前 RTP 组 * ex倍数”为实际反推目标，最终显示 RTP 仍除以 ex倍数回到当前组目标。
 
+group_weight 分组默认只有尾号 `0` 和 `1`。如果需要新增尾号 `2-9` 的分组，例如 `9652、9653、9654、9655`，在主界面“权重配置 -> 额外权重分组”新增完整 `group_id`，并填写该尾号对应的特殊局/免费局触发权重；配置会保存到 `group_weight_options.extra_weight_groups`。同一尾号只能对应一组特殊/免费触发权重，避免普通局 RTP 反推和通用配置写入出现不一致。
+
 ## 采样配置生成
 
 采样配置表通常是 `rebate_count`、`rebate_special_count`、`rebate_free_count` 等表，核心字段为 `rebate` 和 `count`。
@@ -153,6 +156,18 @@ rebate=0 反推必须同时满足两个条件：当前采样配置存在 `rebate
 9. 用临时表整体替换中转库正式表；此时目标库默认保持不变。
 10. 如果勾选“采样完成后自动镜像到目标库”，采样成功后会把本次成功采样的中转库正式表镜像到目标库；全部采样只自动镜像本次返回成功的局类型，单独采样只镜像当前局类型。
 11. 未开启自动镜像时，需要在主界面采样按钮区点击“镜像到目标库”，确认后会优先使用 `mysqldump`/`mysql` 将中转库正式表导出并导入目标库临时表，导出和导入失败都会最多重试 5 次，校验行数后再整体替换目标库正式表。镜像功能需要本机能调用 MySQL Client 工具。
+
+### 补充采样逻辑
+
+补充采样用于在目标库已有正式表的基础上新增采样数据，但采样期间仍然只写入采样临时库，目标库不会被直接修改。
+
+1. 预检查会额外检查目标库旧正式表；普通采样未开启自动镜像时不会检查目标库。
+2. 如果目标库旧正式表存在，会先校验字段名和基础类型是否与源表一致；`int(10)/int(11)`、`varchar(255)/varchar(500)` 这类长度差异不会阻止补充采样。
+3. 校验通过后，按目标库旧正式表结构创建采样临时库临时表，并使用 `mysqldump`/`mysql` 将旧正式表复制进去。
+4. 旧数据复制完成后，会在采样临时库中按旧 `id` 顺序重排为连续新 `id`。
+5. 新采样数据写入前会整组改写 `id`，从旧数据最后一个新 `id` 后继续分配，确保旧数据和新采样数据的 `id` 衔接。
+6. 补充采样完成后，采样临时库正式表就是“重排后的旧数据 + 新采样数据”的完整表；是否镜像到目标库仍由“采样完成后自动镜像到目标库”或手动“镜像到目标库”控制。
+7. 如果目标库旧正式表不存在，补充采样会按新表处理，新采样数据从 `id=1` 开始分配。
 
 生成采样配置统计 rebate 分布时，会按源表结构选择计数方式：源表存在 `game_end` 或 `is_end` 字段时使用 `COUNT(DISTINCT id)`，用于多行组成同一局的数据；源表不存在这两个字段时，按 `id` 唯一表处理，使用 `COUNT(*)` 降低大表统计开销。
 

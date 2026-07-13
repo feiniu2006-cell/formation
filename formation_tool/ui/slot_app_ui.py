@@ -4,6 +4,7 @@ from tkinter import messagebox, scrolledtext, ttk
 from formation_tool.ui import buy_group_ui
 from formation_tool.ui import external_config_status
 from formation_tool.ui import slot_app_actions
+from formation_tool.ui import weight_group_ui
 
 
 class SlotAppUiMixin:
@@ -29,6 +30,24 @@ class SlotAppUiMixin:
 
     def collect_extra_buy_groups(self):
         return buy_group_ui.collect_extra_buy_groups(self)
+
+    def refresh_extra_weight_group_rows(self):
+        return weight_group_ui.refresh_extra_weight_group_rows(self)
+
+    def add_extra_weight_group_row(self, group_id="", special_weight="", free_weight=""):
+        return weight_group_ui.add_extra_weight_group_row(self, group_id, special_weight, free_weight)
+
+    def remove_extra_weight_group_row(self, row_info):
+        return weight_group_ui.remove_extra_weight_group_row(self, row_info)
+
+    def clear_extra_weight_group_rows(self):
+        return weight_group_ui.clear_extra_weight_group_rows(self)
+
+    def set_extra_weight_group_rows(self, groups):
+        return weight_group_ui.set_extra_weight_group_rows(self, groups)
+
+    def collect_extra_weight_groups(self):
+        return weight_group_ui.collect_extra_weight_groups(self)
 
     def build_ui(self):
         root_frame = self.build_root_frame()
@@ -111,7 +130,11 @@ class SlotAppUiMixin:
             entry.grid(row=1, column=col, sticky="ew", padx=(0, 8))
             self.config_widgets.append((entry, "normal"))
 
+        self.build_extra_weight_group_section(weight_frame)
         self.build_purchase_section(weight_frame)
+
+    def build_extra_weight_group_section(self, weight_frame):
+        return weight_group_ui.build_extra_weight_group_section(self, weight_frame)
 
     def build_purchase_section(self, weight_frame):
         return buy_group_ui.build_purchase_section(self, weight_frame)

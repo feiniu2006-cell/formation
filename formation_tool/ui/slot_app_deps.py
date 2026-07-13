@@ -9,6 +9,7 @@ class UiDeps:
     vendor_type_map: Any
     random_seed: Any
     run_all_sampling_jobs: Any
+    run_all_supplemental_sampling_jobs: Any
     mirror_sampling_temp_to_target: Any
     write_common_configs: Any
     test_selected_database_connections: Any
@@ -35,9 +36,11 @@ class SettingsDeps:
     default_buy_group_source_suffix: Any
     default_ex_group_multiplier: Any
     default_extra_buy_groups: Any
+    default_extra_weight_groups: Any
     default_rebate_rules: Any
     default_direct_count_tiers: Any
     default_group_weight_rules: Any
+    default_group_weight_group_rules: Any
     default_special_group_target_rtp: Any
     default_ex_group_target_rtps: Any
     default_zero_rebate_inference_modes: Any
@@ -51,6 +54,7 @@ class SettingsDeps:
     get_sampling_temp_db: Any
     get_sampling_auto_sync_to_target: Any
     get_group_weight_rules: Any
+    get_group_weight_group_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
     get_zero_rebate_inference_modes: Any
@@ -66,6 +70,7 @@ class SettingsDeps:
     get_ex_group_multiplier: Any
     get_ex_source_suffixes: Any
     get_extra_buy_groups: Any
+    get_extra_weight_groups: Any
     get_direct_count_modes: Any
     get_direct_count_tiers: Any
     get_app_settings_path: Any
@@ -74,16 +79,21 @@ class SettingsDeps:
     get_ready_status_text: Any
     clone_rebate_rules: Any
     clone_group_weight_rules: Any
+    clone_group_weight_group_rules: Any
     clone_extra_buy_groups: Any
+    clone_extra_weight_groups: Any
     clear_config_warnings: Any
     consume_config_warnings: Any
     normalize_rebate_rules_for_load: Any
     normalize_direct_count_tiers_for_load: Any
     normalize_group_weight_rules_for_load: Any
+    normalize_group_weight_group_rules_for_load: Any
+    normalize_extra_weight_groups: Any
     apply_runtime_config: Any
     apply_weight_config: Any
     apply_rebate_rules_config: Any
     apply_group_weight_rules_config: Any
+    apply_group_weight_group_rules_config: Any
     apply_special_group_target_rtp: Any
     apply_ex_group_target_rtps_config: Any
     apply_zero_rebate_inference_modes_config: Any
@@ -99,6 +109,7 @@ class SettingsDeps:
     apply_ex_group_multiplier: Any
     apply_ex_source_suffixes_config: Any
     apply_extra_buy_groups_config: Any
+    apply_extra_weight_groups_config: Any
     load_buy_group_options_from_game_type_config: Any
     apply_rebate_config_direct_count_modes: Any
     apply_rebate_config_direct_count_tiers: Any
@@ -126,6 +137,7 @@ class TaskDeps:
     ex_purchase_mode: Any
     buy_group_mode: Any
     get_group_weight_rules: Any
+    get_group_weight_group_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
     get_buy_group_enabled: Any
@@ -145,6 +157,8 @@ class TaskDeps:
     run_task_preflight: Any
     mirror_sampling_temp_to_target: Any
     sync_sampling_temp_results: Any
+    run_all_supplemental_sampling_jobs: Any
+    run_single_supplemental_game_job: Any
 
 
 @dataclass(frozen=True)
@@ -160,7 +174,9 @@ class GroupWeightDialogDeps:
     rule_fields: Any
     rule_field_labels: Any
     rules: Any
+    group_rules: Any
     default_rules: Any
+    default_group_rules: Any
     special_target_rtp: Any
     default_special_target_rtp: Any
     ex_group_target_rtps: Any
@@ -204,6 +220,7 @@ class GroupWeightDialogDeps:
     apply_zero_rebate_inference_modes: Any
     apply_independent_rtp_modes: Any
     apply_rules: Any
+    apply_group_rules: Any
     apply_extra_buy_groups: Any
     generate_config: Any
 
@@ -271,6 +288,7 @@ def build_ui_deps(ctx):
         vendor_type_map=ctx.vendor_type_map,
         random_seed=ctx.random_seed,
         run_all_sampling_jobs=ctx.run_all_sampling_jobs,
+        run_all_supplemental_sampling_jobs=ctx.run_all_supplemental_sampling_jobs,
         mirror_sampling_temp_to_target=ctx.mirror_sampling_temp_to_target,
         write_common_configs=ctx.write_common_configs,
         test_selected_database_connections=ctx.test_selected_database_connections,
@@ -298,9 +316,11 @@ def build_settings_deps(ctx):
         default_buy_group_source_suffix=ctx.default_buy_group_source_suffix,
         default_ex_group_multiplier=ctx.default_ex_group_multiplier,
         default_extra_buy_groups=ctx.default_extra_buy_groups,
+        default_extra_weight_groups=ctx.default_extra_weight_groups,
         default_rebate_rules=ctx.default_rebate_rules,
         default_direct_count_tiers=ctx.default_direct_count_tiers,
         default_group_weight_rules=ctx.default_group_weight_rules,
+        default_group_weight_group_rules=getattr(ctx, 'default_group_weight_group_rules', {}),
         default_special_group_target_rtp=ctx.default_special_group_target_rtp,
         default_ex_group_target_rtps=ctx.default_ex_group_target_rtps,
         default_zero_rebate_inference_modes=ctx.default_zero_rebate_inference_modes,
@@ -314,6 +334,7 @@ def build_settings_deps(ctx):
         get_sampling_temp_db=ctx.get_sampling_temp_db,
         get_sampling_auto_sync_to_target=ctx.get_sampling_auto_sync_to_target,
         get_group_weight_rules=ctx.get_group_weight_rules,
+        get_group_weight_group_rules=getattr(ctx, 'get_group_weight_group_rules', lambda: {}),
         get_special_group_target_rtp=ctx.get_special_group_target_rtp,
         get_ex_group_target_rtps=ctx.get_ex_group_target_rtps,
         get_zero_rebate_inference_modes=ctx.get_zero_rebate_inference_modes,
@@ -329,6 +350,7 @@ def build_settings_deps(ctx):
         get_ex_group_multiplier=ctx.get_ex_group_multiplier,
         get_ex_source_suffixes=ctx.get_ex_source_suffixes,
         get_extra_buy_groups=ctx.get_extra_buy_groups,
+        get_extra_weight_groups=ctx.get_extra_weight_groups,
         get_direct_count_modes=ctx.get_direct_count_modes,
         get_direct_count_tiers=ctx.get_direct_count_tiers,
         get_app_settings_path=ctx.get_app_settings_path,
@@ -340,16 +362,40 @@ def build_settings_deps(ctx):
         get_ready_status_text=lambda: build_ready_status_text(ctx.get_runtime_state()),
         clone_rebate_rules=ctx.clone_rebate_rules,
         clone_group_weight_rules=ctx.clone_group_weight_rules,
+        clone_group_weight_group_rules=getattr(
+            ctx,
+            'clone_group_weight_group_rules',
+            lambda rules: {
+                str(group): {
+                    str(mode): [dict(rule) for rule in mode_rules]
+                    for mode, mode_rules in rules_by_mode.items()
+                }
+                for group, rules_by_mode in (rules or {}).items()
+                if isinstance(rules_by_mode, dict)
+            },
+        ),
         clone_extra_buy_groups=ctx.clone_extra_buy_groups,
+        clone_extra_weight_groups=ctx.clone_extra_weight_groups,
         clear_config_warnings=ctx.clear_config_warnings,
         consume_config_warnings=ctx.consume_config_warnings,
         normalize_rebate_rules_for_load=ctx.normalize_rebate_rules_for_load,
         normalize_direct_count_tiers_for_load=ctx.normalize_direct_count_tiers_for_load,
         normalize_group_weight_rules_for_load=ctx.normalize_group_weight_rules_for_load,
+        normalize_group_weight_group_rules_for_load=getattr(
+            ctx,
+            'normalize_group_weight_group_rules_for_load',
+            lambda rules: rules or {},
+        ),
+        normalize_extra_weight_groups=ctx.normalize_extra_weight_groups,
         apply_runtime_config=ctx.apply_runtime_config,
         apply_weight_config=ctx.apply_weight_config,
         apply_rebate_rules_config=ctx.apply_rebate_rules_config,
         apply_group_weight_rules_config=ctx.apply_group_weight_rules_config,
+        apply_group_weight_group_rules_config=getattr(
+            ctx,
+            'apply_group_weight_group_rules_config',
+            lambda _rules: None,
+        ),
         apply_special_group_target_rtp=ctx.apply_special_group_target_rtp,
         apply_ex_group_target_rtps_config=ctx.apply_ex_group_target_rtps_config,
         apply_zero_rebate_inference_modes_config=ctx.apply_zero_rebate_inference_modes_config,
@@ -365,6 +411,7 @@ def build_settings_deps(ctx):
         apply_ex_group_multiplier=ctx.apply_ex_group_multiplier,
         apply_ex_source_suffixes_config=ctx.apply_ex_source_suffixes_config,
         apply_extra_buy_groups_config=ctx.apply_extra_buy_groups_config,
+        apply_extra_weight_groups_config=ctx.apply_extra_weight_groups_config,
         load_buy_group_options_from_game_type_config=ctx.load_buy_group_options_from_game_type_config,
         apply_rebate_config_direct_count_modes=ctx.apply_rebate_config_direct_count_modes,
         apply_rebate_config_direct_count_tiers=ctx.apply_rebate_config_direct_count_tiers,
@@ -393,6 +440,7 @@ def build_task_deps(ctx):
         ex_purchase_mode=ctx.ex_purchase_mode,
         buy_group_mode=ctx.buy_group_mode,
         get_group_weight_rules=ctx.get_group_weight_rules,
+        get_group_weight_group_rules=getattr(ctx, 'get_group_weight_group_rules', lambda: {}),
         get_special_group_target_rtp=ctx.get_special_group_target_rtp,
         get_ex_group_target_rtps=ctx.get_ex_group_target_rtps,
         get_buy_group_enabled=ctx.get_buy_group_enabled,
@@ -412,6 +460,8 @@ def build_task_deps(ctx):
         run_task_preflight=ctx.run_task_preflight,
         mirror_sampling_temp_to_target=ctx.mirror_sampling_temp_to_target,
         sync_sampling_temp_results=ctx.sync_sampling_temp_results,
+        run_all_supplemental_sampling_jobs=ctx.run_all_supplemental_sampling_jobs,
+        run_single_supplemental_game_job=ctx.run_single_supplemental_game_job,
     )
 
 
@@ -423,7 +473,7 @@ def build_group_weight_dialog_deps(ctx):
             ctx.make_extra_buy_mode(group['game_type'])
         )
     return GroupWeightDialogDeps(
-        weight_group_ids=ctx.weight_group_ids,
+        weight_group_ids=getattr(ctx, 'get_weight_group_ids', lambda: ctx.weight_group_ids)(),
         group_weight_modes=ctx.group_weight_modes,
         group_weight_ui_modes=ctx.group_weight_ui_modes,
         ex_group_modes=ctx.ex_group_modes,
@@ -434,7 +484,13 @@ def build_group_weight_dialog_deps(ctx):
         rule_fields=ctx.group_weight_rule_fields,
         rule_field_labels=ctx.group_weight_rule_field_labels,
         rules=ctx.clone_group_weight_rules(ctx.get_group_weight_rules()),
+        group_rules=getattr(ctx, 'clone_group_weight_group_rules', lambda rules: rules or {})(
+            getattr(ctx, 'get_group_weight_group_rules', lambda: {})()
+        ),
         default_rules=ctx.clone_group_weight_rules(ctx.default_group_weight_rules),
+        default_group_rules=getattr(ctx, 'clone_group_weight_group_rules', lambda rules: rules or {})(
+            getattr(ctx, 'default_group_weight_group_rules', {})
+        ),
         special_target_rtp=ctx.get_special_group_target_rtp(),
         default_special_target_rtp=getattr(
             ctx,
@@ -490,6 +546,7 @@ def build_group_weight_dialog_deps(ctx):
             lambda _modes: None,
         ),
         apply_rules=ctx.apply_group_weight_rules_config,
+        apply_group_rules=getattr(ctx, 'apply_group_weight_group_rules_config', lambda _rules: None),
         apply_extra_buy_groups=ctx.apply_extra_buy_groups_config,
         generate_config=ctx.generate_group_weight_config,
     )

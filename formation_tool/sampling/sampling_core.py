@@ -174,6 +174,7 @@ create_final_table_like_source = sampling_table_utils.create_final_table_like_so
 is_same_physical_table = sampling_table_utils.is_same_physical_table
 get_table_columns = sampling_table_utils.get_table_columns
 same_table_structure = sampling_table_utils.same_table_structure
+same_table_structure_for_append = sampling_table_utils.same_table_structure_for_append
 validate_table_config = sampling_table_utils.validate_table_config
 get_sample_description = sampling_table_utils.get_sample_description
 remap_conflicting_sample_ids = sampling_table_utils.remap_conflicting_sample_ids
@@ -183,14 +184,15 @@ detect_end_field_optional = sampling_table_utils.detect_end_field_optional
 validate_end_field_integrity = sampling_table_utils.validate_end_field_integrity
 
 
-def run_single_game(game_config):
+def run_single_game(game_config, *, append_mode=False):
     """执行单个游戏模式采样。"""
     table_config = game_config['table_config']
     sample_conditions = game_config['sample_conditions']
     source_table_name = get_table_name('SOURCE_TABLE', table_config)
 
     print(f"\n{'=' * 50}")
-    print(f"开始处理：{game_config['name']}")
+    action_name = "补充采样" if append_mode else "采样"
+    print(f"开始处理：{game_config['name']}（{action_name}）")
 
     if not check_source_table_exists(table_config):
         print(f"源表 {source_table_name} 不存在，跳过 {game_config['name']}")
@@ -201,7 +203,7 @@ def run_single_game(game_config):
         return False
 
     try:
-        return bool(direct_sample_from_source(table_config, sample_conditions))
+        return bool(direct_sample_from_source(table_config, sample_conditions, append_mode=append_mode))
     except TaskCancelled:
         raise
     except Exception as e:
@@ -805,6 +807,31 @@ def format_changed_pairs_preview(changed_pairs, limit=8):
     return preview
 
 
+def remap_sample_ids_to_append_sequence(current_df, *, id_mapping, next_id_state):
+    """追加模式下给本次采样的 id 整组分配新 id，接在旧数据之后。"""
+    if 'id' not in current_df.columns:
+        raise ValueError("追加写入模式要求源表包含 id 字段")
+
+    source_ids = sorted(int(value) for value in current_df['id'].dropna().unique())
+    if not source_ids:
+        return current_df, 0, 0, []
+
+    assigned_pairs = []
+    next_id = int(next_id_state[0])
+    for source_id in source_ids:
+        if source_id in id_mapping:
+            continue
+        id_mapping[source_id] = next_id
+        assigned_pairs.append((source_id, next_id))
+        next_id += 1
+    next_id_state[0] = next_id
+
+    remapped_df = current_df.copy()
+    remapped_df['id'] = remapped_df['id'].map(lambda value: id_mapping[int(value)])
+    changed_row_count = int(remapped_df['id'].ne(current_df['id']).sum())
+    return remapped_df, len(assigned_pairs), changed_row_count, assigned_pairs
+
+
 def remap_sample_chunk_for_append_mode(
     current_df,
     *,
@@ -814,21 +841,18 @@ def remap_sample_chunk_for_append_mode(
     id_mapping,
     next_id_state,
 ):
-    """追加模式下处理单个采样块的 id 冲突。"""
-    final_conn = refresh_connection_read_view(final_conn, final_db_name, "目标库")
-    current_df, changed_row_count, changed_pairs = remap_conflicting_sample_ids(
+    """追加模式下处理单个采样块的 id 重排。"""
+    current_df, changed_pair_count, changed_row_count, changed_pairs = remap_sample_ids_to_append_sequence(
         current_df,
-        final_conn,
-        staging_table_name,
-        id_mapping,
-        next_id_state,
+        id_mapping=id_mapping,
+        next_id_state=next_id_state,
     )
     if changed_pairs:
         print(
-            f"追加模式：发现 {len(changed_pairs)} 个采样 id 与旧数据冲突，"
-            f"已改写 {changed_row_count} 行 id：{format_changed_pairs_preview(changed_pairs)}"
+            f"追加模式：为 {changed_pair_count} 个采样 id 分配新 id，"
+            f"已改写 {changed_row_count} 行：{format_changed_pairs_preview(changed_pairs)}"
         )
-    return current_df, len(changed_pairs), changed_row_count, final_conn
+    return current_df, changed_pair_count, changed_row_count, final_conn
 
 
 def _format_write_context(target_rebate=None, log_context=None):
@@ -1416,6 +1440,170 @@ def get_table_config_with_final_database(table_config, database):
     return updated
 
 
+def get_table_column_names(conn, table_name):
+    columns = get_table_columns(conn, table_name)
+    if columns is None:
+        return None
+    return [str(column[0]) for column in columns]
+
+
+def _ordered_append_id_columns(columns):
+    order_columns = []
+    for name in ('game_id', 'sort'):
+        if name in columns:
+            order_columns.append(name)
+    return order_columns
+
+
+def reassign_staging_table_ids_for_append(conn, table_name, db_name):
+    """将已复制进中转表的旧数据 id 按旧 id 顺序重排为 1..N。"""
+    columns = get_table_column_names(conn, table_name)
+    if not columns or 'id' not in columns:
+        raise ValueError("追加写入模式要求目标表包含 id 字段")
+
+    row_count = count_table_rows(conn, table_name)
+    if row_count <= 0:
+        return {
+            'row_count': 0,
+            'id_count': 0,
+            'next_id': 1,
+        }
+
+    table_ref = quote_identifier(table_name, "追加重排表名")
+    mapping_table = make_staging_table_name(table_name, 'idmap')
+    remapped_table = make_staging_table_name(table_name, 'idremap')
+    mapping_ref = quote_identifier(mapping_table, "追加id映射表名")
+    remapped_ref = quote_identifier(remapped_table, "追加id重排表名")
+    replaced = False
+    try:
+        drop_table_if_exists(conn, mapping_table)
+        drop_table_if_exists(conn, remapped_table)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"CREATE TABLE {mapping_ref} ("
+                "`old_id` BIGINT NOT NULL PRIMARY KEY, "
+                "`new_id` BIGINT NOT NULL, "
+                "KEY `idx_new_id` (`new_id`)"
+                ") ENGINE=InnoDB"
+            )
+            cur.execute("SET @formation_append_next_id := 0")
+            cur.execute(
+                f"INSERT INTO {mapping_ref} (`old_id`, `new_id`) "
+                "SELECT old_id, (@formation_append_next_id := @formation_append_next_id + 1) AS new_id "
+                f"FROM (SELECT DISTINCT `id` AS old_id FROM {table_ref} ORDER BY `id`) AS old_ids"
+            )
+        conn.commit()
+
+        id_count = count_table_rows(conn, mapping_table)
+        if id_count <= 0:
+            drop_table_if_exists(conn, mapping_table)
+            conn.commit()
+            return {
+                'row_count': row_count,
+                'id_count': 0,
+                'next_id': 1,
+            }
+
+        column_list = ', '.join(quote_identifier(column, "追加重排列名") for column in columns)
+        select_items = []
+        for column in columns:
+            column_ref = quote_identifier(column, "追加重排列名")
+            if column == 'id':
+                select_items.append(f"m.`new_id` AS {column_ref}")
+            else:
+                select_items.append(f"t.{column_ref}")
+        select_list = ', '.join(select_items)
+        order_columns = _ordered_append_id_columns(columns)
+        order_clause = "m.`new_id`"
+        if order_columns:
+            order_clause += ", " + ', '.join(f"t.{quote_identifier(column, '追加排序列名')}" for column in order_columns)
+
+        with conn.cursor() as cur:
+            cur.execute(f"CREATE TABLE {remapped_ref} LIKE {table_ref}")
+            cur.execute(
+                f"INSERT INTO {remapped_ref} ({column_list}) "
+                f"SELECT {select_list} "
+                f"FROM {table_ref} AS t "
+                f"JOIN {mapping_ref} AS m ON t.`id` = m.`old_id` "
+                f"ORDER BY {order_clause}"
+            )
+        conn.commit()
+
+        remapped_count = count_table_rows(conn, remapped_table)
+        if remapped_count != row_count:
+            raise RuntimeError(f"旧数据 id 重排数量不一致：原表 {row_count}，重排表 {remapped_count}")
+
+        replace_table_with_staging(conn, remapped_table, table_name, db_name)
+        replaced = True
+        return {
+            'row_count': row_count,
+            'id_count': id_count,
+            'next_id': id_count + 1,
+        }
+    finally:
+        with contextlib.suppress(Exception):
+            drop_table_if_exists(conn, mapping_table)
+            if not replaced:
+                drop_table_if_exists(conn, remapped_table)
+            conn.commit()
+
+
+def prepare_staging_table_like_source(staging_conn, source_conn, staging_table_config, staging_table_name):
+    drop_table_if_exists(staging_conn, staging_table_name)
+    create_table_like_source(
+        staging_conn,
+        source_conn,
+        staging_table_config,
+        staging_table_name,
+    )
+    staging_conn.commit()
+
+
+def prepare_staging_table_like_existing(source_conn, source_table_name, target_conn, target_table_name):
+    drop_table_if_exists(target_conn, target_table_name)
+    create_table_like_existing(
+        source_conn,
+        source_table_name,
+        target_conn,
+        target_table_name,
+    )
+    target_conn.commit()
+
+
+def copy_existing_final_table_to_append_staging(
+    *,
+    source_conn,
+    final_target_conn,
+    staging_conn,
+    staging_table_config,
+    staging_table_name,
+    final_db_name,
+    staging_db_name,
+    final_table_name,
+):
+    if staging_db_name == final_db_name:
+        copy_table_rows(staging_conn, final_table_name, staging_table_name)
+        staging_conn.commit()
+        return
+
+    def reprepare_target():
+        prepare_staging_table_like_existing(
+            final_target_conn,
+            final_table_name,
+            staging_conn,
+            staging_table_name,
+        )
+
+    dump_import_table_between_databases(
+        get_db_config_by_name(final_db_name),
+        get_db_config_by_name(staging_db_name),
+        final_table_name,
+        staging_table_name,
+        label="复制旧目标表到采样临时库",
+        reprepare_target=reprepare_target,
+    )
+
+
 def reject_same_physical_sampling_table(table_config, names):
     """拦截源表和目标表相同导致的误覆盖风险。"""
     if not is_same_physical_table(table_config):
@@ -1450,14 +1638,27 @@ def prepare_direct_sampling_staging(
     try:
         final_conn.ping(reconnect=True, attempts=MAX_DB_RETRIES, delay=DB_RETRY_DELAY)
         staging_table_name = make_staging_table_name(final_table_name, 'tmp')
-        drop_table_if_exists(final_conn, staging_table_name)
-        create_table_like_source(
-            final_conn,
-            source_conn,
-            staging_table_config,
-            staging_table_name,
-        )
-        final_conn.commit()
+        final_table_exists = table_exists_exact(final_target_conn, final_table_name)
+        if append_mode and final_table_exists:
+            if not same_table_structure_for_append(source_conn, final_target_conn, source_table_name, final_table_name):
+                print(
+                    f"补充采样要求目标表字段名和字段类型与源表一致；"
+                    f"{final_db_name}.{final_table_name} 字段不兼容，目标表未替换"
+                )
+                return None
+            prepare_staging_table_like_existing(
+                final_target_conn,
+                final_table_name,
+                final_conn,
+                staging_table_name,
+            )
+        else:
+            prepare_staging_table_like_source(
+                final_conn,
+                source_conn,
+                staging_table_config,
+                staging_table_name,
+            )
 
         staging_state = {
             'staging_table_name': staging_table_name,
@@ -1466,41 +1667,41 @@ def prepare_direct_sampling_staging(
             'id_mapping': {},
             'next_id_state': [1],
         }
-        final_table_exists = table_exists_exact(final_target_conn, final_table_name)
         if append_mode and final_table_exists:
-            if not same_table_structure(source_conn, final_target_conn, source_table_name, final_table_name):
-                print(
-                    f"追加写入要求目标表结构与源表一致；"
-                    f"{final_db_name}.{final_table_name} 结构不同，目标表未替换"
-                )
-                drop_table_if_exists(final_conn, staging_table_name)
-                final_conn.commit()
-                staging_state['staging_table_name'] = None
-                return None
-            print(f"采样写入模式：不清空追加。正在复制旧数据到临时表 {staging_db_name}.{staging_table_name}...")
-            if staging_db_name == final_db_name:
-                copy_table_rows(final_conn, final_table_name, staging_table_name)
-            else:
-                if final_engine is None or staging_engine is None:
-                    raise RuntimeError("临时库中转追加模式需要目标库和临时库 engine")
-                copy_table_between_engines(
-                    final_engine,
-                    staging_engine,
-                    final_table_name,
-                    staging_table_name,
-                    label="复制旧目标表到采样临时库",
-                )
-            final_conn.commit()
-            staging_state['base_existing_count'] = count_table_rows(final_conn, staging_table_name)
-            staging_state['next_id_state'][0] = get_table_max_id(final_conn, staging_table_name) + 1
             print(
-                f"已复制旧数据 {staging_state['base_existing_count']} 条；"
-                f"如本次采样 id 与旧数据冲突，将从 {staging_state['next_id_state'][0]} 起分配新 id。"
+                f"采样写入模式：补充采样。正在复制旧目标表 "
+                f"{final_db_name}.{final_table_name} 到中转临时表 {staging_db_name}.{staging_table_name}..."
+            )
+            copy_existing_final_table_to_append_staging(
+                source_conn=source_conn,
+                final_target_conn=final_target_conn,
+                staging_conn=final_conn,
+                staging_table_config=staging_table_config,
+                staging_table_name=staging_table_name,
+                final_db_name=final_db_name,
+                staging_db_name=staging_db_name,
+                final_table_name=final_table_name,
+            )
+            staging_state['base_existing_count'] = count_table_rows(final_conn, staging_table_name)
+            print(
+                f"旧目标表复制完成：{staging_state['base_existing_count']} 行，"
+                "正在按旧 id 顺序重排为连续新 id..."
+            )
+            id_reassign_info = reassign_staging_table_ids_for_append(
+                final_conn,
+                staging_table_name,
+                staging_db_name,
+            )
+            staging_state['next_id_state'][0] = int(id_reassign_info['next_id'])
+            print(
+                f"旧数据 id 重排完成：旧数据 {staging_state['base_existing_count']} 行，"
+                f"旧 id {int(id_reassign_info['id_count'])} 个；"
+                f"新采样数据将从 id={staging_state['next_id_state'][0]} 起继续分配。"
             )
             return staging_state
 
         if append_mode:
-            print(f"采样写入模式：不清空追加；正式表 {final_table_name} 不存在，本次按新表写入。")
+            print(f"采样写入模式：补充采样；正式表 {final_db_name}.{final_table_name} 不存在，本次按新表写入。")
         elif final_table_exists:
             structure_text = (
                 "结构一致"
@@ -1904,7 +2105,7 @@ def cleanup_direct_sampling_failure(error, final_conn, names, staging_state, tot
     return final_conn
 
 
-def direct_sample_from_source(table_config, sample_conditions):
+def direct_sample_from_source(table_config, sample_conditions, *, append_mode=False):
     """从源数据直接采样并写入目标表。"""
     deps = SimpleNamespace(
         check_cancelled=check_cancelled,
@@ -1935,4 +2136,5 @@ def direct_sample_from_source(table_config, sample_conditions):
         table_config,
         sample_conditions,
         deps=deps,
+        append_mode=append_mode,
     )

@@ -1,5 +1,6 @@
 """Runner for generating group_weight data."""
 
+from formation_tool.group_weight import group_weight_pair_sets
 from formation_tool.utils import log_utils
 
 print = log_utils.emit
@@ -105,7 +106,7 @@ def collect_group_weight_generation_warnings(context, rebates_by_mode, mode_exis
         if not rebates_by_mode.get(mode):
             warnings.append(f"模式 {mode} 的采样配置表为空或没有已选 rebate")
             continue
-        if not mode_pairs.get(mode) and not rows:
+        if not group_weight_pair_sets.mode_has_any_pairs(mode_pairs, mode) and not rows:
             warnings.append(f"模式 {mode} 按当前权重规则匹配后没有可写入的 rebate")
     return warnings
 

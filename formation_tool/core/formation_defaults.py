@@ -42,6 +42,7 @@ DEFAULT_WEIGHT_GROUP_IDS = (
     9500, 9501, 9400, 9401, 9300, 9301,
     9200, 9201, 9100, 9101, 9000, 9001,
 )
+DEFAULT_EXTRA_WEIGHT_GROUPS = []
 
 DEFAULT_SPECIAL_WEIGHT_BY_LAST_DIGIT = {
     0: 100,
@@ -74,6 +75,15 @@ def clone_rule_map(rules):
     }
 
 
+def clone_group_rule_map(rules):
+    """Return a copy of group-suffix -> mode -> rule-list mappings."""
+    return {
+        str(group_suffix): clone_rule_map(mode_rules)
+        for group_suffix, mode_rules in (rules or {}).items()
+        if isinstance(mode_rules, dict)
+    }
+
+
 def clone_int_map(value):
     """Return a mutable int-keyed copy for editable weight mappings."""
     return {int(key): int(item) for key, item in value.items()}
@@ -97,6 +107,14 @@ def clone_direct_count_tiers(tiers=None):
 def clone_extra_buy_groups():
     """Return a mutable copy of default extra buy-group rows."""
     return [dict(group) for group in DEFAULT_EXTRA_BUY_GROUPS]
+
+
+def clone_extra_weight_groups(value=None):
+    """Return a mutable copy of extra group_weight group rows."""
+    return [
+        dict(group)
+        for group in (DEFAULT_EXTRA_WEIGHT_GROUPS if value is None else value)
+    ]
 
 
 def clone_ex_source_suffixes(value=None):
@@ -409,3 +427,7 @@ GROUP_WEIGHT_RULES = {
         {'rebate_min': 10000000, 'weight': 0},
     ],
 }
+
+# Optional overrides for group_weight rules by group_id last digit.
+# Empty means every group falls back to GROUP_WEIGHT_RULES.
+GROUP_WEIGHT_GROUP_RULES = {}

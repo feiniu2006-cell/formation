@@ -56,9 +56,23 @@ def apply_cli_settings_data(data, *, deps, runtime_only=False):
         deps.apply_group_weight_rules_config(
             deps.normalize_group_weight_rules_for_load(data['group_weight_rules'])
         )
+    if 'group_weight_group_rules' in data:
+        apply_group_rules = getattr(deps, 'apply_group_weight_group_rules_config', None)
+        normalize_group_rules = getattr(
+            deps,
+            'normalize_group_weight_group_rules_for_load',
+            lambda rules: rules or {},
+        )
+        if apply_group_rules is not None:
+            apply_group_rules(normalize_group_rules(data['group_weight_group_rules']))
 
     group_options = data.get('group_weight_options', {})
     if group_options:
+        if 'extra_weight_groups' in group_options:
+            apply_extra_weight_groups = getattr(deps, 'apply_extra_weight_groups_config', None)
+            normalize_extra_weight_groups = getattr(deps, 'normalize_extra_weight_groups', lambda groups: groups or [])
+            if apply_extra_weight_groups is not None:
+                apply_extra_weight_groups(normalize_extra_weight_groups(group_options.get('extra_weight_groups')))
         if 'buy_enabled' in group_options:
             deps.apply_buy_group_enabled(group_options.get('buy_enabled'))
         if 'ex_buy_enabled' in group_options:

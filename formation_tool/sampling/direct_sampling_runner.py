@@ -35,7 +35,7 @@ def _call_with_supported_kwargs(func, *args, **kwargs):
     return func(*args, **supported)
 
 
-def direct_sample_from_source(table_config, sample_conditions, *, deps):
+def direct_sample_from_source(table_config, sample_conditions, *, deps, append_mode=False):
     """从源数据直接采样，写入目标表。"""
     source_conn = None
     final_conn = None
@@ -72,7 +72,7 @@ def direct_sample_from_source(table_config, sample_conditions, *, deps):
 
         source_engine = deps.get_engine_by_table('SOURCE_TABLE', table_config)
         config_engine = deps.get_engine_by_table('REBATE_CONFIG_TABLE', table_config)
-        append_mode = False
+        append_mode = bool(append_mode)
         get_sampling_staging_table_config = getattr(
             deps,
             'get_sampling_staging_table_config',

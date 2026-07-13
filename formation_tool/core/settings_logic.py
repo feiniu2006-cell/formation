@@ -97,6 +97,7 @@ def build_app_settings_data(
     sampling_temp_db=None,
     sampling_auto_sync_to_target=formation_defaults.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET,
     group_weight_rules,
+    group_weight_group_rules=None,
     group_weight_options,
     direct_count_modes,
     direct_count_tiers,
@@ -124,6 +125,7 @@ def build_app_settings_data(
             'auto_sync_to_target': bool(sampling_auto_sync_to_target),
         },
         'group_weight_rules': group_weight_rules,
+        'group_weight_group_rules': group_weight_group_rules or {},
         'group_weight_options': group_weight_options,
         'direct_count_modes': sorted(direct_count_modes),
         'direct_count_tiers': [dict(rule) for rule in direct_count_tiers],
@@ -167,6 +169,7 @@ def migrate_settings_data(data):
         group_options.setdefault('ex_buy_source_suffix', formation_defaults.DEFAULT_EX_BUY_GROUP_SOURCE_SUFFIX)
         group_options.setdefault('ex_source_suffixes', {})
         group_options.setdefault('ex_group_target_rtps', {})
+        group_options.setdefault('extra_weight_groups', formation_defaults.clone_extra_weight_groups())
         group_options.setdefault(
             'zero_rebate_inference_modes',
             list(formation_modes.DEFAULT_ZERO_REBATE_INFERENCE_MODES),

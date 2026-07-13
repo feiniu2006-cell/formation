@@ -66,6 +66,10 @@ def build_rule_import_preview(data):
         lines.append(f"- 采样详细日志：{'开启' if detailed_log else '关闭'}")
     if 'group_weight_rules' in data:
         lines.append(f"- group_weight 权重规则：{_count_mapping_items(data.get('group_weight_rules'))} 个模式")
+    if 'group_weight_group_rules' in data:
+        lines.append(
+            f"- group_weight 分组权重规则：{_count_mapping_items(data.get('group_weight_group_rules'))} 个分组"
+        )
     if 'group_weight_options' in data:
         options = data.get('group_weight_options') or {}
         buy_groups = options.get('buy_groups') or []
@@ -74,6 +78,8 @@ def build_rule_import_preview(data):
             int(bool(options.get('buy_enabled'))) + _count_sequence_items(extra_buy_groups)
         )
         lines.append(f"- 购买局配置：{group_count} 个购买局配置")
+        if options.get('extra_weight_groups'):
+            lines.append(f"- 额外权重分组：{_count_sequence_items(options.get('extra_weight_groups'))} 个")
     if 'direct_count_modes' in data:
         lines.append(f"- 小表直接计数模式：{_count_sequence_items(data.get('direct_count_modes'))} 个")
     if 'direct_count_tiers' in data:
@@ -139,8 +145,14 @@ class SlotAppSettingsMixin:
         self.ex_multiplier_var.set(str(deps.default_ex_group_multiplier))
         _set_ex_source_suffix_vars(self, {})
         self.set_extra_buy_group_rows(deps.default_extra_buy_groups)
+        self.set_extra_weight_group_rows(getattr(deps, "default_extra_weight_groups", []))
         deps.apply_rebate_rules_config(deps.clone_rebate_rules(deps.default_rebate_rules))
         deps.apply_group_weight_rules_config(deps.clone_group_weight_rules(deps.default_group_weight_rules))
+        getattr(deps, "apply_group_weight_group_rules_config", lambda _rules: None)(
+            getattr(deps, "clone_group_weight_group_rules", lambda rules: rules or {})(
+                getattr(deps, "default_group_weight_group_rules", {})
+            )
+        )
         deps.apply_special_group_target_rtp(deps.default_special_group_target_rtp)
         getattr(deps, "apply_ex_group_target_rtps_config", lambda _targets: None)(
             getattr(deps, "default_ex_group_target_rtps", {})
@@ -157,6 +169,9 @@ class SlotAppSettingsMixin:
         deps.apply_ex_buy_group_source_suffix(deps.default_ex_buy_group_source_suffix)
         deps.apply_ex_source_suffixes_config({})
         deps.apply_extra_buy_groups_config(deps.default_extra_buy_groups)
+        getattr(deps, "apply_extra_weight_groups_config", lambda _groups: None)(
+            getattr(deps, "default_extra_weight_groups", [])
+        )
         deps.apply_rebate_config_direct_count_modes([])
         deps.apply_rebate_config_direct_count_tiers(deps.default_direct_count_tiers)
 
@@ -186,6 +201,9 @@ class SlotAppSettingsMixin:
             sampling_temp_db=getattr(deps, "get_sampling_temp_db", lambda: None)(),
             sampling_auto_sync_to_target=getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)(),
             group_weight_rules=deps.clone_group_weight_rules(deps.get_group_weight_rules()),
+            group_weight_group_rules=getattr(deps, "clone_group_weight_group_rules", lambda rules: rules or {})(
+                getattr(deps, "get_group_weight_group_rules", lambda: {})()
+            ),
             group_weight_options={
                 'special_target_rtp': deps.get_special_group_target_rtp(),
                 'ex_group_target_rtps': getattr(deps, "get_ex_group_target_rtps", lambda: {})(),
@@ -206,6 +224,9 @@ class SlotAppSettingsMixin:
                 'ex_multiplier': deps.get_ex_group_multiplier(),
                 'ex_source_suffixes': deps.get_ex_source_suffixes(),
                 'extra_buy_groups': deps.clone_extra_buy_groups(deps.get_extra_buy_groups()),
+                'extra_weight_groups': getattr(deps, "clone_extra_weight_groups", lambda groups: groups or [])(
+                    getattr(deps, "get_extra_weight_groups", lambda: [])()
+                ),
             },
             direct_count_modes=deps.get_direct_count_modes(),
             direct_count_tiers=deps.get_direct_count_tiers(),
@@ -273,6 +294,12 @@ class SlotAppSettingsMixin:
             deps.apply_group_weight_rules_config(
                 deps.normalize_group_weight_rules_for_load(data['group_weight_rules'])
             )
+        if 'group_weight_group_rules' in data:
+            getattr(deps, "apply_group_weight_group_rules_config", lambda _rules: None)(
+                getattr(deps, "normalize_group_weight_group_rules_for_load", lambda rules: rules or {})(
+                    data['group_weight_group_rules']
+                )
+            )
 
         group_options = data.get('group_weight_options', {})
         if group_options:
@@ -304,9 +331,15 @@ class SlotAppSettingsMixin:
             )
             extra_buy_groups = group_options.get('extra_buy_groups', deps.get_extra_buy_groups())
             self.set_extra_buy_group_rows(extra_buy_groups)
+            extra_weight_groups = group_options.get(
+                'extra_weight_groups',
+                getattr(deps, "get_extra_weight_groups", lambda: [])(),
+            )
+            self.set_extra_weight_group_rows(extra_weight_groups)
             if group_options.get('buy_groups'):
                 getattr(deps, "apply_buy_groups_config", lambda _groups: None)(group_options['buy_groups'])
             deps.apply_extra_buy_groups_config(extra_buy_groups)
+            getattr(deps, "apply_extra_weight_groups_config", lambda _groups: None)(extra_weight_groups)
             if 'special_target_rtp' in group_options:
                 deps.apply_special_group_target_rtp(group_options.get('special_target_rtp'))
             if 'ex_group_target_rtps' in group_options:
@@ -618,6 +651,9 @@ class SlotAppSettingsMixin:
             deps.apply_ex_group_multiplier(self.ex_multiplier_var.get())
             deps.apply_ex_source_suffixes_config(_collect_ex_source_suffixes(self))
             deps.apply_extra_buy_groups_config(self.collect_extra_buy_groups())
+            getattr(deps, "apply_extra_weight_groups_config", lambda _groups: None)(
+                self.collect_extra_weight_groups()
+            )
             getattr(deps, "apply_buy_groups_config", lambda _groups: None)(_build_current_buy_groups(self))
             deps.apply_sampling_detailed_log(self.sampling_detailed_log_var.get())
             getattr(deps, "apply_sampling_temp_db_config", lambda _enabled, _db: None)(

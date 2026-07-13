@@ -1,4 +1,5 @@
 """Build encrypted check_multilang_folder.exe for the multilang checker."""
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +12,7 @@ PROJECT_ROOT = TOOL_ROOT.parent
 BUILD_ROOT = TOOL_ROOT / "build_encrypted"
 DIST_ROOT = TOOL_ROOT / "dist_encrypted"
 MAIN_PATH = TOOL_ROOT / "check_multilang_folder.py"
+SPECIAL_PHRASE_CONFIG_PATH = TOOL_ROOT / "special_phrase_translations.json"
 DB_CONFIG_PATH = PROJECT_ROOT / "db_config.py"
 LAUNCHER_PATH = BUILD_ROOT / "check_multilang_encrypted_launcher.py"
 SPEC_PATH = BUILD_ROOT / "check_multilang_folder.spec"
@@ -24,6 +26,8 @@ def encrypt_text(fernet, path):
 def build_launcher():
     if not MAIN_PATH.is_file():
         raise FileNotFoundError(f"未找到多语言检测主脚本: {MAIN_PATH}")
+    if not SPECIAL_PHRASE_CONFIG_PATH.is_file():
+        raise FileNotFoundError(f"未找到特殊短语配置: {SPECIAL_PHRASE_CONFIG_PATH}")
     if not DB_CONFIG_PATH.is_file():
         raise FileNotFoundError(f"未找到公共数据库配置: {DB_CONFIG_PATH}")
 
@@ -182,12 +186,19 @@ def run_pyinstaller():
     )
 
 
+def copy_runtime_configs():
+    DIST_ROOT.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(SPECIAL_PHRASE_CONFIG_PATH, DIST_ROOT / SPECIAL_PHRASE_CONFIG_PATH.name)
+
+
 def main():
     launcher_path = build_launcher()
     spec_path = write_spec()
     print(f"已生成加密启动器: {launcher_path}")
     print(f"已生成 PyInstaller 配置: {spec_path}")
     run_pyinstaller()
+    copy_runtime_configs()
+    print(f"已复制特殊短语配置: {DIST_ROOT / SPECIAL_PHRASE_CONFIG_PATH.name}")
     print(f"打包完成: {EXE_PATH}")
 
 

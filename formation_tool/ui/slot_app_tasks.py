@@ -72,7 +72,7 @@ class SlotAppTaskMixin:
             f"免费局个位1={trigger_weights['free_1']}\n"
         )
 
-    def append_sampling_config_log(self):
+    def append_sampling_config_log(self, *, append_mode=False):
         deps = self.task_deps
         rebate_rules = deps.get_rebate_rules()
         self.append_log(
@@ -88,7 +88,12 @@ class SlotAppTaskMixin:
             + ("开启\n" if deps.get_sampling_detailed_log() else "关闭\n")
         )
         temp_db = getattr(deps, "get_sampling_temp_db", lambda: "")()
-        if getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)():
+        if append_mode:
+            self.append_log(
+                f"采样方案：补充采样，复制目标库旧表到中转库 {temp_db}，"
+                "重排旧 id 后追加新采样数据\n"
+            )
+        elif getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)():
             self.append_log(f"采样方案：写入中转库 {temp_db} 正式表，完成后自动镜像到目标库\n")
         else:
             self.append_log(f"采样方案：写入中转库 {temp_db} 正式表，目标库不变\n")
@@ -175,7 +180,8 @@ class SlotAppTaskMixin:
         self.append_runtime_config_log()
         kind = self.get_task_log_kind(title, preflight)
         if kind in {"rebate_config", "sampling"}:
-            self.append_sampling_config_log()
+            append_mode = bool(preflight.get("append_mode")) if isinstance(preflight, dict) else False
+            self.append_sampling_config_log(append_mode=append_mode)
         elif kind == "group_weight":
             self.append_group_weight_config_log()
             self.append_purchase_config_log()
@@ -352,20 +358,32 @@ class SlotAppTaskMixin:
     def set_config_state(self, state):
         if state == "disabled":
             for widget, _ in self.config_widgets:
-                widget.configure(state="disabled")
+                with contextlib.suppress(Exception):
+                    widget.configure(state="disabled")
             if self.add_extra_buy_button is not None:
                 self.add_extra_buy_button.configure(state="disabled")
             for row_info in self.extra_buy_rows:
                 for widget in row_info.get('widgets', []):
-                    widget.configure(state="disabled")
+                    with contextlib.suppress(Exception):
+                        widget.configure(state="disabled")
+            for row_info in getattr(self, 'extra_weight_group_rows', []):
+                for widget in row_info.get('widgets', []):
+                    with contextlib.suppress(Exception):
+                        widget.configure(state="disabled")
             return
         for widget, enabled_state in self.config_widgets:
-            widget.configure(state=enabled_state)
+            with contextlib.suppress(Exception):
+                widget.configure(state=enabled_state)
         if self.add_extra_buy_button is not None:
             self.add_extra_buy_button.configure(state="normal")
         for row_info in self.extra_buy_rows:
             for widget in row_info.get('widgets', []):
-                widget.configure(state="normal")
+                with contextlib.suppress(Exception):
+                    widget.configure(state="normal")
+        for row_info in getattr(self, 'extra_weight_group_rows', []):
+            for widget in row_info.get('widgets', []):
+                with contextlib.suppress(Exception):
+                    widget.configure(state="normal")
 
     def on_close(self):
         if self.running:

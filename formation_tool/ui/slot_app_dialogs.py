@@ -28,6 +28,22 @@ class SlotAppDialogMixin:
             run_single_game_job=self.app_deps.run_single_game_job,
         ).open()
 
+    def open_single_supplemental_sampling_dialog(self):
+        if not self.can_open_config_dialog():
+            return
+        SingleSamplingDialog(
+            self,
+            sample_game_type_names=self.app_deps.get_sample_game_type_names(),
+            game_configs=self.app_deps.get_game_configs(),
+            source_db_getter=self.app_deps.get_source_db,
+            formation_exists_loader=self.app_deps.get_sampling_formation_exists,
+            run_single_game_job=self.app_deps.run_single_supplemental_game_job,
+            dialog_title="单独补充采样",
+            start_button_text="开始补充",
+            task_name_suffix="补充采样",
+            append_mode=True,
+        ).open()
+
     def open_rebate_rules_dialog(self):
         if not self.can_open_config_dialog():
             return

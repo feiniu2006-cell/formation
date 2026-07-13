@@ -12,6 +12,21 @@ ZERO_REBATE_MISSING_TEXT = "不存在rebate=0"
 DEFAULT_RTP_GROUP_ID = 9650
 
 
+def clone_mode_rules_map(rules):
+    return {
+        str(mode): [dict(rule) for rule in mode_rules]
+        for mode, mode_rules in (rules or {}).items()
+    }
+
+
+def clone_group_rules_map(rules):
+    return {
+        str(group_suffix): clone_mode_rules_map(mode_rules)
+        for group_suffix, mode_rules in (rules or {}).items()
+        if isinstance(mode_rules, dict)
+    }
+
+
 def normalize_weight_curve_points(rules):
     """Return sorted (rebate, weight) points that can be drawn on the chart."""
     points_by_rebate = {}
@@ -35,6 +50,31 @@ def filter_weight_curve_points(points, *, hide_zero_rebate=False):
         for rebate, weight in (points or [])
         if int(rebate) != 0
     ]
+
+
+def format_zero_rebate_share_text(points):
+    """Format the final rebate=0 weight share shown beside the chart."""
+    normalized_points = normalize_weight_curve_points(
+        {'rebate_min': rebate, 'weight': weight}
+        for rebate, weight in (points or [])
+    )
+    if not normalized_points:
+        return "rebate=0 占比（不中奖率）：--"
+
+    weights_by_rebate = dict(normalized_points)
+    if 0 not in weights_by_rebate:
+        return "rebate=0 占比（不中奖率）：无 rebate=0"
+
+    zero_weight = weights_by_rebate[0]
+    total_weight = sum(weights_by_rebate.values())
+    if total_weight <= 0:
+        return "rebate=0 占比（不中奖率）：--（总权重为0）"
+
+    share = zero_weight / total_weight * 100
+    return (
+        f"rebate=0 占比（不中奖率）：{share:.4f}%"
+        f"（0权重={zero_weight}，总权重={total_weight}）"
+    )
 
 
 def format_chart_axis_value(value):
@@ -68,6 +108,8 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         self.rule_editor = None
         self.notebook = None
         self.current_group_var = None
+        self.group_suffix_var = None
+        self.group_suffixes = []
         self.rtp_info_var = None
         self.special_target_rtp_var = None
         self.ex_target_rtp_vars = {}
@@ -79,7 +121,15 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         self._updating_zero_rebate_state = False
         self.weight_chart_canvases = {}
         self.weight_chart_points = {}
+        self.zero_rebate_share_vars = {}
         self.hide_zero_rebate_chart_var = None
+        self.base_rules = {}
+        self.default_base_rules = {}
+        self.group_rules_by_suffix = {}
+        self.default_group_rules_by_suffix = {}
+        self.extra_buy_rules_by_mode = {}
+        self.current_rule_group_suffix = None
+        self._loading_group_rules = False
 
     def open(self):
         self.create_dialog(
@@ -150,6 +200,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         )
         self.initialize_zero_rebate_inference_vars()
         self.initialize_independent_rtp_vars()
+        self.initialize_group_rule_state()
 
         self.show_missing_config_warning()
         self.build_header()
@@ -218,14 +269,190 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             width=36,
         )
         current_group_combo.grid(row=0, column=1, sticky="w")
+        self.current_rule_group_suffix = self.get_selected_group_suffix()
+        self.group_suffixes = self.get_available_group_suffixes()
+        self.group_suffix_var = tk.IntVar(value=self.current_rule_group_suffix)
+        ttk.Label(rtp_frame, text="权重分组").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
+        suffix_frame = ttk.Frame(rtp_frame)
+        suffix_frame.grid(row=1, column=1, sticky="w", pady=(8, 0))
+        for col, suffix in enumerate(self.group_suffixes):
+            ttk.Radiobutton(
+                suffix_frame,
+                text=f"分组{suffix}",
+                variable=self.group_suffix_var,
+                value=suffix,
+                command=self.on_group_suffix_changed,
+            ).grid(row=0, column=col, sticky="w", padx=(0, 10))
         ttk.Label(rtp_frame, textvariable=self.rtp_info_var, wraplength=760, justify="left").grid(
-            row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0)
+            row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0)
         )
 
-        current_group_combo.bind("<<ComboboxSelected>>", self.update_rtp_info)
+        current_group_combo.bind("<<ComboboxSelected>>", self.on_current_group_changed)
         self.special_target_rtp_var.trace_add("write", lambda *_args: self.update_rtp_info())
         for var in self.ex_target_rtp_vars.values():
             var.trace_add("write", lambda *_args: self.update_rtp_info())
+
+    def initialize_group_rule_state(self):
+        self.base_rules = clone_mode_rules_map(getattr(self.deps, 'rules', {}))
+        self.default_base_rules = clone_mode_rules_map(getattr(self.deps, 'default_rules', {}))
+        self.group_rules_by_suffix = clone_group_rules_map(getattr(self.deps, 'group_rules', {}))
+        self.default_group_rules_by_suffix = clone_group_rules_map(
+            getattr(self.deps, 'default_group_rules', {})
+        )
+        self.extra_buy_rules_by_mode = {}
+        for group in getattr(self.deps, 'extra_buy_groups', []):
+            mode = self.deps.make_extra_buy_mode(group['game_type'])
+            self.extra_buy_rules_by_mode[mode] = [
+                dict(rule)
+                for rule in group.get(
+                    'rules',
+                    self.base_rules.get(self.deps.buy_group_mode, []),
+                )
+            ]
+
+    def get_selected_group_id(self):
+        text = self.current_group_var.get() if self.current_group_var is not None else ""
+        return int(text.split(" ", 1)[0])
+
+    def get_selected_group_suffix(self):
+        return self.get_selected_group_id() % 10
+
+    def get_available_group_suffixes(self):
+        suffixes = sorted({int(group_id) % 10 for group_id in self.deps.weight_group_ids})
+        return suffixes or [0]
+
+    def find_group_id_for_suffix(self, group_suffix, preferred_group_id=None):
+        group_suffix = int(group_suffix)
+        candidates = [
+            int(group_id)
+            for group_id in self.deps.weight_group_ids
+            if int(group_id) % 10 == group_suffix
+        ]
+        if not candidates:
+            return None
+        preferred_ids = []
+        if preferred_group_id is not None:
+            try:
+                preferred_ids.append(int(preferred_group_id))
+            except (TypeError, ValueError):
+                pass
+        preferred_ids.append(DEFAULT_RTP_GROUP_ID)
+        for preferred_id in preferred_ids:
+            preferred_prefix = preferred_id // 10
+            for group_id in candidates:
+                if group_id // 10 == preferred_prefix:
+                    return group_id
+        return candidates[0]
+
+    def set_group_suffix_var(self, group_suffix):
+        var = getattr(self, 'group_suffix_var', None)
+        if var is not None:
+            var.set(int(group_suffix))
+
+    def get_group_rules_for_suffix(self, group_suffix):
+        return self.group_rules_by_suffix.setdefault(str(group_suffix), {})
+
+    def get_rules_for_mode_group(self, mode, group_suffix):
+        mode = str(mode)
+        is_extra_buy_mode = getattr(self.deps, 'is_extra_buy_mode', lambda _mode: False)
+        if is_extra_buy_mode(mode):
+            return getattr(self, 'extra_buy_rules_by_mode', {}).get(mode, self.get_default_rules_for_mode(mode))
+        group_rules = getattr(self, 'group_rules_by_suffix', {}).get(str(group_suffix), {})
+        if mode in group_rules:
+            return group_rules.get(mode, [])
+        return getattr(self, 'base_rules', getattr(self.deps, 'rules', {})).get(mode, [])
+
+    def save_visible_rules_for_group(self, group_suffix, *, show_error=False):
+        if self.rule_editor is None:
+            return True
+        try:
+            suffix_rules = clone_mode_rules_map(self.group_rules_by_suffix.get(str(group_suffix), {}))
+            for mode in self.displayed_modes:
+                parsed = self.parse_group_weight_rule_rows(
+                    mode,
+                    self.rule_editor.get_rows(mode),
+                )
+                if self.deps.is_extra_buy_mode(mode):
+                    self.extra_buy_rules_by_mode[mode] = parsed
+                elif mode in self.deps.group_weight_modes:
+                    suffix_rules[mode] = parsed
+            self.group_rules_by_suffix[str(group_suffix)] = suffix_rules
+            return True
+        except ValueError as e:
+            if show_error:
+                messagebox.showerror("group_weight 权重配置错误", str(e), parent=self.dialog)
+            return False
+
+    def load_rules_for_group(self, group_suffix):
+        if self.rule_editor is None:
+            return
+        self._loading_group_rules = True
+        try:
+            modes = getattr(
+                self,
+                'displayed_modes',
+                list(getattr(self.rule_editor, 'mode_rows', {})),
+            )
+            for mode in modes:
+                self.rule_editor.clear_rule_rows(mode)
+                for rule in self.get_initial_rules_for_mode(mode, group_suffix):
+                    self.rule_editor.add_rule_row(mode, rule)
+            self.apply_zero_rebate_entry_states()
+            self.refresh_zero_rebate_option_states()
+        finally:
+            self._loading_group_rules = False
+
+    def switch_rule_group_suffix(self, new_suffix, *, preferred_group_id=None, current_group_already_set=False):
+        previous_suffix = getattr(self, 'current_rule_group_suffix', None)
+        new_suffix = int(new_suffix)
+        if previous_suffix == new_suffix:
+            self.set_group_suffix_var(new_suffix)
+            self.update_rtp_info()
+            return True
+        if previous_suffix is not None:
+            if not self.save_visible_rules_for_group(previous_suffix, show_error=True):
+                restore_group_id = self.find_group_id_for_suffix(previous_suffix, preferred_group_id)
+                if restore_group_id is not None:
+                    self.current_group_var.set(self.deps.format_group_rtp_option(restore_group_id))
+                self.set_group_suffix_var(previous_suffix)
+                return False
+        if not current_group_already_set:
+            group_id = self.find_group_id_for_suffix(new_suffix, preferred_group_id)
+            if group_id is not None:
+                self.current_group_var.set(self.deps.format_group_rtp_option(group_id))
+        self.current_rule_group_suffix = new_suffix
+        self.set_group_suffix_var(new_suffix)
+        self.load_rules_for_group(new_suffix)
+        self.update_rtp_info()
+        return True
+
+    def on_current_group_changed(self, _event=None):
+        try:
+            group_id = self.get_selected_group_id()
+        except (ValueError, IndexError):
+            self.update_rtp_info()
+            return
+        self.switch_rule_group_suffix(
+            group_id % 10,
+            preferred_group_id=group_id,
+            current_group_already_set=True,
+        )
+
+    def on_group_suffix_changed(self):
+        try:
+            new_suffix = int(self.group_suffix_var.get())
+        except (TypeError, ValueError):
+            self.update_rtp_info()
+            return
+        try:
+            preferred_group_id = self.get_selected_group_id()
+        except (ValueError, IndexError):
+            preferred_group_id = DEFAULT_RTP_GROUP_ID
+        self.switch_rule_group_suffix(
+            new_suffix,
+            preferred_group_id=preferred_group_id,
+            current_group_already_set=False,
+        )
 
     def initialize_zero_rebate_inference_vars(self):
         if hasattr(self.deps, 'zero_rebate_inference_modes'):
@@ -269,7 +496,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             self.rule_editor.add_mode_tab(
                 mode,
                 mode_name,
-                self.get_initial_rules_for_mode(mode),
+                self.get_initial_rules_for_mode(mode, self.current_rule_group_suffix),
                 add_button_text=f"新增{mode_name}区间",
                 options_builder=self.build_mode_options,
                 side_panel_builder=self.build_weight_chart_panel,
@@ -297,6 +524,13 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             command=self.redraw_all_weight_charts,
         ).grid(row=0, column=1, sticky="e", padx=(10, 12))
         ttk.Label(header, text="X: rebate    Y: 权重", foreground="#777777").grid(row=0, column=2, sticky="e")
+        share_var = tk.StringVar(master=self.dialog, value=format_zero_rebate_share_text([]))
+        self.zero_rebate_share_vars[mode] = share_var
+        ttk.Label(
+            header,
+            textvariable=share_var,
+            foreground="#555555",
+        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         canvas = tk.Canvas(
             chart_frame,
@@ -442,16 +676,22 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             command=self.dialog.destroy,
         ).grid(row=0, column=3, sticky="e")
 
-    def get_initial_rules_for_mode(self, mode):
-        if self.deps.is_extra_buy_mode(mode):
-            extra_group = self.deps.get_extra_buy_group_by_mode(mode) or {}
-            return extra_group.get('rules', self.deps.default_rules.get(self.deps.buy_group_mode, []))
-        return self.deps.rules.get(mode, [])
+    def get_initial_rules_for_mode(self, mode, group_suffix=None):
+        if group_suffix is None:
+            group_suffix = getattr(self, 'current_rule_group_suffix', None)
+        return [
+            dict(rule)
+            for rule in self.get_rules_for_mode_group(mode, group_suffix)
+        ]
 
     def get_default_rules_for_mode(self, mode):
-        if self.deps.is_extra_buy_mode(mode):
-            return self.deps.default_rules.get(self.deps.buy_group_mode, [])
-        return self.deps.default_rules.get(mode, [])
+        is_extra_buy_mode = getattr(self.deps, 'is_extra_buy_mode', lambda _mode: False)
+        if is_extra_buy_mode(mode):
+            return getattr(self, 'default_base_rules', self.deps.default_rules).get(
+                self.deps.buy_group_mode,
+                [],
+            )
+        return getattr(self, 'default_base_rules', self.deps.default_rules).get(mode, [])
 
     def reset_group_weight_rules_to_defaults(self):
         if not messagebox.askyesno(
@@ -460,10 +700,18 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             parent=self.dialog,
         ):
             return
-        for mode in list(self.rule_editor.mode_rows):
-            self.rule_editor.clear_rule_rows(mode)
-            for rule in self.get_default_rules_for_mode(mode):
-                self.rule_editor.add_rule_row(mode, rule)
+        self.base_rules = clone_mode_rules_map(
+            getattr(self, 'default_base_rules', self.deps.default_rules)
+        )
+        self.group_rules_by_suffix = clone_group_rules_map(
+            getattr(self, 'default_group_rules_by_suffix', getattr(self.deps, 'default_group_rules', {}))
+        )
+        self.extra_buy_rules_by_mode = {
+            mode: [dict(rule) for rule in self.get_default_rules_for_mode(mode)]
+            for mode in getattr(self.rule_editor, 'mode_rows', {})
+            if getattr(self.deps, 'is_extra_buy_mode', lambda _mode: False)(mode)
+        }
+        self.load_rules_for_group(getattr(self, 'current_rule_group_suffix', None))
         self.apply_zero_rebate_entry_states()
         default_target = getattr(self.deps, 'default_special_target_rtp', None)
         self.special_target_rtp_var.set("" if default_target is None else str(default_target))
@@ -529,6 +777,11 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         return row > 0
 
     def parse_dialog_rules(self, mode):
+        if self.rule_editor is None or mode not in getattr(self.rule_editor, 'mode_rows', {}):
+            return self.get_initial_rules_for_mode(
+                mode,
+                getattr(self, 'current_rule_group_suffix', None),
+            ), None
         parsed_rules = []
         for row_info in self.rule_editor.get_rows(mode):
             rebate_text = row_info['vars']['rebate_min'].get().strip()
@@ -586,6 +839,9 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         if not hasattr(self, 'weight_chart_points'):
             self.weight_chart_points = {}
         self.weight_chart_points[mode] = list(points or [])
+        share_var = getattr(self, 'zero_rebate_share_vars', {}).get(mode)
+        if share_var is not None:
+            share_var.set(format_zero_rebate_share_text(self.weight_chart_points[mode]))
         self.redraw_weight_chart(mode)
 
     def hide_zero_rebate_in_chart(self):
@@ -725,6 +981,8 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         return targets, errors
 
     def update_rtp_info(self, _event=None):
+        if getattr(self, '_loading_group_rules', False):
+            return
         if getattr(self, '_updating_zero_rebate_state', False):
             return
         self.apply_zero_rebate_entry_states()
@@ -737,11 +995,14 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             self.update_weight_chart_points(self.get_current_mode(), [])
             return
         current_mode = self.get_current_mode()
+        selected_suffix = group_id % 10
 
         rules_by_mode = {}
         parse_errors = {}
         for mode in self.dialog_modes:
             rules_by_mode[mode], parse_errors[mode] = self.parse_dialog_rules(mode)
+            if mode not in getattr(self.rule_editor, 'mode_rows', {}) and parse_errors[mode] is None:
+                rules_by_mode[mode] = self.get_initial_rules_for_mode(mode, selected_suffix)
         ex_target_rtps, ex_target_errors = self.parse_ex_target_rtps_for_preview()
         parse_errors.update(ex_target_errors)
 
@@ -833,19 +1094,25 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         return mode_rules
 
     def collect_group_weight_rules(self, include_buy):
-        rules = {}
+        rules = clone_mode_rules_map(self.base_rules)
         for mode in self.deps.group_weight_modes:
-            if mode not in self.displayed_modes:
-                rules[mode] = self.deps.rules.get(mode, [])
-                continue
             if mode == self.deps.buy_group_mode and not include_buy:
-                rules[mode] = self.deps.rules.get(mode, [])
+                rules[mode] = self.base_rules.get(mode, [])
                 continue
-            rules[mode] = self.parse_group_weight_rule_rows(
-                mode,
-                self.rule_editor.get_rows(mode),
-            )
+            rules.setdefault(mode, self.base_rules.get(mode, []))
         return self.deps.validate_rules(rules)
+
+    def collect_group_weight_group_rules(self):
+        group_rules = clone_group_rules_map(self.group_rules_by_suffix)
+        return {
+            str(group_suffix): {
+                mode: [dict(rule) for rule in mode_rules]
+                for mode, mode_rules in rules_by_mode.items()
+                if mode in self.deps.group_weight_modes
+            }
+            for group_suffix, rules_by_mode in group_rules.items()
+            if any(mode in self.deps.group_weight_modes for mode in rules_by_mode)
+        }
 
     def collect_extra_buy_groups_with_rules(self):
         groups = []
@@ -862,9 +1129,16 @@ class GroupWeightRulesDialog(LoadingDialogBase):
 
     def confirm_and_run(self):
         try:
+            if self.current_rule_group_suffix is not None:
+                if not self.save_visible_rules_for_group(
+                    self.current_rule_group_suffix,
+                    show_error=True,
+                ):
+                    return
             rules = self.collect_group_weight_rules(
                 self.deps.buy_enabled or self.deps.has_extra_buy_groups()
             )
+            group_rules = self.collect_group_weight_group_rules()
             extra_buy_groups = self.collect_extra_buy_groups_with_rules()
             special_target_text = self.special_target_rtp_var.get().strip()
             special_inference_enabled = self.mode_zero_rebate_inference_enabled('2')
@@ -883,6 +1157,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             return
 
         self.deps.apply_rules(rules)
+        self.deps.apply_group_rules(group_rules)
         self.deps.apply_ex_group_target_rtps(ex_target_rtps)
         self.deps.apply_zero_rebate_inference_modes(self.collect_zero_rebate_inference_modes())
         self.deps.apply_independent_rtp_modes(self.collect_independent_rtp_modes())

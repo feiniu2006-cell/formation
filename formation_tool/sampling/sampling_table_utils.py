@@ -91,6 +91,35 @@ def same_table_structure(source_conn, final_conn, source_table, final_table):
     return src is not None and dst is not None and src == dst
 
 
+def normalize_column_type_for_append(column_type):
+    """补充采样结构校验用：忽略长度/精度，只保留基础类型和修饰符。"""
+    text = str(column_type or "").strip().lower()
+    text = re.sub(r'\s+', ' ', text)
+    match = re.match(r'^([a-z]+)(\([^)]*\))?(.*)$', text)
+    if not match:
+        return text
+    base_type, _length, suffix = match.groups()
+    if base_type in {'enum', 'set'}:
+        return text
+    return f"{base_type}{suffix}".strip()
+
+
+def append_compatible_column_signature(columns):
+    if columns is None:
+        return None
+    return [
+        (str(field), normalize_column_type_for_append(column_type))
+        for field, column_type, _null, _extra in columns
+    ]
+
+
+def same_table_structure_for_append(source_conn, final_conn, source_table, final_table):
+    """补充采样只要求字段名和基础类型一致，不要求长度、Null、Extra 完全一致。"""
+    src = append_compatible_column_signature(get_table_columns(source_conn, source_table))
+    dst = append_compatible_column_signature(get_table_columns(final_conn, final_table))
+    return src is not None and dst is not None and src == dst
+
+
 def validate_table_config(table_config):
     """验证采样表配置完整性。"""
     print("正在验证表配置...")

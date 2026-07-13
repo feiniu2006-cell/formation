@@ -3,12 +3,14 @@
 from formation_tool.group_weight.group_weight_logic import (
     build_independent_group_weight_rows_for_group,
     build_normal_group_weight_rows_for_group,
+    build_special_group_weight_rows_for_group,
     calculate_weighted_rtp,
     format_weighted_rtp,
     infer_special_zero_weight,
     should_infer_zero_rebate,
 )
 from formation_tool.group_weight import group_weight_row_helpers
+from formation_tool.group_weight import group_weight_pair_sets
 from formation_tool.core import runtime_context_sync
 from formation_tool.utils import log_utils
 
@@ -27,23 +29,36 @@ def prepare_original_trigger_rtp_context(rebates_by_mode, mode_exists, mode_pair
         rebates_by_mode['2'],
         globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
     )
-    special_enabled = mode_exists['2'] and bool(mode_pairs['2'])
-    free_enabled = mode_exists['3'] and bool(mode_pairs['3'])
-    special_zero_weight, special_actual_rtp = infer_special_zero_weight(
-        mode_pairs['2'],
-        special_should_infer,
-        SPECIAL_GROUP_TARGET_RTP,
-    )
-    special_rtp = special_actual_rtp or 0
-    free_rtp = calculate_weighted_rtp(mode_pairs['3']) or 0
+    weight_group_ids = globals().get('WEIGHT_GROUP_IDS', (0,))
+    by_group = {}
+    for group_id in weight_group_ids:
+        group_id = int(group_id)
+        special_pairs = group_weight_pair_sets.get_pairs_for_mode_group(mode_pairs, '2', group_id)
+        free_pairs = group_weight_pair_sets.get_pairs_for_mode_group(mode_pairs, '3', group_id)
+        special_enabled = mode_exists['2'] and bool(special_pairs)
+        free_enabled = mode_exists['3'] and bool(free_pairs)
+        special_zero_weight, special_actual_rtp = infer_special_zero_weight(
+            special_pairs,
+            special_should_infer,
+            SPECIAL_GROUP_TARGET_RTP,
+        )
+        by_group[group_id] = {
+            'special_enabled': special_enabled,
+            'free_enabled': free_enabled,
+            'special_zero_weight': special_zero_weight,
+            'special_rtp': special_actual_rtp or 0,
+            'free_rtp': calculate_weighted_rtp(free_pairs) or 0,
+        }
+    first_group = by_group.get(int(weight_group_ids[0])) if weight_group_ids else {}
     return {
-        'special_enabled': special_enabled,
-        'free_enabled': free_enabled,
+        'special_enabled': bool(first_group.get('special_enabled', False)),
+        'free_enabled': bool(first_group.get('free_enabled', False)),
         'special_has_zero': special_has_zero,
         'special_should_infer': special_should_infer,
-        'special_zero_weight': special_zero_weight,
-        'special_rtp': special_rtp,
-        'free_rtp': free_rtp,
+        'special_zero_weight': int(first_group.get('special_zero_weight', 0)),
+        'special_rtp': first_group.get('special_rtp', 0),
+        'free_rtp': first_group.get('free_rtp', 0),
+        'by_group': by_group,
     }
 
 
@@ -84,23 +99,26 @@ def append_original_normal_group_weight_rows(rows, rebates_by_mode, mode_exists,
     normal_rows = 0
     for group_id in WEIGHT_GROUP_IDS:
         check_cancelled()
+        group_id = int(group_id)
+        group_trigger = trigger_context.get('by_group', {}).get(group_id, trigger_context)
+        normal_pairs = group_weight_pair_sets.get_pairs_for_mode_group(mode_pairs, game_type, group_id)
         try:
             if independent_rtp:
                 group_rows, group_info = build_independent_group_weight_rows_for_group(
                     group_id,
                     get_group_weight_write_game_type(game_type),
-                    mode_pairs[game_type],
+                    normal_pairs,
                     normal_should_infer,
                     get_group_target_rtp_ratio(group_id),
                 )
             else:
                 group_rows, group_info = build_normal_group_weight_rows_for_group(
                     group_id,
-                    mode_pairs[game_type],
-                    trigger_context['free_rtp'],
-                    trigger_context['free_enabled'],
-                    trigger_context['special_rtp'],
-                    trigger_context['special_enabled'],
+                    normal_pairs,
+                    group_trigger['free_rtp'],
+                    group_trigger['free_enabled'],
+                    group_trigger['special_rtp'],
+                    group_trigger['special_enabled'],
                     infer_zero_rebate=normal_should_infer,
                 )
         except ValueError as e:
@@ -146,14 +164,21 @@ def append_original_special_group_weight_rows(rows, rebates_by_mode, mode_exists
     game_type = '2'
     if should_skip_original_static_mode(game_type, rebates_by_mode, mode_exists):
         return 0
-    mode_rows = group_weight_row_helpers.append_special_group_weight_rows(
-        rows,
-        get_group_weight_write_game_type(game_type),
-        mode_pairs[game_type],
-        trigger_context['special_zero_weight'],
-    )
+    mode_rows = 0
+    for group_id in WEIGHT_GROUP_IDS:
+        group_id = int(group_id)
+        group_pairs = group_weight_pair_sets.get_pairs_for_mode_group(mode_pairs, game_type, group_id)
+        group_trigger = trigger_context['by_group'].get(group_id, trigger_context)
+        group_rows = build_special_group_weight_rows_for_group(
+            group_id,
+            group_pairs,
+            group_trigger['special_zero_weight'],
+            game_type=get_group_weight_write_game_type(game_type),
+        )
+        rows.extend(group_rows)
+        mode_rows += len(group_rows)
     print(
-        f"\n[{GAME_TYPE_NAMES[game_type]}] RTP={format_weighted_rtp(trigger_context['special_rtp'])}，"
+        f"\n[{GAME_TYPE_NAMES[game_type]}] RTP按分组规则计算，"
         f"准备写入 {mode_rows} 行"
     )
     return mode_rows

@@ -6,6 +6,7 @@ from formation_tool.group_weight.group_weight_logic import (
     should_infer_zero_rebate,
 )
 from formation_tool.group_weight import group_weight_row_helpers
+from formation_tool.group_weight import group_weight_pair_sets
 from formation_tool.core import runtime_context_sync
 from formation_tool.utils import log_utils
 
@@ -121,6 +122,8 @@ def append_buy_group_weight_modes(rows, rebates_by_mode, mode_exists, mode_pairs
             print(f"\n[{mode_name}] 没有对应采样配置表，跳过")
         elif not rebates_by_mode.get(game_type):
             print(f"\n[{mode_name}] 采样配置表没有数据，跳过")
+        elif not group_weight_pair_sets.mode_has_any_pairs(mode_pairs, game_type):
+            print(f"\n[{mode_name}] 没有可写入的非0权重 rebate，跳过")
         else:
             should_infer = should_infer_buy_zero_rebate(game_type, rebates_by_mode[game_type])
             if should_infer:

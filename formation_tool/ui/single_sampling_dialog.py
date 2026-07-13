@@ -20,6 +20,10 @@ class SingleSamplingDialog(LoadingDialogBase):
         source_db_getter,
         formation_exists_loader,
         run_single_game_job,
+        dialog_title="单独采样",
+        start_button_text="开始采样",
+        task_name_suffix="采样",
+        append_mode=False,
     ):
         super().__init__(app)
         self.sample_game_type_names = sample_game_type_names
@@ -27,11 +31,15 @@ class SingleSamplingDialog(LoadingDialogBase):
         self.source_db_getter = source_db_getter
         self.formation_exists_loader = formation_exists_loader
         self.run_single_game_job = run_single_game_job
+        self.dialog_title = dialog_title
+        self.start_button_text = start_button_text
+        self.task_name_suffix = task_name_suffix
+        self.append_mode = bool(append_mode)
         self.choice_var = tk.StringVar(value="")
 
     def open(self):
         self.create_dialog(
-            "单独采样",
+            self.dialog_title,
             ui_layout_defaults.SINGLE_SAMPLING_DIALOG,
         )
         self.show_loading()
@@ -124,7 +132,7 @@ class SingleSamplingDialog(LoadingDialogBase):
         button_frame.columnconfigure(0, weight=1)
         ttk.Button(
             button_frame,
-            text="开始采样",
+            text=self.start_button_text,
             command=self.confirm_sampling,
             state="normal" if available_modes else "disabled",
         ).grid(row=0, column=1, sticky="e", padx=(0, 8))
@@ -139,8 +147,8 @@ class SingleSamplingDialog(LoadingDialogBase):
             return
         self.dialog.destroy()
         self.app.run_task(
-            f"{self.sample_game_type_names[mode]}采样",
+            f"{self.sample_game_type_names[mode]}{self.task_name_suffix}",
             lambda m=mode: self.run_single_game_job(m),
-            preflight={"kind": "sampling", "modes": [mode]},
+            preflight={"kind": "sampling", "modes": [mode], "append_mode": self.append_mode},
         )
 

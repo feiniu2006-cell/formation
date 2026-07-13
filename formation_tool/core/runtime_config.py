@@ -160,9 +160,14 @@ class RuntimeState:
         self.free_weight_by_last_digit = formation_defaults.clone_int_map(
             formation_defaults.DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT
         )
+        self.weight_group_ids = list(formation_defaults.DEFAULT_WEIGHT_GROUP_IDS)
+        self.extra_weight_groups = formation_defaults.clone_extra_weight_groups()
 
         self.rebate_rules = formation_defaults.clone_rule_map(formation_defaults.REBATE_RULES)
         self.group_weight_rules = formation_defaults.clone_rule_map(formation_defaults.GROUP_WEIGHT_RULES)
+        self.group_weight_group_rules = formation_defaults.clone_group_rule_map(
+            formation_defaults.GROUP_WEIGHT_GROUP_RULES
+        )
         self.zero_rebate_inference_modes = formation_modes.normalize_zero_rebate_inference_modes(None)
         self.independent_rtp_modes = formation_modes.normalize_independent_rtp_modes(None)
         self.sampling_append_mode = formation_defaults.DEFAULT_SAMPLING_APPEND_MODE
@@ -231,7 +236,12 @@ class RuntimeState:
         )
 
     def sync_group_weight_runtime_from(self, namespace):
+        self.weight_group_ids = _clone(_read(namespace, 'WEIGHT_GROUP_IDS', self.weight_group_ids))
+        self.extra_weight_groups = _clone(_read(namespace, 'EXTRA_WEIGHT_GROUPS', self.extra_weight_groups))
         self.group_weight_rules = _clone(_read(namespace, 'GROUP_WEIGHT_RULES', self.group_weight_rules))
+        self.group_weight_group_rules = _clone(
+            _read(namespace, 'GROUP_WEIGHT_GROUP_RULES', self.group_weight_group_rules)
+        )
         self.zero_rebate_inference_modes = formation_modes.normalize_zero_rebate_inference_modes(
             _read(namespace, 'ZERO_REBATE_INFERENCE_MODES', self.zero_rebate_inference_modes)
         )
@@ -336,8 +346,11 @@ class RuntimeState:
         _assign(namespace, 'GAME_CONFIGS', _clone(self.game_configs))
         _assign(namespace, 'SPECIAL_WEIGHT_BY_LAST_DIGIT', _clone(self.special_weight_by_last_digit))
         _assign(namespace, 'FREE_WEIGHT_BY_LAST_DIGIT', _clone(self.free_weight_by_last_digit))
+        _assign(namespace, 'WEIGHT_GROUP_IDS', _clone(self.weight_group_ids))
+        _assign(namespace, 'EXTRA_WEIGHT_GROUPS', _clone(self.extra_weight_groups))
         _assign(namespace, 'REBATE_RULES', _clone(self.rebate_rules))
         _assign(namespace, 'GROUP_WEIGHT_RULES', _clone(self.group_weight_rules))
+        _assign(namespace, 'GROUP_WEIGHT_GROUP_RULES', _clone(self.group_weight_group_rules))
         _assign(namespace, 'ZERO_REBATE_INFERENCE_MODES', set(self.zero_rebate_inference_modes))
         _assign(namespace, 'INDEPENDENT_RTP_MODES', set(self.independent_rtp_modes))
         _assign(namespace, 'SAMPLING_APPEND_MODE', False)

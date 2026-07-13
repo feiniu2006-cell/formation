@@ -14,6 +14,7 @@ from formation_tool.group_weight.group_weight_logic import (
     format_weighted_rtp,
     should_infer_zero_rebate,
 )
+from formation_tool.group_weight import group_weight_pair_sets
 from formation_tool.core import runtime_context_sync
 from formation_tool.utils import log_utils
 
@@ -48,40 +49,68 @@ def collect_group_weight_preview_warnings(displayed_modes, preview_rebates, prev
         preview_status,
     )
 
-def build_group_weight_pairs_for_modes(active_modes, rebates_by_mode):
-    """根据当前 group_weight 区间规则，把已选 rebate 转成可写入的 rebate/weight 对。"""
-    mode_pairs = {mode: [] for mode in list(dict.fromkeys(list(GROUP_WEIGHT_MODES) + list(active_modes)))}
-    for game_type in active_modes:
-        if is_extra_buy_mode(game_type):
-            extra_group = get_extra_buy_group_by_mode(game_type) or {}
-            rules = extra_group.get('rules', GROUP_WEIGHT_RULES.get(BUY_GROUP_MODE, []))
-        else:
-            rules = GROUP_WEIGHT_RULES.get(game_type, [])
-        infer_zero = should_infer_zero_rebate(
-            game_type,
-            rebates_by_mode[game_type],
-            globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
-        )
-        pairs, skipped_zero, skipped_rebate_zero = build_rebate_weight_pairs(
-            rebates_by_mode[game_type],
-            rules,
-            exclude_rebate_zero=infer_zero,
-        )
-        mode_pairs[game_type] = pairs
-        mode_name = get_group_weight_mode_name(game_type)
-        print(
-            f"\n[{mode_name}] 可写入非0权重 rebate {len(pairs)} 个，"
-            f"跳过 weight=0 的 rebate {skipped_zero} 个"
-            + (f"，{mode_name}开启 rebate=0 反推，暂不使用配置中的 rebate=0 {skipped_rebate_zero} 个" if infer_zero else "")
-        )
-    return mode_pairs
-
-
 def get_group_weight_rules_for_mode(game_type):
     if is_extra_buy_mode(game_type):
         extra_group = get_extra_buy_group_by_mode(game_type) or {}
         return extra_group.get('rules', GROUP_WEIGHT_RULES.get(BUY_GROUP_MODE, []))
     return GROUP_WEIGHT_RULES.get(game_type, [])
+
+
+def get_group_weight_rules_for_mode_group(game_type, group_id):
+    suffix = str(group_weight_pair_sets.get_group_suffix(group_id))
+    mode_rules = (globals().get('GROUP_WEIGHT_GROUP_RULES', {}) or {}).get(suffix, {})
+    if game_type in mode_rules:
+        return mode_rules.get(game_type, [])
+    return get_group_weight_rules_for_mode(game_type)
+
+
+def build_group_weight_pair_set_for_mode(game_type, rebates):
+    pairs_by_suffix = {}
+    stats_by_suffix = {}
+    infer_zero = should_infer_zero_rebate(
+        game_type,
+        rebates,
+        globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
+    )
+    for suffix in group_weight_pair_sets.get_weight_group_suffixes(WEIGHT_GROUP_IDS):
+        rules = get_group_weight_rules_for_mode_group(game_type, suffix)
+        pairs, skipped_zero, skipped_rebate_zero = build_rebate_weight_pairs(
+            rebates,
+            rules,
+            exclude_rebate_zero=infer_zero,
+        )
+        pairs_by_suffix[str(suffix)] = pairs
+        stats_by_suffix[str(suffix)] = {
+            'skipped_zero': skipped_zero,
+            'skipped_rebate_zero': skipped_rebate_zero,
+            'infer_zero': infer_zero,
+        }
+    return group_weight_pair_sets.make_pair_set(pairs_by_suffix, stats_by_suffix)
+
+
+def build_group_weight_pairs_for_modes(active_modes, rebates_by_mode):
+    """根据当前 group_weight 区间规则，把已选 rebate 转成可写入的 rebate/weight 对。"""
+    mode_pairs = {mode: [] for mode in list(dict.fromkeys(list(GROUP_WEIGHT_MODES) + list(active_modes)))}
+    for game_type in active_modes:
+        mode_pairs[game_type] = build_group_weight_pair_set_for_mode(
+            game_type,
+            rebates_by_mode[game_type],
+        )
+        mode_name = get_group_weight_mode_name(game_type)
+        pair_counts = group_weight_pair_sets.describe_pair_set_counts(mode_pairs[game_type])
+        first_stats = {}
+        for group_id in WEIGHT_GROUP_IDS:
+            first_stats = group_weight_pair_sets.get_stats_for_group(mode_pairs[game_type], group_id)
+            break
+        skipped_zero = first_stats.get('skipped_zero', 0)
+        skipped_rebate_zero = first_stats.get('skipped_rebate_zero', 0)
+        infer_zero = bool(first_stats.get('infer_zero', False))
+        print(
+            f"\n[{mode_name}] 可写入非0权重 rebate：{pair_counts or 0}，"
+            f"跳过 weight=0 的 rebate {skipped_zero} 个"
+            + (f"，{mode_name}开启 rebate=0 反推，暂不使用配置中的 rebate=0 {skipped_rebate_zero} 个" if infer_zero else "")
+        )
+    return mode_pairs
 
 
 def build_group_weight_zero_weight_write_rows(active_modes, rebates_by_mode, mode_exists, existing_rows):
@@ -95,12 +124,12 @@ def build_group_weight_zero_weight_write_rows(active_modes, rebates_by_mode, mod
         if not mode_exists.get(game_type, False) or not rebates_by_mode.get(game_type):
             continue
         write_game_type = int(get_group_weight_write_game_type(game_type))
-        zero_pairs = build_zero_weight_rebate_pairs(
-            rebates_by_mode[game_type],
-            get_group_weight_rules_for_mode(game_type),
-        )
         for group_id in WEIGHT_GROUP_IDS:
             group_id = int(group_id)
+            zero_pairs = build_zero_weight_rebate_pairs(
+                rebates_by_mode[game_type],
+                get_group_weight_rules_for_mode_group(game_type, group_id),
+            )
             for rebate, weight in zero_pairs:
                 key = (write_game_type, group_id, int(rebate))
                 if key in seen:

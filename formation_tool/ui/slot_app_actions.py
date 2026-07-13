@@ -18,6 +18,15 @@ def build_action_groups(app, deps):
                 ),
                 ("单独采样", app.open_single_sampling_dialog),
                 (
+                    "补充采样",
+                    lambda: app.run_task(
+                        "补充采样",
+                        deps.run_all_supplemental_sampling_jobs,
+                        preflight={"kind": "sampling", "modes": "all", "append_mode": True},
+                    ),
+                ),
+                ("单独补充", app.open_single_supplemental_sampling_dialog),
+                (
                     "镜像到目标库",
                     lambda: app.run_task(
                         "镜像采样中转库到目标库",

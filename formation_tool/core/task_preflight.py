@@ -183,6 +183,14 @@ def _check_rule_configs(report, deps):
         report.add_info("group_weight 权重规则格式已检查")
     except Exception as exc:
         report.add_fatal(f"group_weight 权重规则配置错误：{exc}")
+    validate_group_rules = getattr(deps, 'validate_group_weight_group_rules', None)
+    get_group_rules = getattr(deps, 'get_group_weight_group_rules', None)
+    if validate_group_rules is not None and get_group_rules is not None:
+        try:
+            validate_group_rules(get_group_rules())
+            report.add_info("group_weight 分组权重规则格式已检查")
+        except Exception as exc:
+            report.add_fatal(f"group_weight 分组权重规则配置错误：{exc}")
 
 
 def _check_positive_number(report, label, value):
@@ -351,8 +359,7 @@ def _check_sampling_config_tables(report, modes, game_configs, connections, deps
             )
 
 
-def _check_sampling_target_tables(report, modes, game_configs, connections, deps):
-    append_mode = False
+def _check_sampling_target_tables(report, modes, game_configs, connections, deps, *, append_mode=False):
     for mode in modes:
         config = game_configs.get(mode)
         if not config:
@@ -377,7 +384,7 @@ def _check_sampling_target_tables(report, modes, game_configs, connections, deps
         elif append_mode:
             report.add_warning(
                 f"{config['name']} 目标表已存在：{final_db}.{final_table}，当前 {row_count} 行；"
-                "追加模式会复制旧数据并处理 id 冲突"
+                "补充采样会复制旧数据到中转库、重排旧 id，并让新采样 id 顺延"
             )
         else:
             report.add_warning(
@@ -411,7 +418,7 @@ def _check_sampling_source_indexes(report, modes, game_configs, connections, dep
             report.add_info(f"{config['name']} 源表采样读取索引已检查：{source_db}.{source_table}")
 
 
-def _collect_sampling_databases(game_configs, modes, deps):
+def _collect_sampling_databases(game_configs, modes, deps, *, append_mode=False):
     db_names = set()
     use_temp = bool(getattr(deps, "get_sampling_use_temp_db", lambda: False)())
     temp_db = getattr(deps, "get_sampling_temp_db", lambda: None)()
@@ -427,7 +434,7 @@ def _collect_sampling_databases(game_configs, modes, deps):
             if use_temp and table_key == "FINAL_TABLE":
                 if temp_db:
                     db_names.add(temp_db)
-                if auto_sync:
+                if auto_sync or append_mode:
                     db_names.add(table_info["database"])
                 continue
             db_names.add(table_info["database"])
@@ -537,16 +544,26 @@ def preflight_sampling(report, metadata, deps):
         report.add_fatal("没有可采样的局类型")
         return
     all_modes_requested = metadata.get("modes") in (None, "all")
+    append_mode = bool(metadata.get("append_mode"))
     use_temp = bool(getattr(deps, "get_sampling_use_temp_db", lambda: False)())
     temp_db = getattr(deps, "get_sampling_temp_db", lambda: None)()
     target_game_configs = game_configs
     if use_temp and temp_db:
         target_game_configs = _with_sampling_target_db(game_configs, modes, temp_db)
-        if bool(getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)()):
+        if append_mode:
+            report.add_info(
+                f"补充采样中转库已开启：将读取目标库旧正式表，合并后写入 {temp_db}，"
+                "并重排旧 id 后让新采样 id 顺延"
+            )
+        elif bool(getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)()):
             report.add_info(f"采样中转库已开启：本次采样先写入 {temp_db}，完成后将自动镜像到目标库")
         else:
             report.add_info(f"采样中转库已开启：本次采样只检查并写入 {temp_db}，目标库不参与采样预检查")
-    connections = _connect_required_databases(report, _collect_sampling_databases(game_configs, modes, deps), deps)
+    connections = _connect_required_databases(
+        report,
+        _collect_sampling_databases(game_configs, modes, deps, append_mode=append_mode),
+        deps,
+    )
     try:
         formation_exists = deps.get_sampling_formation_exists()
         existing_modes = [mode for mode in modes if formation_exists.get(mode, False)]
@@ -562,6 +579,15 @@ def preflight_sampling(report, metadata, deps):
             report.add_fatal("全部采样未检测到任何可采样源表")
         _check_sampling_config_tables(report, existing_modes, game_configs, connections, deps)
         _check_sampling_target_tables(report, existing_modes, target_game_configs, connections, deps)
+        if append_mode and use_temp and temp_db:
+            _check_sampling_target_tables(
+                report,
+                existing_modes,
+                game_configs,
+                connections,
+                deps,
+                append_mode=True,
+            )
         _check_sampling_source_indexes(report, existing_modes, game_configs, connections, deps)
     finally:
         _close_connections(connections, deps)

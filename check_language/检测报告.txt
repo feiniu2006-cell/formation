@@ -1,1168 +1,211 @@
 ================================================================================
-完整检测报告  (2026-06-18 10:18:18)
+完整检测报告  (2026-07-06 16:07:07)
 ================================================================================
-检查语言：eng, ind, por, spa, tha, vie, sch, tch, hin, ben, msa, mya, khm, lao, tgl, jpn, kor
-汇总：共 53 个游戏（已跳过 status=1 游戏 43 个）
+检查语言：eng, sch, por, spa, hin, ind, tha, vie, ben, khm, tgl, tch, msa, mya, lao, jpn, kor
+汇总：共 13 个项目（已跳过 status=1/room_name 表外 ID 68 个）
   ✅ 无问题：0 个
-  ⚠️  有问题：41 个
-  ❌ 缺少「多语言」文件夹：12 个
+  ⚠️  有问题：13 个
+  ❌ 缺少多语言目录：0 个
 
 ████████████████████████████████████████████████████████████████████████████████
-  MiniGame  (C:\VegasGames\MiniGame)
+  VegasGames  (C:\VegasGames\策划\language)
 ████████████████████████████████████████████████████████████████████████████████
-共检测 (数字) 游戏文件夹：53 个
+共检测 游戏文件夹：13 个
   ✅ 完整（文件存在 + 翻译正确）：0 个
-  ⚠️  存在问题：41 个
-  ❌ 缺少「多语言」文件夹：12 个
+  ⚠️  存在问题：13 个
+  ❌ 缺少「多语言」文件夹：0 个
 
 ────────────────────────────────────────────────────────────────────────────────
-❌ 缺少「多语言」文件夹 (12 个)：
+⚠️  存在问题 (13 个)：
 ────────────────────────────────────────────────────────────────────────────────
-    1. (2013)Lucky-Football
-    2. (2014)GoLabubu
-    3. (2017)GoCryBaby
-    4. (2039)VideoPoker
-    5. (2040)Baccarat
-    6. (2044)Plinko2
-    7. (2065)Wheel
-    8. (2090)LimboCrash
-    9. (2095)AviatorJerry
-   10. (2118)HoChiMinh
-   11. (2119)JogoDoBicho
-   12. (4004)Rocket
-
-────────────────────────────────────────────────────────────────────────────────
-⚠️  存在问题 (41 个)：
-────────────────────────────────────────────────────────────────────────────────
-    1. (2001)Magic-Lamp
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="神灯奇缘奇缘"  DB="神灯奇缘"
-    2. (2004)Roulette
-         ⚠️  por         部分内容未翻译（3 处）：
-                  • Rule.Rule4_17  ("Voisins du Zero")
-                  • Rule.Rule4_26  ("Zero")
-                  • Title.Title2  ("Bonus Pocket")
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • Rule.Rule4_17  ("Voisins du Zero")
-    3. (2006)Mines
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2006 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-    4. (2007)Mines
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2007 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-    5. (2015)LabubuForSugar
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="拉布布糖果果"  DB="拉布布糖果"
-    6. (2024)HotGear
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2024 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-    7. (2025)ScratchMap
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2025 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-    8. (2026)plinko
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2026 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-    9. (2027)Dice1
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2027 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   10. (2032)Wheel1
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2032 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   11. (2033)Hilo1
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2033 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   12. (2034)Blackjack1
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2034 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   13. (2035)Diamonds1
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2035 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   14. (2036)Roulette1
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2036 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   15. (2037)Pump1
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2037 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   16. (2046)Keno2-B
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Keno 2 2"  DB="Keno 2"
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="ကီနို 2 2"  DB="ကီနို 2"
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="គីណូ 2 2"  DB="គីណូ 2"
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="キノ22"  DB="キノ2"
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="키노 2 2"  DB="키노 2"
-   17. (2051)Football-X
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2051 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   18. (2057)Color-Game
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2057 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   19. (2059)Fast-Furious
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2059 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   20. (2061)Keno
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Keno 3 3"  DB="Keno 3"
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="키노 3 3"  DB="키노 3"
-   21. (2062)Dice3
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Dice 3 3"  DB="Dice 3"
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Dadu 3 3"  DB="Dadu 3"
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Dados 3 3"  DB="Dados 3"
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="पासा 3 3"  DB="पासा 3"
-   22. (2064)RockPaperScissors
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2064 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   23. (2067)ChickenRoad2
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2067 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("ChickenRoad2")
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2067 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   24. (2075)JogoDoBicho
-         ⚠️  por         部分内容未翻译（5 处）：
-                  • Rule.Rule2_8  ("QUADRA")
-                  • Rule.Rule2_10  ("PENTA")
-                  • Rule.Rule3_22  ("x{0}")
-                  • Rule.Rule4_2  ("TENS")
-                  • Rule.Rule6_3  ("Animal")
-         ⚠️  spa         部分内容未翻译（6 处）：
-                  • Rule.Rule2_2  ("SIMPLE")
-                  • Rule.Rule2_6  ("TRIPLE")
-                  • Rule.Rule2_10  ("PENTA")
-                  • Rule.Rule3_22  ("x{0}")
-                  • Rule.Rule4_2  ("TENS")
-                  • Rule.Rule6_3  ("Animal")
-         ⚠️  msa         部分内容未翻译（2 处）：
-                  • Rule.Rule2_10  ("PENTA")
-                  • Rule.Rule3_22  ("x{0}")
-         ⚠️  lao         部分内容未翻译（2 处）：
-                  • Rule.Rule3_22  ("x{0}")
-                  • Rule.Rule4_2  ("TENS")
-         ⚠️  tgl         部分内容未翻译（8 处）：
-                  • Rule.Rule2_2  ("SIMPLE")
-                  • Rule.Rule2_6  ("TRIPLE")
-                  • Rule.Rule2_8  ("QUADRA")
-                  • Rule.Rule2_10  ("PENTA")
-                  • Rule.Rule3_22  ("x{0}")
-                  • Rule.Rule4_2  ("TENS")
-                  • Rule.Rule6_5  ("Ostrich")
-                  • Rule.Rule6_24  ("Turkey")
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • Rule.Rule3_22  ("x{0}")
-   25. (2076)Keno
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Keno 4 4"  DB="Keno 4"
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="키노 4 4"  DB="키노 4"
-   26. (2077)Limbo3
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Limbo 3 3"  DB="Limbo 3"
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="ລິມໂບ 3 3"  DB="ລິມໂບ 3"
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="림보 3 3"  DB="림보 3"
-   27. (2082)BlackJack2
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2082 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("BlackJack")
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=lao 无名称，无法确认文件 Name 与 DB 一致
+    1. 3033
          ⚠️  tgl         部分内容未翻译（3 处）：
-                  • DB名称缺失：room_id=2082 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("BlackJack")
-                  • Rule.Rule5_1  ("Hit/Stand/Double down/Split")
+                  • GoldenMoneyTreeCommonRules.RedEnvelopeExplain1  (特殊短语未使用配置翻译："Feature" → "Feature")
+                  • GoldenMoneyTreeCommonRules.RedEnvelopeExplain1  (特殊短语未使用配置翻译："Reels" → "Reels")
+                  • GoldenMoneyTreeCommonRules.RedEnvelopeExplain4  (特殊短语未使用配置翻译："Feature" → "Feature")
+         ⚠️  mya         部分内容未翻译（1 处）：
+                  • GoldenMoneyTreeCommonRules.RedEnvelopeExplain2  (特殊短语未使用配置翻译："Reels" → "ရစ်များ")
          ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2082 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   28. (2083)DrShocker
+                  • GoldenMoneyTreeCommonRules.RedEnvelopeExplain2  (特殊短语未使用配置翻译："Feature" → "機能")
+    2. 3041
          ⚠️  tgl         部分内容未翻译（1 处）：
-                  • Rule.Rule5_1  ("Turbo Mode")
-   29. (2084)TowerRush
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2084 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("TowerRush")
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2084 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("TowerRush")
-         ⚠️  tgl         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2084 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("TowerRush")
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2084 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   30. (2085)Plinkoman
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2085 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("Plinkoman")
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2085 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("Plinkoman")
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（3 处）：
-                  • DB名称缺失：room_id=2085 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("Plinkoman")
-                  • Rule.Rule4_1  ("Turbo Mode")
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2085 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   31. (2086)HamsterMania
-         ⚠️  ind         部分内容未翻译（2 处）：
-                  • Rule.Rule4_4  ("Min/Max")
-                  • Rule.Rule7_1  ("Bonus Game")
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • Rule.Rule4_5  ("Bronze")
-   32. (2087)CosmoSaga
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2087 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("CosmoSaga")
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2087 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("CosmoSaga")
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2087 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("CosmoSaga")
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2087 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   33. (2088)Atlantis
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2088 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（3 处）：
-                  • DB名称缺失：room_id=2088 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("Atlantis")
-                  • Rule.Rule2_7  ("x {0}")
+                  • SuperAceFeatures.FreeSpinExplain1  (特殊短语未使用配置翻译："Reels" → "Reels")
+    3. 3052
          ⚠️  por         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2088 lang=por 无名称，无法确认文件 Name 与 DB 一致
-                  • Rule.Rule2_7  ("x {0}")
+                  • FortuneAquariusPaytable.Desc6  (特殊短语未使用配置翻译："Feature" → "Recurso")
+                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "Recurso")
          ⚠️  spa         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2088 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-                  • Rule.Rule2_7  ("x {0}")
+                  • FortuneAquariusPaytable.Desc4  (特殊短语未使用配置翻译："Reels" → "Carretes")
+                  • FortuneAquariusPaytable.Desc6  (特殊短语未使用配置翻译："Multiplier" → "Multiplicador")
+         ⚠️  hin         部分内容未翻译（2 处）：
+                  • FortuneAquariusPaytable.Desc4  (特殊短语未使用配置翻译："Feature" → "फीचर")
+                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "फीचर")
+         ⚠️  ind         部分内容未翻译（2 处）：
+                  • FortuneAquariusPaytable.Desc4  (特殊短语未使用配置翻译："Reels" → "Reel")
+                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "Fitur")
          ⚠️  tha         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2088 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-                  • Rule.Rule2_7  ("x {0}")
-         ⚠️  vie         部分内容未翻译（3 处）：
-                  • DB名称缺失：room_id=2088 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("Atlantis")
-                  • Rule.Rule2_7  ("x {0}")
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2088 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2088 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2088 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2088 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（3 处）：
-                  • DB名称缺失：room_id=2088 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("Atlantis")
-                  • Rule.Rule2_7  ("x {0}")
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2088 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2088 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2088 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-                  • Rule.Rule2_7  ("x {0}")
-         ⚠️  tgl         部分内容未翻译（3 处）：
-                  • DB名称缺失：room_id=2088 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("Atlantis")
-                  • Rule.Rule2_7  ("x {0}")
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2088 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2088 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   34. (2089)Totem
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2089 lang=por 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("Totem")
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2089 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("Totem")
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（3 处）：
-                  • DB名称缺失：room_id=2089 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("Totem")
-                  • Rule.Rule5_1  ("Turbo Mode")
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2089 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   35. (2091)CoinFlip
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2091 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("CoinFlip")
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2091 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("CoinFlip")
+                  • FortuneAquariusPaytable.Desc4  (特殊短语未使用配置翻译："Reels" → "รีล")
+                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "ฟีเจอร์")
+         ⚠️  vie         部分内容未翻译（2 处）：
+                  • FortuneAquariusPaytable.Desc6  (特殊短语未使用配置翻译："Multiplier" → "Hệ số nhân")
+                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "Tính Năng")
+         ⚠️  ben         部分内容未翻译（7 处）：
+                  • FortuneAquariusPaytable.Desc5  ("During the Respin Until Win Feature, the...")
+                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Feature" → "ফিচার")
+                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Reels" → "রিল")
+                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Reel" → "রিল")
+                  • FortuneAquariusPaytable.Desc6  (特殊短语未使用配置翻译："Multiplier" → "গুণক")
+                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "ফিচার")
+                  • FortuneAquariusPaytable.Desc5  (疑似英文残留："during the respin until win the stacked symbol will appear fully on and the other will respin until there is a win")
+         ⚠️  khm         部分内容未翻译（2 处）：
+                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Reels" → "កង់")
+                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Reel" → "កង់")
          ⚠️  tgl         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2091 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("CoinFlip")
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2091 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   36. (2092)Thimble
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=khm 无名称，无法确认文件 Name 与 DB 一致
+                  • FortuneAquariusPaytable.Desc4  (特殊短语未使用配置翻译："Reels" → "Reels")
+                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "Feature")
+         ⚠️  mya         部分内容未翻译（6 处）：
+                  • FortuneAquariusPaytable.Desc4  (特殊短语未使用配置翻译："Reels" → "ရစ်များ")
+                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Feature" → "အင်္ဂါရပ်")
+                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Reels" → "ရစ်များ")
+                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Reel" → "ရစ်")
+                  • FortuneAquariusPaytable.Desc6  (特殊短语未使用配置翻译："Feature" → "အင်္ဂါရပ်")
+                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "အင်္ဂါရပ်")
          ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2092 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   37. (2093)PlayMe
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=sch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=mya 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=lao 无名称，无法确认文件 Name 与 DB 一致
+                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "ຟີເຈີ")
+    4. 3053
          ⚠️  tgl         部分内容未翻译（2 处）：
-                  • DB名称缺失：room_id=2093 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-                  • GameName.Name  ("PlayMe")
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2093 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   38. (2094)Mouse-Tower
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=eng 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=ind 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=por 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=spa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=tha 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=vie 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=sch 无名称，无法确认文件 Name 与 DB 一致
+                  • FortuneGeminiPayoutAndRulesShared.Rule2_8_Payout2_8  (特殊短语未使用配置翻译："Feature" → "Feature")
+                  • FortuneGeminiPayoutAndRulesShared.Rule2_8_Payout2_8  (特殊短语未使用配置翻译："Reels" → "Reels")
+    5. 3060
+         ⚠️  tgl         部分内容未翻译（1 处）：
+                  • Payout.SureWinBetDesc2  (疑似英文残留："sure win bet")
+    6. 3067
+         ⚠️  tgl         部分内容未翻译（1 处）：
+                  • PayoutAndRules.Rule2_3  (特殊短语未使用配置翻译："Feature" → "Feature")
+    7. 3070
          ⚠️  tch         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=tch 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=hin 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=ben 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=msa 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=mya 无名称，无法确认文件 Name 与 DB 一致
+                  • PayoutAndRules.Rule2_2  (疑似英文残留："wild scatter x x")
+    8. 3073
          ⚠️  khm         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=khm 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=lao 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=tgl 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=jpn 无名称，无法确认文件 Name 与 DB 一致
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • DB名称缺失：room_id=2094 lang=kor 无名称，无法确认文件 Name 与 DB 一致
-   39. (2207)Fortune Money
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Pera Swerte Swerte"  DB="Pera Swerte"
-   40. (4002)Aviator2
-         ⚠️  ind         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  tha         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  ben         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  msa         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
+                  • PayoutAndRules.Rule2_4  (特殊短语未使用配置翻译："Reels" → "កង់")
          ⚠️  mya         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
+                  • PayoutAndRules.Rule2_4  (特殊短语未使用配置翻译："Reels" → "ရစ်များ")
          ⚠️  lao         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-         ⚠️  kor         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Aviator 2 2"  DB="Aviator 2"
-   41. (5001)wingo
+                  • PayoutAndRules.Rule2_4  (特殊短语未使用配置翻译："Reels" → "ວົງລໍ້")
+    9. 3077
          ⚠️  ind         部分内容未翻译（4 处）：
-                  • Title.Title_home_5  ("Sapre")
-                  • Title.Title_home_6  ("Bcone")
-                  • Title.Title_home_7  ("Emerd")
-                  • Title.Title_myrecord_1  ("detail")
-         ⚠️  por         部分内容未翻译（3 处）：
-                  • Title.Title_home_5  ("Sapre")
-                  • Title.Title_home_6  ("Bcone")
-                  • Title.Title_home_7  ("Emerd")
-         ⚠️  spa         部分内容未翻译（1 处）：
-                  • Title.Title_home_5  ("Sapre")
+                  • PayoutAndRules.Rule1_2  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
+                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
+                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
+                  • PayoutAndRules.Rule2_3  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
          ⚠️  vie         部分内容未翻译（4 处）：
-                  • Title.Title_home_5  ("Sapre")
-                  • Title.Title_home_6  ("Bcone")
-                  • Title.Title_home_7  ("Emerd")
-                  • Title.Title_home_16  ("Emerd Record")
-         ⚠️  msa         部分内容未翻译（3 处）：
-                  • Title.Title_home_5  ("Sapre")
-                  • Title.Title_home_6  ("Bcone")
-                  • Title.Title_home_7  ("Emerd")
-         ⚠️  tgl         部分内容未翻译（3 处）：
-                  • Title.Title_home_5  ("Sapre")
-                  • Title.Title_home_6  ("Bcone")
-                  • Title.Title_home_7  ("Emerd")
+                  • PayoutAndRules.Rule1_2  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
+                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
+                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
+                  • PayoutAndRules.Rule2_3  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
+         ⚠️  ben         部分内容未翻译（4 处）：
+                  • PayoutAndRules.Rule1_2  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+                  • PayoutAndRules.Rule2_3  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+         ⚠️  khm         部分内容未翻译（4 处）：
+                  • PayoutAndRules.Rule1_2  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
+                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
+                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
+                  • PayoutAndRules.Rule2_3  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
+         ⚠️  tgl         部分内容未翻译（4 处）：
+                  • PayoutAndRules.Rule1_2  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+                  • PayoutAndRules.Rule2_3  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+         ⚠️  mya         部分内容未翻译（1 处）：
+                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "အဓိကဂိမ်း")
+   10. 3079
+         ⚠️  ind         部分内容未翻译（2 处）：
+                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
+                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
+         ⚠️  vie         部分内容未翻译（1 处）：
+                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
+         ⚠️  ben         部分内容未翻译（2 处）：
+                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+         ⚠️  khm         部分内容未翻译（2 处）：
+                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
+                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
+         ⚠️  tgl         部分内容未翻译（2 处）：
+                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+   11. 3080
+         ⚠️  hin         部分内容未翻译（1 处）：
+                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "मुख्य गेम")
+         ⚠️  ind         部分内容未翻译（2 处）：
+                  • PayoutAndRules.Rule3_2  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
+                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
+         ⚠️  vie         部分内容未翻译（1 处）：
+                  • PayoutAndRules.Rule3_2  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
+         ⚠️  ben         部分内容未翻译（2 处）：
+                  • PayoutAndRules.Rule3_2  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+         ⚠️  khm         部分内容未翻译（2 处）：
+                  • PayoutAndRules.Rule3_2  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
+                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
+         ⚠️  tgl         部分内容未翻译（2 处）：
+                  • PayoutAndRules.Rule3_2  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+   12. 3081
+         ⚠️  por         部分内容未翻译（1 处）：
+                  • PayoutAndRules.Rule1_7  (特殊短语未使用配置翻译："Main Game" → "Jogo Principal")
+         ⚠️  ind         部分内容未翻译（4 处）：
+                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
+                  • PayoutAndRules.Rule1_6  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
+                  • PayoutAndRules.Rule1_7  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
+                  • PayoutAndRules.Rule3_10  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
+         ⚠️  vie         部分内容未翻译（4 处）：
+                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
+                  • PayoutAndRules.Rule1_6  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
+                  • PayoutAndRules.Rule1_7  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
+                  • PayoutAndRules.Rule3_10  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
+         ⚠️  ben         部分内容未翻译（4 处）：
+                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+                  • PayoutAndRules.Rule1_6  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+                  • PayoutAndRules.Rule1_7  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+                  • PayoutAndRules.Rule3_10  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+         ⚠️  khm         部分内容未翻译（8 处）：
+                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
+                  • PayoutAndRules.Rule1_6  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
+                  • PayoutAndRules.Rule1_7  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
+                  • PayoutAndRules.Rule3_10  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
+                  • Rule.Rule1  (特殊短语未使用配置翻译："Video Slot" → "វីដេអូស្លត")
+                  • Rule.Rule1  (特殊短语未使用配置翻译："Free Spins" → "បង្វិលឥតគិតថ្លៃ")
+                  • Rule.Rule1  (特殊短语未使用配置翻译："Bonus" → "ប្រាក់រង្វាន់")
+                  • Rule.Rule1  (特殊短语未使用配置翻译："Reel" → "កង់")
+         ⚠️  tgl         部分内容未翻译（5 处）：
+                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+                  • PayoutAndRules.Rule1_6  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+                  • PayoutAndRules.Rule1_7  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+                  • PayoutAndRules.Rule3_10  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+                  • Rule.Rule1  (疑似英文残留："chain combo gameplay")
+         ⚠️  mya         部分内容未翻译（1 处）：
+                  • Rule.Rule1  (特殊短语未使用配置翻译："Reel" → "ရစ်")
+   13. 3082
+         ⚠️  eng         部分内容未翻译（1 处）：
+                  • 名称不匹配：文件="Three Crazy Piggies"  DB="Superb Ace 5"
+         ⚠️  sch         部分内容未翻译（1 处）：
+                  • 名称不匹配：文件="三只疯狂小猪"  DB="超凡王牌5"
+         ❌ por         文件夹不存在
+         ❌ spa         文件夹不存在
+         ❌ hin         文件夹不存在
+         ❌ ind         文件夹不存在
+         ❌ tha         文件夹不存在
+         ❌ vie         文件夹不存在
+         ❌ ben         文件夹不存在
+         ❌ khm         文件夹不存在
+         ❌ tgl         文件夹不存在
+         ❌ tch         文件夹不存在
+         ❌ msa         文件夹不存在
+         ❌ mya         文件夹不存在
+         ❌ lao         文件夹不存在
+         ❌ jpn         文件夹不存在
+         ❌ kor         文件夹不存在
 
 ================================================================================

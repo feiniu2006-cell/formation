@@ -22,6 +22,7 @@ from formation_tool.core import runtime_config
 from formation_tool.core import runtime_state_sync
 from formation_tool.core import runtime_context_sync
 from formation_tool.core import formation_modes
+from formation_tool.core import formation_defaults
 from formation_tool.core import settings_logic
 from formation_tool.db import formation_db_access
 from formation_tool.db import db_runtime
@@ -30,6 +31,7 @@ from formation_tool.db import game_type_config_runtime
 from formation_tool.group_weight import group_weight_builder
 from formation_tool.group_weight import group_weight_entrypoints
 from formation_tool.group_weight import group_weight_logic
+from formation_tool.group_weight import group_weight_pair_sets
 from formation_tool.group_weight import group_weight_storage
 from formation_tool.group_weight import group_weight_runner
 from formation_tool.group_weight import group_weight_ui_text
@@ -41,6 +43,7 @@ from formation_tool.rebate import rebate_config_storage
 from formation_tool.sampling import direct_sampling_runner
 from formation_tool.sampling import sampling_core
 from formation_tool.sampling import sampling_entrypoints
+from formation_tool.sampling import sampling_table_utils
 from formation_tool.sampling import sampling_task_state
 from formation_tool.utils import log_utils
 from formation_tool.ui import slot_app_context
@@ -696,6 +699,98 @@ class GroupWeightLogicTests(unittest.TestCase):
         self.assertIn("12", preview)
         self.assertIn("ex倍数=2", preview)
         self.assertIn("最终RTP=6", preview)
+
+    def test_default_weight_group_ids_only_use_group_suffix_0_and_1(self):
+        suffixes = {int(group_id) % 10 for group_id in formation_defaults.DEFAULT_WEIGHT_GROUP_IDS}
+        self.assertEqual(suffixes, {0, 1})
+        for group_id in (9652, 9653, 9654, 9655):
+            self.assertNotIn(group_id, formation_defaults.DEFAULT_WEIGHT_GROUP_IDS)
+
+    def test_extra_weight_groups_can_extend_group_ids_from_main_ui_config(self):
+        module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
+        groups = module.normalize_extra_weight_groups([
+            {"group_id": "9652", "special_weight": "300", "free_weight": "150"},
+            {"group_id": "9653", "special_weight": "400", "free_weight": "200"},
+        ])
+
+        group_ids = module.build_weight_group_ids(groups)
+
+        self.assertIn(9652, group_ids)
+        self.assertIn(9653, group_ids)
+        self.assertIn(9650, group_ids)
+
+    def test_extra_weight_groups_reject_conflicting_same_suffix_weights(self):
+        module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
+
+        with self.assertRaisesRegex(ValueError, "尾号2"):
+            module.normalize_extra_weight_groups([
+                {"group_id": "9652", "special_weight": "300", "free_weight": "150"},
+                {"group_id": "9002", "special_weight": "400", "free_weight": "150"},
+            ])
+
+    def test_extra_weight_groups_reject_default_suffixes(self):
+        module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
+
+        with self.assertRaisesRegex(ValueError, "尾号0已是默认分组"):
+            module.normalize_extra_weight_groups([
+                {"group_id": "8750", "special_weight": "300", "free_weight": "150"},
+            ])
+
+    def test_group_weight_pairs_use_group_suffix_specific_rules(self):
+        names = (
+            "WEIGHT_GROUP_IDS",
+            "GROUP_WEIGHT_MODES",
+            "GROUP_WEIGHT_RULES",
+            "GROUP_WEIGHT_GROUP_RULES",
+            "ZERO_REBATE_INFERENCE_MODES",
+            "BUY_GROUP_MODE",
+            "is_extra_buy_mode",
+            "get_extra_buy_group_by_mode",
+            "get_group_weight_mode_name",
+        )
+        missing = object()
+        old_values = {name: getattr(group_weight_builder, name, missing) for name in names}
+        try:
+            group_weight_builder.WEIGHT_GROUP_IDS = (9650, 9651, 9652)
+            group_weight_builder.GROUP_WEIGHT_MODES = ("1",)
+            group_weight_builder.GROUP_WEIGHT_RULES = {
+                "1": [{"rebate_min": 0, "weight": 10}],
+            }
+            group_weight_builder.GROUP_WEIGHT_GROUP_RULES = {
+                "1": {"1": [{"rebate_min": 0, "weight": 20}]},
+                "2": {"1": [{"rebate_min": 0, "weight": 30}]},
+            }
+            group_weight_builder.ZERO_REBATE_INFERENCE_MODES = set()
+            group_weight_builder.BUY_GROUP_MODE = "buy"
+            group_weight_builder.is_extra_buy_mode = lambda _mode: False
+            group_weight_builder.get_extra_buy_group_by_mode = lambda _mode: None
+            group_weight_builder.get_group_weight_mode_name = lambda mode: mode
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                mode_pairs = group_weight_builder.build_group_weight_pairs_for_modes(
+                    ["1"],
+                    {"1": [100, 200]},
+                )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(group_weight_builder, name):
+                        delattr(group_weight_builder, name)
+                else:
+                    setattr(group_weight_builder, name, value)
+
+        self.assertEqual(
+            group_weight_pair_sets.get_pairs_for_mode_group(mode_pairs, "1", 9650),
+            [(100, 10), (200, 10)],
+        )
+        self.assertEqual(
+            group_weight_pair_sets.get_pairs_for_mode_group(mode_pairs, "1", 9651),
+            [(100, 20), (200, 20)],
+        )
+        self.assertEqual(
+            group_weight_pair_sets.get_pairs_for_mode_group(mode_pairs, "1", 9652),
+            [(100, 30), (200, 30)],
+        )
 
     def test_zero_weight_rows_are_built_for_final_write_only(self):
         names = (
@@ -1429,6 +1524,7 @@ class BuyGroupConfigTests(unittest.TestCase):
         self.assertEqual(group_options["buy_game_type"], 99)
         self.assertEqual(group_options["buy_source_suffix"], "free_formation")
         self.assertEqual(group_options["independent_rtp_modes"], [])
+        self.assertEqual(group_options["extra_weight_groups"], [])
         self.assertEqual(group_options["extra_buy_groups"][0]["source_suffix"], "free_formation")
         self.assertEqual(group_options["buy_groups"][0]["game_type"], 99)
         self.assertEqual(group_options["buy_groups"][1]["game_type"], 120)
@@ -2779,6 +2875,71 @@ class SamplingCoreWriteTests(unittest.TestCase):
         self.assertNotIn("rebate", kwargs["operation_label"])
         self.assertNotIn("rebate", kwargs["log_context"])
 
+    def test_append_sampling_remaps_sample_ids_after_existing_data(self):
+        df = sampling_core.pd.DataFrame([
+            {"id": 10, "sort": 1},
+            {"id": 10, "sort": 2},
+            {"id": 20, "sort": 1},
+        ])
+        remapped, pair_count, row_count, pairs = sampling_core.remap_sample_ids_to_append_sequence(
+            df,
+            id_mapping={},
+            next_id_state=[5],
+        )
+
+        self.assertEqual(remapped["id"].tolist(), [5, 5, 6])
+        self.assertEqual(pair_count, 2)
+        self.assertEqual(row_count, 3)
+        self.assertEqual(pairs, [(10, 5), (20, 6)])
+
+    def test_append_structure_signature_ignores_column_lengths(self):
+        source_columns = [
+            ("id", "int(11)", "NO", ""),
+            ("formation", "varchar(255)", "YES", ""),
+            ("rebate", "bigint(20)", "NO", ""),
+        ]
+        target_columns = [
+            ("id", "int(10)", "YES", "auto_increment"),
+            ("formation", "varchar(500)", "NO", ""),
+            ("rebate", "bigint(10)", "YES", ""),
+        ]
+
+        self.assertEqual(
+            sampling_table_utils.append_compatible_column_signature(source_columns),
+            sampling_table_utils.append_compatible_column_signature(target_columns),
+        )
+
+    def test_append_structure_signature_keeps_base_type_and_enum_values(self):
+        self.assertNotEqual(
+            sampling_table_utils.normalize_column_type_for_append("int(11)"),
+            sampling_table_utils.normalize_column_type_for_append("bigint(20)"),
+        )
+        self.assertNotEqual(
+            sampling_table_utils.normalize_column_type_for_append("enum('a','b')"),
+            sampling_table_utils.normalize_column_type_for_append("enum('a','c')"),
+        )
+
+    def test_append_sampling_chunk_uses_keyword_remap_arguments(self):
+        df = sampling_core.pd.DataFrame([
+            {"id": 10, "sort": 1},
+            {"id": 20, "sort": 1},
+        ])
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            remapped, pair_count, row_count, final_conn = sampling_core.remap_sample_chunk_for_append_mode(
+                df,
+                final_conn="final-conn",
+                final_db_name="DB1",
+                staging_table_name="tmp_table",
+                id_mapping={},
+                next_id_state=[100],
+            )
+
+        self.assertEqual(remapped["id"].tolist(), [100, 101])
+        self.assertEqual(pair_count, 2)
+        self.assertEqual(row_count, 2)
+        self.assertEqual(final_conn, "final-conn")
+
     def test_dump_import_table_between_databases_uses_mysql_cli_and_rewrites_target_table(self):
         calls = []
         old_run = sampling_core.subprocess.run
@@ -3510,6 +3671,37 @@ class DirectSamplingRunnerTests(unittest.TestCase):
         self.assertIn(("sample_append_mode", False), events)
         self.assertIn(("finalize_append_mode", False), events)
 
+    def test_direct_sampling_can_run_explicit_append_mode(self):
+        events = []
+        deps = self.build_base_deps(events, append_mode=False)
+        staging_state = {"staging_table_name": "final_table_tmp"}
+
+        deps.prepare_direct_sampling_staging = lambda *_args: staging_state
+
+        def sample_rows(_config_df, **kwargs):
+            events.append(("sample_append_mode", kwargs["append_mode"]))
+            return {"sampled_count": 1, "remapped_id_count": 0, "remapped_row_count": 0}, deps.final_conn
+
+        def finalize(_final_conn, _names, _staging_state, _totals, append_mode):
+            events.append(("finalize_append_mode", append_mode))
+            return True, deps.final_conn
+
+        deps.sample_config_rows_to_staging = sample_rows
+        deps.finalize_direct_sampling_staging = finalize
+        deps.cleanup_direct_sampling_failure = lambda *args: events.append(("cleanup", args))
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = direct_sampling_runner.direct_sample_from_source(
+                {},
+                {},
+                deps=deps,
+                append_mode=True,
+            )
+
+        self.assertTrue(result)
+        self.assertIn(("sample_append_mode", True), events)
+        self.assertIn(("finalize_append_mode", True), events)
+
     def test_direct_sampling_sample_failure_keeps_staging_context_for_cleanup(self):
         events = []
         deps = self.build_base_deps(events)
@@ -4085,6 +4277,7 @@ class SlotAppDepsTests(unittest.TestCase):
         runtime.buy_group_multiplier = 50
         runtime.buy_group_source_suffix = "free_formation"
         runtime.extra_buy_groups = []
+        runtime.extra_weight_groups = []
         runtime.ex_buy_group_enabled = False
         runtime.ex_group_multiplier = 1.5
         runtime.ex_source_suffixes = {}
@@ -4119,6 +4312,7 @@ class SlotAppDepsTests(unittest.TestCase):
             "DEFAULT_BUY_GROUP_SOURCE_SUFFIX": "free_formation",
             "DEFAULT_EX_GROUP_MULTIPLIER": 1.5,
             "DEFAULT_EXTRA_BUY_GROUPS": [],
+            "DEFAULT_EXTRA_WEIGHT_GROUPS": [],
             "DEFAULT_REBATE_RULES": {},
             "DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIERS": [],
             "DEFAULT_GROUP_WEIGHT_RULES": {},
@@ -4129,6 +4323,8 @@ class SlotAppDepsTests(unittest.TestCase):
             "get_runtime_default_rebate_rules": lambda: {},
             "clone_runtime_rebate_rules": lambda rules: dict(rules),
             "validate_runtime_rebate_rules": lambda rules: rules,
+            "clone_extra_weight_groups": lambda groups: [dict(group) for group in groups],
+            "normalize_extra_weight_groups": lambda groups: [dict(group) for group in groups],
             "WEIGHT_GROUP_IDS": (),
             "GROUP_WEIGHT_MODES": (),
             "GROUP_WEIGHT_UI_MODES": (),
@@ -4291,10 +4487,17 @@ class FakeSettingsApp(SlotAppSettingsMixin):
         }
         self.status_var = tk.StringVar(master=master, value="")
         self.extra_buy_rows = []
+        self.extra_weight_group_rows = []
         self.apply_selected_config_called = False
 
     def set_extra_buy_group_rows(self, groups):
         self.extra_buy_rows = [dict(group) for group in groups]
+
+    def set_extra_weight_group_rows(self, groups):
+        self.extra_weight_group_rows = [dict(group) for group in groups]
+
+    def collect_extra_weight_groups(self):
+        return [dict(group) for group in self.extra_weight_group_rows]
 
     def apply_selected_config(self):
         self.apply_selected_config_called = True
@@ -4357,6 +4560,9 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         extra_groups = [
             {"game_type": 120, "multiplier": 80, "source_suffix": "bonus_formation", "rules": []}
         ]
+        extra_weight_groups = [
+            {"group_id": 9652, "special_weight": 300, "free_weight": 150}
+        ]
         deps = SimpleNamespace(
             get_runtime_state=lambda: {
                 "vendor": "pg",
@@ -4392,6 +4598,8 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             get_ex_source_suffixes=lambda: {"6": "manual_ex_formation"},
             get_extra_buy_groups=lambda: extra_groups,
             clone_extra_buy_groups=lambda groups: [dict(group) for group in groups],
+            get_extra_weight_groups=lambda: extra_weight_groups,
+            clone_extra_weight_groups=lambda groups: [dict(group) for group in groups],
             get_direct_count_modes=lambda: {"1", "6"},
             get_direct_count_tiers=lambda: [{"rebate_min": 1, "rebate_max": 999, "count": 88}],
         )
@@ -4412,6 +4620,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertEqual(data["group_weight_options"]["independent_rtp_modes"], ["1", "6"])
         self.assertEqual(data["group_weight_options"]["ex_source_suffixes"], {"6": "manual_ex_formation"})
         self.assertEqual(data["group_weight_options"]["extra_buy_groups"], extra_groups)
+        self.assertEqual(data["group_weight_options"]["extra_weight_groups"], extra_weight_groups)
         self.assertEqual(data["group_weight_options"]["buy_groups"][0]["game_type"], 99)
         self.assertEqual(data["group_weight_options"]["buy_groups"][1]["game_type"], 120)
         self.assertEqual(set(data["direct_count_modes"]), {"1", "6"})
@@ -4421,6 +4630,9 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         calls = []
         extra_groups = [
             {"game_type": 120, "multiplier": 80, "source_suffix": "bonus_formation", "rules": []}
+        ]
+        extra_weight_groups = [
+            {"group_id": 9652, "special_weight": 300, "free_weight": 150}
         ]
         deps = SimpleNamespace(
             clear_config_warnings=lambda: calls.append(("clear", None)),
@@ -4434,11 +4646,15 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             get_ex_group_multiplier=lambda: 1.5,
             get_ex_source_suffixes=lambda: {},
             get_extra_buy_groups=lambda: [],
+            get_extra_weight_groups=lambda: [],
             normalize_rebate_rules_for_load=lambda rules: {"normalized": rules},
             apply_rebate_rules_config=lambda rules: calls.append(("rebate", rules)),
             normalize_group_weight_rules_for_load=lambda rules: {"normalized": rules},
             apply_group_weight_rules_config=lambda rules: calls.append(("group_rules", rules)),
             apply_extra_buy_groups_config=lambda groups: calls.append(("extra", [dict(group) for group in groups])),
+            apply_extra_weight_groups_config=lambda groups: calls.append(
+                ("extra_weight", [dict(group) for group in groups])
+            ),
             apply_special_group_target_rtp=lambda value: calls.append(("special_rtp", value)),
             apply_zero_rebate_inference_modes_config=lambda modes: calls.append(("zero_infer", list(modes))),
             apply_independent_rtp_modes_config=lambda modes: calls.append(("independent_rtp", list(modes))),
@@ -4475,6 +4691,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
                 "ex_multiplier": 1.6,
                 "ex_source_suffixes": {"6": "custom_ex_formation", "8": "custom_ex_free_formation"},
                 "extra_buy_groups": extra_groups,
+                "extra_weight_groups": extra_weight_groups,
             },
             direct_count_modes=["1", "6"],
             direct_count_tiers=[{"rebate_min": 1, "rebate_max": 999, "count": 88}],
@@ -4494,6 +4711,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertEqual(app.ex_source_suffix_vars["6"].get(), "custom_ex_formation")
         self.assertEqual(app.ex_source_suffix_vars["8"].get(), "custom_ex_free_formation")
         self.assertEqual(app.extra_buy_rows, extra_groups)
+        self.assertEqual(app.extra_weight_group_rows, extra_weight_groups)
         self.assertTrue(app.apply_selected_config_called)
         self.assertIn(("special_rtp", 7.25), calls)
         self.assertIn(("zero_infer", ["1", "7"]), calls)
@@ -4501,6 +4719,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertIn(("direct", ["1", "6"]), calls)
         self.assertIn(("direct_tiers", [{"rebate_min": 1, "rebate_max": 999, "count": 88}]), calls)
         self.assertIn(("extra", extra_groups), calls)
+        self.assertIn(("extra_weight", extra_weight_groups), calls)
 
     def test_buy_group_load_summary_and_skip_details_include_missing_tables(self):
         deps = SimpleNamespace()
@@ -5057,6 +5276,29 @@ class GroupWeightRulesDialogTests(unittest.TestCase):
             points,
         )
 
+    def test_zero_rebate_share_uses_final_preview_weights(self):
+        text = group_weight_rules_dialog.format_zero_rebate_share_text([
+            (0, 300),
+            (1000, 100),
+            (2000, 100),
+            (3000, 0),
+        ])
+
+        self.assertEqual(
+            text,
+            "rebate=0 占比（不中奖率）：60.0000%（0权重=300，总权重=500）",
+        )
+
+    def test_zero_rebate_share_explains_missing_or_zero_total_weight(self):
+        self.assertEqual(
+            group_weight_rules_dialog.format_zero_rebate_share_text([(1000, 100)]),
+            "rebate=0 占比（不中奖率）：无 rebate=0",
+        )
+        self.assertEqual(
+            group_weight_rules_dialog.format_zero_rebate_share_text([(0, 0), (1000, 0)]),
+            "rebate=0 占比（不中奖率）：--（总权重为0）",
+        )
+
     def test_missing_zero_rebate_locks_zero_weight_entry_and_parses_as_zero(self):
         class FakeEntry:
             def __init__(self):
@@ -5138,6 +5380,53 @@ class GroupWeightRulesDialogTests(unittest.TestCase):
         dialog.update_rtp_info()
 
         self.assertIn("预览生成失败：bad preview", dialog.rtp_info_var.get())
+
+    def test_current_rtp_group_selection_syncs_group_suffix(self):
+        master = tk.Tcl()
+        loaded = []
+        dialog = group_weight_rules_dialog.GroupWeightRulesDialog.__new__(
+            group_weight_rules_dialog.GroupWeightRulesDialog
+        )
+        dialog.deps = SimpleNamespace(
+            weight_group_ids=[9650, 9651, 9652, 9653],
+            format_group_rtp_option=lambda group_id: f"{group_id} - target",
+        )
+        dialog.current_group_var = tk.StringVar(master=master, value="9650 - target")
+        dialog.group_suffix_var = tk.IntVar(master=master, value=0)
+        dialog.current_rule_group_suffix = 0
+        dialog.save_visible_rules_for_group = lambda *_args, **_kwargs: True
+        dialog.load_rules_for_group = lambda suffix: loaded.append(suffix)
+        dialog.update_rtp_info = lambda *_args: None
+
+        dialog.current_group_var.set("9652 - target")
+        dialog.on_current_group_changed()
+
+        self.assertEqual(dialog.current_rule_group_suffix, 2)
+        self.assertEqual(dialog.group_suffix_var.get(), 2)
+        self.assertEqual(loaded, [2])
+
+    def test_group_suffix_selection_keeps_current_rtp_family_when_possible(self):
+        master = tk.Tcl()
+        loaded = []
+        dialog = group_weight_rules_dialog.GroupWeightRulesDialog.__new__(
+            group_weight_rules_dialog.GroupWeightRulesDialog
+        )
+        dialog.deps = SimpleNamespace(
+            weight_group_ids=[9650, 9651, 9652, 9653, 9000, 9001],
+            format_group_rtp_option=lambda group_id: f"{group_id} - target",
+        )
+        dialog.current_group_var = tk.StringVar(master=master, value="9000 - target")
+        dialog.group_suffix_var = tk.IntVar(master=master, value=1)
+        dialog.current_rule_group_suffix = 0
+        dialog.save_visible_rules_for_group = lambda *_args, **_kwargs: True
+        dialog.load_rules_for_group = lambda suffix: loaded.append(suffix)
+        dialog.update_rtp_info = lambda *_args: None
+
+        dialog.on_group_suffix_changed()
+
+        self.assertEqual(dialog.current_group_var.get(), "9001 - target")
+        self.assertEqual(dialog.current_rule_group_suffix, 1)
+        self.assertEqual(loaded, [1])
 
     def test_restore_defaults_resets_visible_rules_and_special_target(self):
         class FakeRuleEditor:

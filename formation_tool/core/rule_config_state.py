@@ -66,6 +66,20 @@ def clone_group_weight_rules(rules, group_modes):
     }
 
 
+def clone_group_weight_group_rules(rules):
+    """Return a copy of group-suffix specific group_weight rule overrides."""
+    cloned = {}
+    for group_suffix, mode_rules in (rules or {}).items():
+        if not isinstance(mode_rules, dict):
+            continue
+        cloned[str(group_suffix)] = {
+            str(mode): [dict(rule) for rule in rule_list]
+            for mode, rule_list in normalize_group_weight_rule_keys(mode_rules).items()
+            if isinstance(rule_list, list)
+        }
+    return cloned
+
+
 def clone_extra_buy_groups(groups):
     """Return an editable copy of extra buy group rows."""
     cloned = []
@@ -271,6 +285,56 @@ def validate_group_weight_rules(
         else:
             mode_rules = normalized_input[mode]
         normalized[mode] = normalize_group_weight_rule_list(mode_name, mode_rules)
+    return normalized
+
+
+def validate_group_weight_group_rules(
+    rules,
+    *,
+    group_modes,
+    game_type_names,
+    warn_unknown=False,
+    add_warning=None,
+):
+    """Validate optional group-suffix specific group_weight rule overrides."""
+    if rules in (None, {}):
+        return {}
+    if not isinstance(rules, dict):
+        raise ValueError("group_weight 分组权重规则必须是字典")
+
+    allowed_modes = {str(mode) for mode in group_modes}
+    normalized = {}
+    for raw_suffix, raw_mode_rules in rules.items():
+        try:
+            group_suffix = int(raw_suffix)
+        except (TypeError, ValueError):
+            raise ValueError(f"group_weight 分组号必须是整数: {raw_suffix!r}") from None
+        if group_suffix < 0 or group_suffix > 9:
+            raise ValueError(f"group_weight 分组号必须在 0~9 之间: {group_suffix}")
+        if not isinstance(raw_mode_rules, dict):
+            raise ValueError(f"group_weight 分组{group_suffix}规则必须是字典")
+
+        mode_rules_input = normalize_group_weight_rule_keys(raw_mode_rules)
+        unknown_modes = sorted(str(mode) for mode in mode_rules_input if str(mode) not in allowed_modes)
+        if unknown_modes:
+            message = f"GROUP_WEIGHT_GROUP_RULES 分组{group_suffix}包含未知/旧模式，已忽略: {', '.join(unknown_modes)}"
+            if not warn_unknown:
+                raise ValueError(message)
+            if add_warning:
+                add_warning(message)
+
+        suffix_rules = {}
+        for mode, mode_rules in mode_rules_input.items():
+            mode = str(mode)
+            if mode not in allowed_modes:
+                continue
+            mode_name = game_type_names.get(mode, mode)
+            suffix_rules[mode] = normalize_group_weight_rule_list(
+                f"分组{group_suffix} {mode_name}",
+                mode_rules,
+            )
+        if suffix_rules:
+            normalized[str(group_suffix)] = suffix_rules
     return normalized
 
 

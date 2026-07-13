@@ -133,20 +133,26 @@ def build_cli_settings_deps():
         get_sampling_use_temp_db=lambda: True,
         get_sampling_temp_db=lambda: SAMPLING_TEMP_DB,
         get_sampling_auto_sync_to_target=lambda: SAMPLING_AUTO_SYNC_TO_TARGET,
+        get_extra_weight_groups=lambda: EXTRA_WEIGHT_GROUPS,
         get_app_settings_path=get_app_settings_path,
         get_app_profile_settings_path=get_app_profile_settings_path,
         clear_config_warnings=clear_config_warnings,
         consume_config_warnings=consume_config_warnings,
         normalize_rebate_rules_for_load=normalize_rebate_rules_for_load,
         normalize_group_weight_rules_for_load=normalize_group_weight_rules_for_load,
+        normalize_group_weight_group_rules_for_load=normalize_group_weight_group_rules_for_load,
+        normalize_extra_weight_groups=normalize_extra_weight_groups,
+        clone_extra_weight_groups=clone_extra_weight_groups,
         apply_runtime_config=apply_runtime_config,
         apply_weight_config=apply_weight_config,
+        apply_extra_weight_groups_config=apply_extra_weight_groups_config,
         apply_rebate_rules_config=apply_rebate_rules_config,
         apply_sampling_append_mode=apply_sampling_append_mode,
         apply_sampling_detailed_log=apply_sampling_detailed_log,
         apply_sampling_temp_db_config=apply_sampling_temp_db_config,
         apply_sampling_auto_sync_to_target=apply_sampling_auto_sync_to_target,
         apply_group_weight_rules_config=apply_group_weight_rules_config,
+        apply_group_weight_group_rules_config=apply_group_weight_group_rules_config,
         apply_zero_rebate_inference_modes_config=apply_zero_rebate_inference_modes_config,
         apply_independent_rtp_modes_config=apply_independent_rtp_modes_config,
         apply_rebate_config_direct_count_tiers=apply_rebate_config_direct_count_tiers,
@@ -240,6 +246,7 @@ def apply_runtime_config(vendor, game_id, source_db, final_db, config_db):
 
 # 共用 group_id 列表（room_id 取 GAME_TABLE_GAME_ID）
 WEIGHT_GROUP_IDS = list(formation_defaults.DEFAULT_WEIGHT_GROUP_IDS)
+EXTRA_WEIGHT_GROUPS = formation_defaults.clone_extra_weight_groups()
 
 
 def get_group_target_rtp_value(group_id):
@@ -259,6 +266,103 @@ SPECIAL_WEIGHT_BY_LAST_DIGIT = formation_defaults.clone_int_map(
 FREE_WEIGHT_BY_LAST_DIGIT = formation_defaults.clone_int_map(
     formation_defaults.DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT
 )
+
+
+def clone_extra_weight_groups(groups):
+    return formation_defaults.clone_extra_weight_groups(groups)
+
+
+def build_weight_group_ids(extra_weight_groups=None):
+    group_ids = list(formation_defaults.DEFAULT_WEIGHT_GROUP_IDS)
+    seen = set(int(group_id) for group_id in group_ids)
+    for group in extra_weight_groups or []:
+        group_id = int(group['group_id'])
+        if group_id in seen:
+            continue
+        seen.add(group_id)
+        group_ids.append(group_id)
+    return group_ids
+
+
+def normalize_extra_weight_groups(groups):
+    normalized = []
+    seen_group_ids = set()
+    suffix_weights = {}
+    for idx, group in enumerate(groups or [], start=1):
+        if not isinstance(group, dict):
+            raise ValueError(f"额外权重分组第 {idx} 行必须是对象")
+        group_id = rule_config_state.parse_non_negative_int_text(
+            group.get('group_id'),
+            f"额外权重分组第 {idx} 行 group_id",
+        )
+        special_weight = rule_config_state.parse_non_negative_int_text(
+            group.get('special_weight'),
+            f"额外权重分组第 {idx} 行特殊局权重",
+        )
+        free_weight = rule_config_state.parse_non_negative_int_text(
+            group.get('free_weight'),
+            f"额外权重分组第 {idx} 行免费局权重",
+        )
+        if group_id in formation_defaults.DEFAULT_WEIGHT_GROUP_IDS:
+            raise ValueError(f"额外权重分组第 {idx} 行 group_id={group_id} 已是默认分组")
+        if group_id in seen_group_ids:
+            raise ValueError(f"额外权重分组 group_id={group_id} 重复")
+        seen_group_ids.add(group_id)
+        suffix = group_id % 10
+        if suffix in (0, 1):
+            raise ValueError(
+                f"额外权重分组第 {idx} 行 group_id={group_id} 尾号{suffix}已是默认分组；"
+                "额外分组请使用尾号2-9"
+            )
+        weights = (special_weight, free_weight)
+        if suffix in suffix_weights and suffix_weights[suffix] != weights:
+            raise ValueError(
+                f"额外权重分组尾号{suffix}存在不同特殊/免费权重；"
+                "同一尾号只能对应一组触发权重"
+            )
+        suffix_weights[suffix] = weights
+        normalized.append({
+            'group_id': group_id,
+            'special_weight': special_weight,
+            'free_weight': free_weight,
+        })
+    return normalized
+
+
+def _rebuild_trigger_weight_maps():
+    global SPECIAL_WEIGHT_BY_LAST_DIGIT, FREE_WEIGHT_BY_LAST_DIGIT
+
+    special_base = {
+        0: int(SPECIAL_WEIGHT_BY_LAST_DIGIT.get(0, formation_defaults.DEFAULT_SPECIAL_WEIGHT_BY_LAST_DIGIT[0])),
+        1: int(SPECIAL_WEIGHT_BY_LAST_DIGIT.get(1, formation_defaults.DEFAULT_SPECIAL_WEIGHT_BY_LAST_DIGIT[1])),
+    }
+    free_base = {
+        0: int(FREE_WEIGHT_BY_LAST_DIGIT.get(0, formation_defaults.DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT[0])),
+        1: int(FREE_WEIGHT_BY_LAST_DIGIT.get(1, formation_defaults.DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT[1])),
+    }
+    for group in EXTRA_WEIGHT_GROUPS:
+        suffix = int(group['group_id']) % 10
+        special_base[suffix] = int(group['special_weight'])
+        free_base[suffix] = int(group['free_weight'])
+    SPECIAL_WEIGHT_BY_LAST_DIGIT = special_base
+    FREE_WEIGHT_BY_LAST_DIGIT = free_base
+    RUNTIME_STATE.special_weight_by_last_digit = dict(SPECIAL_WEIGHT_BY_LAST_DIGIT)
+    RUNTIME_STATE.free_weight_by_last_digit = dict(FREE_WEIGHT_BY_LAST_DIGIT)
+
+
+def _rebuild_weight_group_ids():
+    WEIGHT_GROUP_IDS[:] = build_weight_group_ids(EXTRA_WEIGHT_GROUPS)
+    RUNTIME_STATE.weight_group_ids = list(WEIGHT_GROUP_IDS)
+    RUNTIME_STATE.extra_weight_groups = clone_extra_weight_groups(EXTRA_WEIGHT_GROUPS)
+
+
+def apply_extra_weight_groups_config(groups):
+    global EXTRA_WEIGHT_GROUPS
+
+    EXTRA_WEIGHT_GROUPS = normalize_extra_weight_groups(groups)
+    _rebuild_trigger_weight_maps()
+    _rebuild_weight_group_ids()
+    return EXTRA_WEIGHT_GROUPS
 
 
 def apply_weight_config(special_weight_0, special_weight_1, free_weight_0, free_weight_1):
@@ -292,14 +396,14 @@ def apply_weight_config(special_weight_0, special_weight_1, free_weight_0, free_
         0: parsed['free_0'],
         1: parsed['free_1'],
     }
-    RUNTIME_STATE.special_weight_by_last_digit = dict(SPECIAL_WEIGHT_BY_LAST_DIGIT)
-    RUNTIME_STATE.free_weight_by_last_digit = dict(FREE_WEIGHT_BY_LAST_DIGIT)
+    _rebuild_trigger_weight_maps()
 
 # ==================  rebate sampling rules ==================
 REBATE_RULES = formation_defaults.clone_rule_map(formation_defaults.REBATE_RULES)
 
 # ==================  group_weight interval rules ==================
 GROUP_WEIGHT_RULES = formation_defaults.clone_rule_map(formation_defaults.GROUP_WEIGHT_RULES)
+GROUP_WEIGHT_GROUP_RULES = formation_defaults.clone_group_rule_map(formation_defaults.GROUP_WEIGHT_GROUP_RULES)
 ZERO_REBATE_INFERENCE_MODES = set(formation_modes.DEFAULT_ZERO_REBATE_INFERENCE_MODES)
 INDEPENDENT_RTP_MODES = set(formation_modes.DEFAULT_INDEPENDENT_RTP_MODES)
 
@@ -335,6 +439,7 @@ DEFAULT_BUY_GROUP_SOURCE_SUFFIX = formation_defaults.DEFAULT_BUY_GROUP_SOURCE_SU
 DEFAULT_EX_GROUP_MULTIPLIER = formation_defaults.DEFAULT_EX_GROUP_MULTIPLIER
 DEFAULT_EX_SOURCE_SUFFIXES = formation_defaults.clone_ex_source_suffixes()
 DEFAULT_EXTRA_BUY_GROUPS = formation_defaults.clone_extra_buy_groups()
+DEFAULT_EXTRA_WEIGHT_GROUPS = formation_defaults.clone_extra_weight_groups()
 DEFAULT_SAMPLING_APPEND_MODE = formation_defaults.DEFAULT_SAMPLING_APPEND_MODE
 DEFAULT_SAMPLING_DETAILED_LOG = formation_defaults.DEFAULT_SAMPLING_DETAILED_LOG
 DEFAULT_SAMPLING_USE_TEMP_DB = formation_defaults.DEFAULT_SAMPLING_USE_TEMP_DB
@@ -506,6 +611,9 @@ DEFAULT_GROUP_WEIGHT_RULES = {
     mode: [dict(rule) for rule in GROUP_WEIGHT_RULES.get(mode, [])]
     for mode in GROUP_WEIGHT_MODES
 }
+DEFAULT_GROUP_WEIGHT_GROUP_RULES = formation_defaults.clone_group_rule_map(
+    formation_defaults.GROUP_WEIGHT_GROUP_RULES
+)
 DEFAULT_ZERO_REBATE_INFERENCE_MODES = set(formation_modes.DEFAULT_ZERO_REBATE_INFERENCE_MODES)
 DEFAULT_INDEPENDENT_RTP_MODES = set(formation_modes.DEFAULT_INDEPENDENT_RTP_MODES)
 DEFAULT_TRIGGER_WEIGHTS = {
@@ -559,8 +667,10 @@ def _sync_globals_from_runtime_state():
     global SOURCE_DB, FINAL_DB, CONFIG_DB, WEIGHT_CONFIG_DB
     global GAME_TABLE_VENDOR, GAME_TABLE_GAME_ID, GAME_TABLE_PREFIX
     global _GAME_DEFS, GAME_CONFIGS, WEIGHT_TYPE_ID
+    global WEIGHT_GROUP_IDS, EXTRA_WEIGHT_GROUPS
     global SPECIAL_WEIGHT_BY_LAST_DIGIT, FREE_WEIGHT_BY_LAST_DIGIT
-    global REBATE_RULES, GROUP_WEIGHT_RULES, ZERO_REBATE_INFERENCE_MODES, INDEPENDENT_RTP_MODES
+    global REBATE_RULES, GROUP_WEIGHT_RULES, GROUP_WEIGHT_GROUP_RULES
+    global ZERO_REBATE_INFERENCE_MODES, INDEPENDENT_RTP_MODES
     global SAMPLING_APPEND_MODE, SAMPLING_DETAILED_LOG
     global REBATE_CONFIG_DIRECT_COUNT_MODES, SPECIAL_GROUP_TARGET_RTP
     global EX_GROUP_TARGET_RTPS
@@ -583,10 +693,13 @@ def _sync_globals_from_runtime_state():
     GAME_TABLE_PREFIX = target.GAME_TABLE_PREFIX
     _GAME_DEFS = target._GAME_DEFS
     GAME_CONFIGS = target.GAME_CONFIGS
+    WEIGHT_GROUP_IDS[:] = target.WEIGHT_GROUP_IDS
+    EXTRA_WEIGHT_GROUPS = target.EXTRA_WEIGHT_GROUPS
     SPECIAL_WEIGHT_BY_LAST_DIGIT = target.SPECIAL_WEIGHT_BY_LAST_DIGIT
     FREE_WEIGHT_BY_LAST_DIGIT = target.FREE_WEIGHT_BY_LAST_DIGIT
     REBATE_RULES = target.REBATE_RULES
     GROUP_WEIGHT_RULES = target.GROUP_WEIGHT_RULES
+    GROUP_WEIGHT_GROUP_RULES = target.GROUP_WEIGHT_GROUP_RULES
     ZERO_REBATE_INFERENCE_MODES = target.ZERO_REBATE_INFERENCE_MODES
     INDEPENDENT_RTP_MODES = target.INDEPENDENT_RTP_MODES
     SAMPLING_APPEND_MODE = target.SAMPLING_APPEND_MODE
@@ -623,6 +736,10 @@ def clone_runtime_rebate_rules(rules):
 
 def clone_group_weight_rules(rules):
     return rule_config_state.clone_group_weight_rules(rules, GROUP_WEIGHT_MODES)
+
+
+def clone_group_weight_group_rules(rules):
+    return rule_config_state.clone_group_weight_group_rules(rules)
 
 
 def clone_extra_buy_groups(groups):
@@ -883,11 +1000,37 @@ def normalize_group_weight_rules_for_load(rules):
     return _validate_group_weight_rules(rules, fill_missing=True, warn_unknown=True)
 
 
+def _validate_group_weight_group_rules(rules, *, warn_unknown=False):
+    return rule_config_state.validate_group_weight_group_rules(
+        rules,
+        group_modes=GROUP_WEIGHT_MODES,
+        game_type_names=GAME_TYPE_NAMES,
+        warn_unknown=warn_unknown,
+        add_warning=add_config_warning,
+    )
+
+
+def validate_group_weight_group_rules(rules):
+    return _validate_group_weight_group_rules(rules, warn_unknown=False)
+
+
+def normalize_group_weight_group_rules_for_load(rules):
+    return _validate_group_weight_group_rules(rules, warn_unknown=True)
+
+
 def apply_group_weight_rules_config(rules):
     """Apply group_weight interval rules from settings or dialog input."""
     global GROUP_WEIGHT_RULES
     GROUP_WEIGHT_RULES = validate_group_weight_rules(rules)
     RUNTIME_STATE.group_weight_rules = GROUP_WEIGHT_RULES
+
+
+def apply_group_weight_group_rules_config(rules):
+    """Apply group-suffix specific group_weight interval rules."""
+    global GROUP_WEIGHT_GROUP_RULES
+    GROUP_WEIGHT_GROUP_RULES = validate_group_weight_group_rules(rules)
+    RUNTIME_STATE.group_weight_group_rules = GROUP_WEIGHT_GROUP_RULES
+    return GROUP_WEIGHT_GROUP_RULES
 
 
 def apply_special_group_target_rtp(value):
@@ -2825,8 +2968,11 @@ def get_runtime_default_rebate_rules():
     )
 
 
-def build_all_sampling_jobs_deps():
-    return task_dependency_factories.build_all_sampling_jobs_deps(_current_module_namespace())
+def build_all_sampling_jobs_deps(*, append_mode=False):
+    return task_dependency_factories.build_all_sampling_jobs_deps(
+        _current_module_namespace(),
+        append_mode=append_mode,
+    )
 
 
 def _sync_sampling_modes_after_success(modes):
@@ -2845,6 +2991,20 @@ def _sync_sampling_modes_after_success(modes):
 
 def run_all_sampling_jobs():
     results = task_entrypoints.run_all_sampling_jobs(deps=build_all_sampling_jobs_deps())
+    if SAMPLING_AUTO_SYNC_TO_TARGET:
+        successful_modes = [
+            mode
+            for mode, success in (results or {}).items()
+            if success is True
+        ]
+        _sync_sampling_modes_after_success(successful_modes)
+    return results
+
+
+def run_all_supplemental_sampling_jobs():
+    results = task_entrypoints.run_all_sampling_jobs(
+        deps=build_all_sampling_jobs_deps(append_mode=True)
+    )
     if SAMPLING_AUTO_SYNC_TO_TARGET:
         successful_modes = [
             mode
@@ -2888,6 +3048,14 @@ def test_selected_database_connections():
 def run_single_game_job(choice):
     """Run sampling for one selected mode."""
     success = run_single_game(get_runtime_game_configs()[choice])
+    if success and SAMPLING_AUTO_SYNC_TO_TARGET:
+        _sync_sampling_modes_after_success([choice])
+    return success
+
+
+def run_single_supplemental_game_job(choice):
+    """Run supplemental sampling for one selected mode."""
+    success = run_single_game(get_runtime_game_configs()[choice], append_mode=True)
     if success and SAMPLING_AUTO_SYNC_TO_TARGET:
         _sync_sampling_modes_after_success([choice])
     return success
@@ -3001,10 +3169,12 @@ def main():
     deps = SimpleNamespace(
         game_configs=game_configs,
         run_all_sampling_jobs=run_all_sampling_jobs,
+        run_all_supplemental_sampling_jobs=run_all_supplemental_sampling_jobs,
         generate_all_rebate_configs=generate_all_rebate_configs,
         write_common_configs=write_common_configs,
         run_single_game=run_single_game,
         run_single_game_by_choice=run_single_game_job,
+        run_single_supplemental_game_job=run_single_supplemental_game_job,
     )
     return run_cli(deps)
 

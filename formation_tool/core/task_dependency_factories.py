@@ -6,7 +6,7 @@ from formation_tool.core import task_entrypoints
 from formation_tool.core import task_preflight
 
 
-def build_all_sampling_jobs_deps(module):
+def build_all_sampling_jobs_deps(module, *, append_mode=False):
     """Build deps for running all sampling jobs from the main module namespace."""
     return task_entrypoints.build_all_sampling_deps(
         SimpleNamespace(
@@ -14,7 +14,11 @@ def build_all_sampling_jobs_deps(module):
             get_sampling_formation_exists=module.get_sampling_formation_exists,
             get_source_formation_check_error=module.get_source_formation_check_error,
             get_table_name=module.get_table_name,
-            run_single_game=module.run_single_game,
+            run_single_game=(
+                (lambda config: module.run_single_game(config, append_mode=True))
+                if append_mode
+                else module.run_single_game
+            ),
             check_cancelled=module.check_cancelled,
         )
     )
@@ -52,7 +56,9 @@ def build_task_preflight_deps(module):
         get_rebate_config_index_warnings=module.get_rebate_config_index_warnings,
         validate_rebate_rules=module.validate_runtime_rebate_rules,
         get_group_weight_rules=lambda: runtime_state.group_weight_rules,
+        get_group_weight_group_rules=lambda: getattr(runtime_state, 'group_weight_group_rules', {}),
         validate_group_weight_rules=module.validate_group_weight_rules,
+        validate_group_weight_group_rules=module.validate_group_weight_group_rules,
         get_buy_groups=lambda: runtime_state.buy_groups,
         get_ex_buy_group_enabled=lambda: runtime_state.ex_buy_group_enabled,
         get_ex_buy_group_game_type=lambda: runtime_state.ex_buy_group_game_type,

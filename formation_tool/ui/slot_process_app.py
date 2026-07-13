@@ -26,6 +26,9 @@ class SlotProcessApp(SlotAppUiMixin, SlotAppSettingsMixin, SlotAppTaskMixin, Slo
         self.extra_buy_rows = []
         self.extra_buy_rows_frame = None
         self.add_extra_buy_button = None
+        self.extra_weight_group_rows = []
+        self.extra_weight_group_rows_frame = None
+        self.add_extra_weight_group_button = None
         self.load_buy_group_types_button = None
         self.buy_group_type_loader = None
         self.ui_deps = app_deps.build_ui_deps(app_deps_context)

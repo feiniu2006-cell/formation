@@ -8,6 +8,7 @@ from formation_tool.group_weight.group_weight_logic import (
     should_infer_zero_rebate,
 )
 from formation_tool.group_weight import group_weight_row_helpers
+from formation_tool.group_weight import group_weight_pair_sets
 from formation_tool.core import runtime_context_sync
 from formation_tool.utils import log_utils
 
@@ -91,17 +92,17 @@ def append_ex_free_group_weight_mode(rows, formation_exists, rebates_by_mode, mo
         get_group_weight_write_game_type(game_type),
         mode_pairs[game_type],
     )
-    game_rtp = calculate_weighted_rtp(mode_pairs[game_type])
-    display_rtp = None if game_rtp is None else game_rtp / float(EX_GROUP_MULTIPLIER)
     for group_id in WEIGHT_GROUP_IDS:
+        group_pairs = group_weight_pair_sets.get_pairs_for_mode_group(mode_pairs, game_type, group_id)
+        game_rtp = calculate_weighted_rtp(group_pairs)
+        display_rtp = None if game_rtp is None else game_rtp / float(EX_GROUP_MULTIPLIER)
         ex_info_by_mode[game_type][int(group_id)] = {
             'actual_rtp': game_rtp,
             'display_rtp': display_rtp,
             'zero_weight': 0,
         }
     print(
-        f"\n[{GAME_TYPE_NAMES[game_type]}] RTP={format_weighted_rtp(game_rtp)}，"
-        f"最终RTP={format_weighted_rtp(display_rtp)}，"
+        f"\n[{GAME_TYPE_NAMES[game_type]}] RTP按分组规则计算，"
         f"ex倍数={format_weighted_rtp(EX_GROUP_MULTIPLIER)}，"
         f"按静态权重写入，不反推 rebate=0，准备写入 {mode_rows} 行"
     )
@@ -128,10 +129,13 @@ def append_ex_normal_group_weight_mode(rows, formation_exists, rebates_by_mode, 
             f"\n[{mode_name}] 独立计算RTP：开启，最终RTP目标=当前组，"
             f"反推目标按 ex倍数 {format_weighted_rtp(EX_GROUP_MULTIPLIER)} 折算"
         )
-    ex_special_enabled = mode_exists['7'] and bool(mode_pairs['7'])
-    ex_free_enabled = mode_exists['8'] and bool(mode_pairs['8'])
     for group_id in WEIGHT_GROUP_IDS:
         group_id = int(group_id)
+        normal_pairs = group_weight_pair_sets.get_pairs_for_mode_group(mode_pairs, game_type, group_id)
+        ex_special_pairs = group_weight_pair_sets.get_pairs_for_mode_group(mode_pairs, '7', group_id)
+        ex_free_pairs = group_weight_pair_sets.get_pairs_for_mode_group(mode_pairs, '8', group_id)
+        ex_special_enabled = mode_exists['7'] and bool(ex_special_pairs)
+        ex_free_enabled = mode_exists['8'] and bool(ex_free_pairs)
         ex_special_rtp = (ex_info_by_mode['7'].get(group_id) or {}).get('actual_rtp') or 0
         ex_free_rtp = (ex_info_by_mode['8'].get(group_id) or {}).get('actual_rtp') or 0
         try:
@@ -139,7 +143,7 @@ def append_ex_normal_group_weight_mode(rows, formation_exists, rebates_by_mode, 
                 group_rows, group_info = build_independent_group_weight_rows_for_group(
                     group_id,
                     get_group_weight_write_game_type(game_type),
-                    mode_pairs[game_type],
+                    normal_pairs,
                     normal_should_infer,
                     get_group_target_rtp_ratio(group_id) * EX_GROUP_MULTIPLIER,
                     display_divisor=EX_GROUP_MULTIPLIER,
@@ -147,7 +151,7 @@ def append_ex_normal_group_weight_mode(rows, formation_exists, rebates_by_mode, 
             else:
                 group_rows, group_info = build_normal_group_weight_rows_for_group(
                     group_id,
-                    mode_pairs[game_type],
+                    normal_pairs,
                     ex_free_rtp,
                     ex_free_enabled,
                     ex_special_rtp,
