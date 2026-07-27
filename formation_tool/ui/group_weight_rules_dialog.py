@@ -360,6 +360,9 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         group_rules = getattr(self, 'group_rules_by_suffix', {}).get(str(group_suffix), {})
         if mode in group_rules:
             return group_rules.get(mode, [])
+        group_zero_rules = getattr(self, 'group_rules_by_suffix', {}).get('0', {})
+        if mode in group_zero_rules:
+            return group_zero_rules.get(mode, [])
         return getattr(self, 'base_rules', getattr(self.deps, 'rules', {})).get(mode, [])
 
     def save_visible_rules_for_group(self, group_suffix, *, show_error=False):
@@ -667,14 +670,19 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         ).grid(row=0, column=1, sticky="e", padx=(0, 8))
         ttk.Button(
             button_frame,
+            text=group_weight_ui_text.SAVE_BUTTON_TEXT,
+            command=self.save_config,
+        ).grid(row=0, column=2, sticky="e", padx=(0, 8))
+        ttk.Button(
+            button_frame,
             text=group_weight_ui_text.CONFIRM_BUTTON_TEXT,
             command=self.confirm_and_run,
-        ).grid(row=0, column=2, sticky="e", padx=(0, 8))
+        ).grid(row=0, column=3, sticky="e", padx=(0, 8))
         ttk.Button(
             button_frame,
             text=group_weight_ui_text.CANCEL_BUTTON_TEXT,
             command=self.dialog.destroy,
-        ).grid(row=0, column=3, sticky="e")
+        ).grid(row=0, column=4, sticky="e")
 
     def get_initial_rules_for_mode(self, mode, group_suffix=None):
         if group_suffix is None:
@@ -1104,6 +1112,20 @@ class GroupWeightRulesDialog(LoadingDialogBase):
 
     def collect_group_weight_group_rules(self):
         group_rules = clone_group_rules_map(self.group_rules_by_suffix)
+        group_zero_rules = clone_mode_rules_map(
+            group_rules.get('0', getattr(self, 'base_rules', {}))
+        )
+        configured_suffixes = set(group_rules)
+        configured_suffixes.update(
+            str(group_suffix) for group_suffix in self.get_available_group_suffixes()
+        )
+        for group_suffix in sorted(configured_suffixes, key=int):
+            suffix_key = str(group_suffix)
+            materialized_rules = clone_mode_rules_map(group_zero_rules)
+            materialized_rules.update(
+                clone_mode_rules_map(group_rules.get(suffix_key, {}))
+            )
+            group_rules[suffix_key] = materialized_rules
         return {
             str(group_suffix): {
                 mode: [dict(rule) for rule in mode_rules]
@@ -1127,14 +1149,14 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             groups.append(updated)
         return self.deps.normalize_extra_buy_groups(groups)
 
-    def confirm_and_run(self):
+    def apply_and_save_config(self):
         try:
             if self.current_rule_group_suffix is not None:
                 if not self.save_visible_rules_for_group(
                     self.current_rule_group_suffix,
                     show_error=True,
                 ):
-                    return
+                    return False
             rules = self.collect_group_weight_rules(
                 self.deps.buy_enabled or self.deps.has_extra_buy_groups()
             )
@@ -1154,14 +1176,42 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             )
         except ValueError as e:
             messagebox.showerror("group_weight 权重配置错误", str(e), parent=self.dialog)
-            return
+            return False
 
         self.deps.apply_rules(rules)
         self.deps.apply_group_rules(group_rules)
+        self.group_rules_by_suffix = clone_group_rules_map(group_rules)
         self.deps.apply_ex_group_target_rtps(ex_target_rtps)
         self.deps.apply_zero_rebate_inference_modes(self.collect_zero_rebate_inference_modes())
         self.deps.apply_independent_rtp_modes(self.collect_independent_rtp_modes())
         self.deps.apply_extra_buy_groups(extra_buy_groups)
+        save_settings = getattr(self.app, 'save_app_settings', None)
+        if save_settings is not None and save_settings(
+            silent=True,
+            group_weight_rules_override=rules,
+            group_weight_group_rules_override=group_rules,
+        ) is False:
+            return False
+        return True
+
+    def save_config(self):
+        if not self.apply_and_save_config():
+            return
+        saved_suffixes = sorted(
+            getattr(self, 'group_rules_by_suffix', {}),
+            key=int,
+        )
+        saved_group_text = ', '.join(saved_suffixes) if saved_suffixes else '无'
+        messagebox.showinfo(
+            "保存配置",
+            "group_weight 配置已保存到当前游戏的配置 JSON。\n"
+            f"已保存分组：{saved_group_text}",
+            parent=self.dialog,
+        )
+
+    def confirm_and_run(self):
+        if not self.apply_and_save_config():
+            return
         self.dialog.destroy()
         self.app.run_task(
             "生成group_weight",

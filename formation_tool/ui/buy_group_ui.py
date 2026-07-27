@@ -174,26 +174,35 @@ def build_purchase_section(app, weight_frame):
     ex_multiplier_entry.grid(row=0, column=6, sticky="ew")
     app.config_widgets.append((ex_multiplier_entry, "normal"))
 
-    ex_source_frame = ttk.Frame(purchase_frame)
-    ex_source_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(4, 0))
-    for col in range(3):
-        ex_source_frame.columnconfigure(col, weight=1)
-    ex_labels = {
-        '6': 'ex普通覆盖后缀',
-        '7': 'ex特殊覆盖后缀',
-        '8': 'ex免费覆盖后缀',
+    source_override_labels = {
+        '1': '普通局(1)覆盖后缀',
+        '2': '特殊局(2)覆盖后缀',
+        '3': '免费局(3)覆盖后缀',
+        '6': 'ex普通局(6)覆盖后缀',
+        '7': 'ex特殊局(7)覆盖后缀',
+        '8': 'ex免费局(8)覆盖后缀',
     }
-    for col, mode in enumerate(('6', '7', '8')):
-        cell = ttk.Frame(ex_source_frame)
-        cell.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else 6, 0))
-        cell.columnconfigure(0, weight=1)
-        ttk.Label(cell, text=ex_labels[mode]).grid(row=0, column=0, sticky="w", pady=(0, 1))
-        entry = ttk.Entry(cell, textvariable=app.ex_source_suffix_vars[mode], width=18)
-        entry.grid(row=1, column=0, sticky="ew")
-        app.config_widgets.append((entry, "normal"))
+    for row, modes in enumerate((('1', '2', '3'), ('6', '7', '8')), start=1):
+        source_frame = ttk.Frame(purchase_frame)
+        source_frame.grid(row=row, column=0, columnspan=4, sticky="ew", pady=(4, 0))
+        for col in range(3):
+            source_frame.columnconfigure(col, weight=1)
+        for col, mode in enumerate(modes):
+            cell = ttk.Frame(source_frame)
+            cell.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else 6, 0))
+            cell.columnconfigure(0, weight=1)
+            ttk.Label(cell, text=source_override_labels[mode]).grid(
+                row=0,
+                column=0,
+                sticky="w",
+                pady=(0, 1),
+            )
+            entry = ttk.Entry(cell, textvariable=app.ex_source_suffix_vars[mode], width=18)
+            entry.grid(row=1, column=0, sticky="ew")
+            app.config_widgets.append((entry, "normal"))
 
     buy_header = ttk.Frame(purchase_frame)
-    buy_header.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(6, 2))
+    buy_header.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(6, 2))
     buy_header.columnconfigure(0, weight=1)
     ttk.Label(buy_header, text=ui_text.PURCHASE_SECTION_TITLE).grid(row=0, column=0, sticky="w")
     app.load_buy_group_types_button = ttk.Button(
@@ -216,7 +225,7 @@ def build_purchase_section(app, weight_frame):
     app.add_extra_buy_button.grid(row=0, column=2, sticky="e")
 
     app.extra_buy_rows_frame = ttk.Frame(purchase_frame)
-    app.extra_buy_rows_frame.grid(row=3, column=0, columnspan=4, sticky="ew")
+    app.extra_buy_rows_frame.grid(row=4, column=0, columnspan=4, sticky="ew")
     app.extra_buy_rows_frame.columnconfigure(0, minsize=52)
     app.extra_buy_rows_frame.columnconfigure(1, minsize=64)
     app.extra_buy_rows_frame.columnconfigure(2, weight=1)

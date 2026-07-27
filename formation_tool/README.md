@@ -95,7 +95,7 @@
 | `DEFAULT_BUY_GROUP_MULTIPLIER` | `75` | 购买局 RTP 展示/折算倍数。 | 用于购买局独立 RTP 计算和预览。 |
 | `DEFAULT_BUY_GROUP_SOURCE_SUFFIX` | `"free_formation"` | 默认购买局读取的阵型表后缀。 | 例如指向 `{vendor}_{game_id}_free_formation`；主界面手动后缀优先于 DB 配置。 |
 | `DEFAULT_EX_GROUP_MULTIPLIER` | `1.5` | ex 模式 RTP 折算倍数。 | ex普通、ex特殊、ex免费、ex购买局预览/生成会按该倍数折算最终 RTP。 |
-| `DEFAULT_EX_SOURCE_SUFFIXES` | `{}` | ex普通/ex特殊/ex免费手动后缀覆盖默认值。 | 只服务 group_weight 生成，不影响采样配置生成和采样功能。 |
+| `DEFAULT_EX_SOURCE_SUFFIXES` | `{}` | 普通/特殊/免费及对应 ex 类型（1/2/3/6/7/8）的手动后缀覆盖默认值。 | 只服务 group_weight 生成，不影响采样配置生成和采样功能；购买局使用各自独立的后缀配置。 |
 | `DEFAULT_EXTRA_BUY_GROUPS` | `[]` | 额外购买局默认列表。 | GUI 中新增购买局类型后会保存到房间配置。 |
 | `DEFAULT_ZERO_REBATE_INFERENCE_MODES` | `('1', '2', '6', '7')` | 默认启用 rebate=0 反推的 group_weight 模式。 | 购买局和 ex购买局支持手动开启反推，但默认关闭；免费局和 ex免费局不反推。 |
 | `DEFAULT_INDEPENDENT_RTP_MODES` | `()` | 默认开启“独立计算RTP”的 group_weight 模式。 | 目前只支持普通局 `1` 和 ex普通局 `6`；默认关闭以保持旧逻辑。 |
@@ -113,7 +113,7 @@
 | `smooth_buckets` | 将 rebate 区间分桶后分散选择，避免只集中在高频 rebate。 |
 | `min_total` | 源表中该 rebate 的实际数据量低于该值时跳过。 |
 
-`GROUP_WEIGHT_RULES` 是 group_weight 区间权重规则，区间语义为“当前 `rebate_min <= rebate < 下一条 rebate_min`”。`weight=0` 的 rebate 会写入数据库，但不参与 RTP 权重计算。
+group_weight 默认区间规则分为 `GROUP_WEIGHT_RULES_0` 和 `GROUP_WEIGHT_RULES_1` 两套，分别服务 group_id 尾号 `0`、`1`；`GROUP_WEIGHT_RULES` 保留为尾号 `0` 的兼容入口。区间语义为“当前 `rebate_min <= rebate < 下一条 rebate_min`”。新增尾号 `2-9` 没有专属规则时默认使用尾号 `0` 的当前规则。`weight=0` 的 rebate 会写入数据库，但不参与 RTP 权重计算。
 
 group_weight 内部模式使用语义 key：普通购买局是 `buy`，ex购买局是 `ex_buy`。`99` 和 `98` 只是默认写入的 `game_type`，不是固定业务类型；旧配置文件里保存的 `group_weight_rules["99"]` 和 `group_weight_rules["98"]` 会在加载时自动映射到 `buy` 和 `ex_buy`。固定不可占用的内置类型只有 `1/2/3/6/7/8`。
 
@@ -129,7 +129,9 @@ rebate=0 反推必须同时满足两个条件：当前采样配置存在 `rebate
 
 普通局 `game_type=1` 和 ex普通局 `game_type=6` 额外支持“独立计算RTP”开关，配置会保存到 `group_weight_options.independent_rtp_modes`。默认关闭时保持原逻辑：普通局目标会扣除特殊局/免费局触发贡献后反推；ex普通局目标会扣除 ex特殊局/ex免费局贡献后反推。开启后该页签不再和其它局一起计算 RTP，普通局直接以当前 RTP 组为目标，ex普通局以“当前 RTP 组 * ex倍数”为实际反推目标，最终显示 RTP 仍除以 ex倍数回到当前组目标。
 
-group_weight 分组默认只有尾号 `0` 和 `1`。如果需要新增尾号 `2-9` 的分组，例如 `9652、9653、9654、9655`，在主界面“权重配置 -> 额外权重分组”新增完整 `group_id`，并填写该尾号对应的特殊局/免费局触发权重；配置会保存到 `group_weight_options.extra_weight_groups`。同一尾号只能对应一组特殊/免费触发权重，避免普通局 RTP 反推和通用配置写入出现不一致。
+group_weight 分组默认只有尾号 `0` 和 `1`。如果需要新增尾号 `2-9` 的分组，在主界面“权重配置 -> 额外权重分组”填写分组尾号及其特殊局/免费局触发权重。新增尾号 `2` 会按原 RTP 档位自动展开为 `10002、9902、9802、9702、9652……9002`，并同时用于 group_weight 和通用权重配置。配置保存在 `group_weight_options.extra_weight_groups`；旧配置中的完整 `group_id` 会自动按个位转换成分组尾号。
+
+group_weight 权重配置窗口提供“保存配置”和“确认并开始”两个操作。“保存配置”会校验并立即保存当前各分组的区间权重、反推开关和 RTP 选项，但保持窗口打开且不生成数据；“确认并开始”会先执行相同的保存，再关闭窗口并开始生成任务。分组区间规则保存在 `group_weight_group_rules`。主界面已配置的每个分组尾号都会保存为独立项；新增分组尚未单独修改时，会复制确认时的尾号 `0` 规则写入，之后可分别修改并保存。
 
 ## 采样配置生成
 

@@ -34,8 +34,8 @@ class SlotAppUiMixin:
     def refresh_extra_weight_group_rows(self):
         return weight_group_ui.refresh_extra_weight_group_rows(self)
 
-    def add_extra_weight_group_row(self, group_id="", special_weight="", free_weight=""):
-        return weight_group_ui.add_extra_weight_group_row(self, group_id, special_weight, free_weight)
+    def add_extra_weight_group_row(self, group_suffix="", special_weight="", free_weight=""):
+        return weight_group_ui.add_extra_weight_group_row(self, group_suffix, special_weight, free_weight)
 
     def remove_extra_weight_group_row(self, row_info):
         return weight_group_ui.remove_extra_weight_group_row(self, row_info)

@@ -272,29 +272,56 @@ def clone_extra_weight_groups(groups):
     return formation_defaults.clone_extra_weight_groups(groups)
 
 
+def get_extra_weight_group_suffix(group):
+    """Read the canonical suffix or a legacy full group_id."""
+    raw_value = group.get('group_suffix', group.get('group_id'))
+    value = int(raw_value)
+    return value if 0 <= value <= 9 else value % 10
+
+
 def build_weight_group_ids(extra_weight_groups=None):
-    group_ids = list(formation_defaults.DEFAULT_WEIGHT_GROUP_IDS)
-    seen = set(int(group_id) for group_id in group_ids)
-    for group in extra_weight_groups or []:
-        group_id = int(group['group_id'])
-        if group_id in seen:
-            continue
-        seen.add(group_id)
-        group_ids.append(group_id)
-    return group_ids
+    group_bases = []
+    default_suffixes = []
+    seen_bases = set()
+    for group_id in formation_defaults.DEFAULT_WEIGHT_GROUP_IDS:
+        group_id = int(group_id)
+        suffix = group_id % 10
+        group_base = group_id - suffix
+        if group_base not in seen_bases:
+            seen_bases.add(group_base)
+            group_bases.append(group_base)
+        if suffix not in default_suffixes:
+            default_suffixes.append(suffix)
+
+    extra_suffixes = sorted({
+        get_extra_weight_group_suffix(group)
+        for group in (extra_weight_groups or [])
+    })
+    suffixes = default_suffixes + [
+        suffix for suffix in extra_suffixes if suffix not in default_suffixes
+    ]
+    return [
+        group_base + suffix
+        for group_base in group_bases
+        for suffix in suffixes
+    ]
 
 
 def normalize_extra_weight_groups(groups):
     normalized = []
-    seen_group_ids = set()
     suffix_weights = {}
     for idx, group in enumerate(groups or [], start=1):
         if not isinstance(group, dict):
             raise ValueError(f"额外权重分组第 {idx} 行必须是对象")
-        group_id = rule_config_state.parse_non_negative_int_text(
-            group.get('group_id'),
-            f"额外权重分组第 {idx} 行 group_id",
+        has_canonical_suffix = 'group_suffix' in group
+        raw_suffix = group.get('group_suffix', group.get('group_id'))
+        suffix_value = rule_config_state.parse_non_negative_int_text(
+            raw_suffix,
+            f"额外权重分组第 {idx} 行分组尾号",
         )
+        if has_canonical_suffix and suffix_value > 9:
+            raise ValueError(f"额外权重分组第 {idx} 行分组尾号必须是 2-9")
+        suffix = suffix_value if suffix_value <= 9 else suffix_value % 10
         special_weight = rule_config_state.parse_non_negative_int_text(
             group.get('special_weight'),
             f"额外权重分组第 {idx} 行特殊局权重",
@@ -303,26 +330,22 @@ def normalize_extra_weight_groups(groups):
             group.get('free_weight'),
             f"额外权重分组第 {idx} 行免费局权重",
         )
-        if group_id in formation_defaults.DEFAULT_WEIGHT_GROUP_IDS:
-            raise ValueError(f"额外权重分组第 {idx} 行 group_id={group_id} 已是默认分组")
-        if group_id in seen_group_ids:
-            raise ValueError(f"额外权重分组 group_id={group_id} 重复")
-        seen_group_ids.add(group_id)
-        suffix = group_id % 10
         if suffix in (0, 1):
             raise ValueError(
-                f"额外权重分组第 {idx} 行 group_id={group_id} 尾号{suffix}已是默认分组；"
+                f"额外权重分组第 {idx} 行尾号{suffix}已是默认分组；"
                 "额外分组请使用尾号2-9"
             )
         weights = (special_weight, free_weight)
-        if suffix in suffix_weights and suffix_weights[suffix] != weights:
-            raise ValueError(
-                f"额外权重分组尾号{suffix}存在不同特殊/免费权重；"
-                "同一尾号只能对应一组触发权重"
-            )
+        if suffix in suffix_weights:
+            if suffix_weights[suffix] != weights:
+                raise ValueError(
+                    f"额外权重分组尾号{suffix}存在不同特殊/免费权重；"
+                    "同一尾号只能对应一组触发权重"
+                )
+            continue
         suffix_weights[suffix] = weights
         normalized.append({
-            'group_id': group_id,
+            'group_suffix': suffix,
             'special_weight': special_weight,
             'free_weight': free_weight,
         })
@@ -341,7 +364,7 @@ def _rebuild_trigger_weight_maps():
         1: int(FREE_WEIGHT_BY_LAST_DIGIT.get(1, formation_defaults.DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT[1])),
     }
     for group in EXTRA_WEIGHT_GROUPS:
-        suffix = int(group['group_id']) % 10
+        suffix = get_extra_weight_group_suffix(group)
         special_base[suffix] = int(group['special_weight'])
         free_base[suffix] = int(group['free_weight'])
     SPECIAL_WEIGHT_BY_LAST_DIGIT = special_base
@@ -595,6 +618,7 @@ SAMPLE_GAME_TYPE_NAMES = formation_modes.SAMPLE_GAME_TYPE_NAMES
 GROUP_WEIGHT_MODES = formation_modes.GROUP_WEIGHT_MODES
 GROUP_WEIGHT_UI_MODES = formation_modes.GROUP_WEIGHT_UI_MODES
 EX_GROUP_MODES = formation_modes.EX_GROUP_MODES
+GROUP_WEIGHT_SOURCE_OVERRIDE_MODES = formation_modes.GROUP_WEIGHT_SOURCE_OVERRIDE_MODES
 EX_PURCHASE_MODE = formation_modes.EX_PURCHASE_MODE
 BUY_GROUP_MODE = formation_modes.BUY_GROUP_MODE
 EXTRA_BUY_MODE_PREFIX = formation_modes.EXTRA_BUY_MODE_PREFIX
@@ -1149,10 +1173,10 @@ def apply_ex_group_multiplier(value):
 
 
 def normalize_ex_source_suffixes(values):
-    """Normalize manual ex source suffix overrides; blank values keep DB defaults."""
+    """Normalize group_weight-only source suffix overrides for fixed game types."""
     normalized = {}
     values = values or {}
-    for mode in EX_GROUP_MODES:
+    for mode in GROUP_WEIGHT_SOURCE_OVERRIDE_MODES:
         raw_value = values.get(str(mode), values.get(int(mode), None)) if isinstance(values, dict) else None
         if raw_value is None or str(raw_value).strip() == "":
             continue
@@ -1164,7 +1188,7 @@ def normalize_ex_source_suffixes(values):
 
 
 def apply_ex_source_suffixes_config(values):
-    """Apply manual source suffix overrides for ex modes 6/7/8."""
+    """Apply group_weight-only source suffix overrides for modes 1/2/3/6/7/8."""
     global EX_SOURCE_SUFFIXES
     EX_SOURCE_SUFFIXES = normalize_ex_source_suffixes(values)
     RUNTIME_STATE.ex_source_suffixes = dict(EX_SOURCE_SUFFIXES)
@@ -2078,26 +2102,30 @@ def get_buy_group_rebate_table_name(game_type):
     return f"{RUNTIME_STATE.game_table_prefix}{table_suffix}"
 
 
-def get_group_weight_manual_ex_source_suffix(mode):
-    """Return a manual ex source suffix used by group_weight only."""
+def get_group_weight_manual_source_suffix(mode):
+    """Return a manual source suffix used by group_weight only."""
     mode = formation_modes.normalize_group_weight_mode_key(mode)
     if mode == EX_PURCHASE_MODE:
         return RUNTIME_STATE.ex_buy_group_source_suffix or None
-    source_mode = GROUP_WEIGHT_MODE_DEFS.get(str(mode), {}).get('source_mode', str(mode))
-    if source_mode in EX_GROUP_MODES:
-        return RUNTIME_STATE.ex_source_suffixes.get(str(source_mode))
+    if mode in GROUP_WEIGHT_SOURCE_OVERRIDE_MODES:
+        return RUNTIME_STATE.ex_source_suffixes.get(mode)
     return None
 
 
+def get_group_weight_manual_ex_source_suffix(mode):
+    """Backward-compatible alias for the generalized group_weight suffix lookup."""
+    return get_group_weight_manual_source_suffix(mode)
+
+
 def get_group_weight_manual_source_table_name(mode):
-    suffix = get_group_weight_manual_ex_source_suffix(mode)
+    suffix = get_group_weight_manual_source_suffix(mode)
     if not suffix:
         return None
     return f"{RUNTIME_STATE.game_table_prefix}{suffix}"
 
 
 def get_group_weight_manual_rebate_table_name(mode):
-    suffix = get_group_weight_manual_ex_source_suffix(mode)
+    suffix = get_group_weight_manual_source_suffix(mode)
     if not suffix:
         return None
     table_suffix = build_rebate_table_suffix_from_formation_suffix(suffix)
@@ -2616,7 +2644,7 @@ def check_buy_like_source_formation_status(source_mode):
 
 
 def check_group_weight_manual_source_formation_status(mode):
-    """Check a manual ex source suffix used only by group_weight."""
+    """Check a manual source suffix used only by group_weight."""
     source_mode = get_group_weight_formation_source_mode(mode)
     source_table = get_group_weight_manual_source_table_name(mode)
     if source_mode is None or not source_table:

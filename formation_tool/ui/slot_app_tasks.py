@@ -158,7 +158,7 @@ class SlotAppTaskMixin:
                 f"{mode}={suffix}"
                 for mode, suffix in sorted(ex_source_suffixes.items(), key=lambda item: str(item[0]))
             )
-            self.append_log(f"，ex后缀覆盖：{suffix_text}")
+            self.append_log(f"，group_weight后缀覆盖：{suffix_text}")
         self.append_log("\n")
 
     @staticmethod
@@ -276,10 +276,14 @@ class SlotAppTaskMixin:
                 ok = False
                 cancelled = True
                 print(f"任务已取消：{e}")
-            except Exception:
+            except Exception as exc:
                 ok = False
-                error = traceback.format_exc()
-                print(error)
+                error = {
+                    'traceback': traceback.format_exc(),
+                    'dialog_title': getattr(exc, 'user_dialog_title', None),
+                    'dialog_message': getattr(exc, 'user_dialog_message', None),
+                }
+                print(error['traceback'])
             finally:
                 total_elapsed = time.perf_counter() - task_started
                 status = "已取消" if cancelled else "成功" if ok else "失败/中断"
@@ -335,7 +339,12 @@ class SlotAppTaskMixin:
         else:
             self.status_var.set(f"完成：{title}" if ok else f"失败：{title}")
         if error:
-            messagebox.showerror("执行失败", f"{title} 执行失败，详情请查看运行日志。")
+            dialog_title = error.get('dialog_title') if isinstance(error, dict) else None
+            dialog_message = error.get('dialog_message') if isinstance(error, dict) else None
+            if dialog_title and dialog_message:
+                messagebox.showerror(dialog_title, dialog_message)
+            else:
+                messagebox.showerror("执行失败", f"{title} 执行失败，详情请查看运行日志。")
 
     def cancel_current_task(self):
         if not self.running:

@@ -48,6 +48,14 @@ SAMPLING_COUNTER_KEYS = (
 )
 
 
+class SamplingFieldMismatchError(RuntimeError):
+    user_dialog_title = "补充采样字段不一致"
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.user_dialog_message = str(message)
+
+
 def new_sampling_timing():
     timing = {key: 0.0 for key in SAMPLING_TIMING_KEYS}
     timing.update({key: 0 for key in SAMPLING_COUNTER_KEYS})
@@ -175,6 +183,7 @@ is_same_physical_table = sampling_table_utils.is_same_physical_table
 get_table_columns = sampling_table_utils.get_table_columns
 same_table_structure = sampling_table_utils.same_table_structure
 same_table_structure_for_append = sampling_table_utils.same_table_structure_for_append
+compare_table_structure_for_append = sampling_table_utils.compare_table_structure_for_append
 validate_table_config = sampling_table_utils.validate_table_config
 get_sample_description = sampling_table_utils.get_sample_description
 remap_conflicting_sample_ids = sampling_table_utils.remap_conflicting_sample_ids
@@ -204,7 +213,7 @@ def run_single_game(game_config, *, append_mode=False):
 
     try:
         return bool(direct_sample_from_source(table_config, sample_conditions, append_mode=append_mode))
-    except TaskCancelled:
+    except (TaskCancelled, SamplingFieldMismatchError):
         raise
     except Exception as e:
         print(f"处理过程中出现错误: {e}")
@@ -243,12 +252,23 @@ def resolve_direct_sample_conditions(source_conn, table_config, sample_condition
         elif 'is_end' in end_field_opt:
             end_field_for_validation = 'is_end'
 
+    require_game_id_zero_for_validation = False
     if end_field_for_validation:
-        print(f"  数据完整性校验将按已采样ID执行（字段：{end_field_for_validation}）")
+        source_columns = get_table_columns(source_conn, source_table_name) or []
+        source_column_names = {str(column[0]).lower() for column in source_columns}
+        require_game_id_zero_for_validation = (
+            end_field_for_validation == 'game_end'
+            and 'game_id' in source_column_names
+        )
+        validation_fields = end_field_for_validation
+        if require_game_id_zero_for_validation:
+            validation_fields += "，并要求每个id包含game_id=0"
+        print(f"  数据完整性校验将按已采样ID执行（{validation_fields}）")
     return {
         **sample_conditions,
         'where_clause': where_tpl,
         'end_field_for_validation': end_field_for_validation,
+        'require_game_id_zero_for_validation': require_game_id_zero_for_validation,
     }
 
 
@@ -800,6 +820,45 @@ def read_sample_rows_by_ids(source_engine, source_table_ref, id_batch, target_re
     return df
 
 
+def validate_sample_rows_have_game_id_zero(
+    current_df,
+    expected_ids,
+    source_table_name,
+    *,
+    required=False,
+    target_rebate=None,
+):
+    """免费局类数据必须包含每个已采样 id 的 game_id=0 起始局。"""
+    if not required:
+        return
+    required_columns = {'id', 'game_id'}
+    missing_columns = sorted(required_columns - set(current_df.columns))
+    if missing_columns:
+        raise ValueError(
+            f"数据完整性校验失败（表：{source_table_name}）："
+            f"缺少字段 {', '.join(missing_columns)}，无法检查 game_id=0"
+        )
+
+    expected_id_set = {int(value) for value in expected_ids}
+    id_values = pd.to_numeric(current_df['id'], errors='coerce')
+    game_id_values = pd.to_numeric(current_df['game_id'], errors='coerce')
+    ids_with_game_zero = {
+        int(value)
+        for value in id_values[game_id_values.eq(0)].dropna().unique()
+    }
+    missing_game_zero = sorted(expected_id_set - ids_with_game_zero)
+    if not missing_game_zero:
+        return
+
+    label_suffix = f"，rebate={target_rebate}" if target_rebate is not None else ""
+    raise ValueError(
+        f"数据完整性校验失败（表：{source_table_name}{label_suffix}）："
+        f"已采样 id 中有 {len(missing_game_zero)} 个缺少 game_id=0 起始局："
+        f"{_format_sampled_id_preview(missing_game_zero)}。"
+        "这些行在源表中已经缺失，本次未写入中转表。"
+    )
+
+
 def format_changed_pairs_preview(changed_pairs, limit=8):
     preview = ', '.join(f"{old}->{new}" for old, new in changed_pairs[:limit])
     if len(changed_pairs) > limit:
@@ -1251,6 +1310,7 @@ def fetch_and_write_sample_rows_in_chunks(
     append_mode,
     id_mapping,
     next_id_state,
+    require_game_id_zero=False,
     timing=None,
 ):
     """分块提取采样行并写入临时表，避免超长 IN 查询和过大 DataFrame。"""
@@ -1273,6 +1333,14 @@ def fetch_and_write_sample_rows_in_chunks(
         if current_df.empty:
             print(f"  第 {batch_index}/{len(batches)} 批未提取到数据，跳过")
             continue
+
+        validate_sample_rows_have_game_id_zero(
+            current_df,
+            id_batch,
+            source_table_ref,
+            required=require_game_id_zero,
+            target_rebate=target_rebate,
+        )
 
         if append_mode:
             start = time.perf_counter()
@@ -1374,6 +1442,7 @@ def sample_rebate_to_staging(
         append_mode=append_mode,
         id_mapping=id_mapping,
         next_id_state=next_id_state,
+        require_game_id_zero=sample_conditions.get('require_game_id_zero_for_validation', False),
         timing=timing,
     )
     if totals['row_count'] <= 0:
@@ -1447,6 +1516,76 @@ def get_table_column_names(conn, table_name):
     return [str(column[0]) for column in columns]
 
 
+def build_append_structure_mismatch_message(
+    source_db_name,
+    source_table_name,
+    final_db_name,
+    final_table_name,
+    comparison,
+):
+    lines = [
+        "补充采样已停止，源表与旧目标表的字段结构不兼容。",
+        f"源表：{source_db_name}.{source_table_name}",
+        f"旧目标表：{final_db_name}.{final_table_name}",
+    ]
+    if comparison.get('unreadable'):
+        lines.append("无法读取其中一张表的字段结构，请检查表是否存在及 DESCRIBE 权限。")
+    missing = comparison.get('missing_in_target') or []
+    extra = comparison.get('extra_in_target') or []
+    mismatches = comparison.get('type_mismatches') or []
+    if missing:
+        lines.append(f"旧目标表缺少字段：{', '.join(missing)}")
+    if extra:
+        lines.append(f"旧目标表多出字段：{', '.join(extra)}")
+    if mismatches:
+        lines.append("基础类型不一致：")
+        lines.extend(
+            f"  {item['field']}：源表={item['source_type']}，旧目标表={item['target_type']}"
+            for item in mismatches
+        )
+    if comparison.get('order_mismatch'):
+        lines.append("字段顺序不一致。")
+    lines.append("字段长度、Null 和 Extra 属性不会参与本项兼容判断。")
+    lines.append("正式表未替换，请先修正旧目标表字段后再执行补充采样。")
+    return '\n'.join(lines)
+
+
+def get_table_game_id_zero_stats(conn, table_name, columns=None):
+    """Return game_id=0 row/id counts, or None when the table has no game_id."""
+    columns = columns if columns is not None else get_table_column_names(conn, table_name)
+    normalized_columns = {str(column).lower() for column in (columns or [])}
+    if 'game_id' not in normalized_columns:
+        return None
+
+    table_ref = quote_identifier(table_name, "game_id=0校验表名")
+    distinct_id_expr = "COUNT(DISTINCT `id`)" if 'id' in normalized_columns else "0"
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT COUNT(*), {distinct_id_expr} "
+            f"FROM {table_ref} WHERE `game_id` = 0"
+        )
+        row = cur.fetchone()
+    return {
+        'row_count': int((row or (0, 0))[0] or 0),
+        'id_count': int((row or (0, 0))[1] or 0),
+    }
+
+
+def validate_game_id_zero_stats_preserved(expected, actual, operation_label):
+    if expected is None:
+        return
+    if actual == expected:
+        return
+    expected = expected or {'row_count': 0, 'id_count': 0}
+    actual = actual or {'row_count': 0, 'id_count': 0}
+    raise RuntimeError(
+        f"{operation_label}导致 game_id=0 数据数量不一致："
+        f"处理前 {expected['row_count']} 行/{expected['id_count']} 个id，"
+        f"处理后 {actual['row_count']} 行/{actual['id_count']} 个id；"
+        "已停止补充采样，正式表未替换"
+    )
+
+
 def _ordered_append_id_columns(columns):
     order_columns = []
     for name in ('game_id', 'sort'):
@@ -1462,6 +1601,7 @@ def reassign_staging_table_ids_for_append(conn, table_name, db_name):
         raise ValueError("追加写入模式要求目标表包含 id 字段")
 
     row_count = count_table_rows(conn, table_name)
+    game_id_zero_stats = get_table_game_id_zero_stats(conn, table_name, columns)
     if row_count <= 0:
         return {
             'row_count': 0,
@@ -1532,6 +1672,12 @@ def reassign_staging_table_ids_for_append(conn, table_name, db_name):
         remapped_count = count_table_rows(conn, remapped_table)
         if remapped_count != row_count:
             raise RuntimeError(f"旧数据 id 重排数量不一致：原表 {row_count}，重排表 {remapped_count}")
+        remapped_game_id_zero_stats = get_table_game_id_zero_stats(conn, remapped_table, columns)
+        validate_game_id_zero_stats_preserved(
+            game_id_zero_stats,
+            remapped_game_id_zero_stats,
+            "旧数据id重排",
+        )
 
         replace_table_with_staging(conn, remapped_table, table_name, db_name)
         replaced = True
@@ -1539,6 +1685,7 @@ def reassign_staging_table_ids_for_append(conn, table_name, db_name):
             'row_count': row_count,
             'id_count': id_count,
             'next_id': id_count + 1,
+            'game_id_zero_stats': game_id_zero_stats,
         }
     finally:
         with contextlib.suppress(Exception):
@@ -1640,12 +1787,20 @@ def prepare_direct_sampling_staging(
         staging_table_name = make_staging_table_name(final_table_name, 'tmp')
         final_table_exists = table_exists_exact(final_target_conn, final_table_name)
         if append_mode and final_table_exists:
-            if not same_table_structure_for_append(source_conn, final_target_conn, source_table_name, final_table_name):
-                print(
-                    f"补充采样要求目标表字段名和字段类型与源表一致；"
-                    f"{final_db_name}.{final_table_name} 字段不兼容，目标表未替换"
+            append_structure_comparison = compare_table_structure_for_append(
+                get_table_columns(source_conn, source_table_name),
+                get_table_columns(final_target_conn, final_table_name),
+            )
+            if not append_structure_comparison['compatible']:
+                message = build_append_structure_mismatch_message(
+                    names['source_db_name'],
+                    source_table_name,
+                    final_db_name,
+                    final_table_name,
+                    append_structure_comparison,
                 )
-                return None
+                print(message)
+                raise SamplingFieldMismatchError(message)
             prepare_staging_table_like_existing(
                 final_target_conn,
                 final_table_name,
@@ -1668,6 +1823,10 @@ def prepare_direct_sampling_staging(
             'next_id_state': [1],
         }
         if append_mode and final_table_exists:
+            source_game_id_zero_stats = get_table_game_id_zero_stats(
+                final_target_conn,
+                final_table_name,
+            )
             print(
                 f"采样写入模式：补充采样。正在复制旧目标表 "
                 f"{final_db_name}.{final_table_name} 到中转临时表 {staging_db_name}.{staging_table_name}..."
@@ -1683,6 +1842,18 @@ def prepare_direct_sampling_staging(
                 final_table_name=final_table_name,
             )
             staging_state['base_existing_count'] = count_table_rows(final_conn, staging_table_name)
+            copied_game_id_zero_stats = get_table_game_id_zero_stats(final_conn, staging_table_name)
+            validate_game_id_zero_stats_preserved(
+                source_game_id_zero_stats,
+                copied_game_id_zero_stats,
+                "旧目标表复制到中转库",
+            )
+            if copied_game_id_zero_stats is not None:
+                print(
+                    "旧目标表 game_id=0 数据复制校验通过："
+                    f"{copied_game_id_zero_stats['row_count']} 行/"
+                    f"{copied_game_id_zero_stats['id_count']} 个id"
+                )
             print(
                 f"旧目标表复制完成：{staging_state['base_existing_count']} 行，"
                 "正在按旧 id 顺序重排为连续新 id..."
@@ -1693,6 +1864,12 @@ def prepare_direct_sampling_staging(
                 staging_db_name,
             )
             staging_state['next_id_state'][0] = int(id_reassign_info['next_id'])
+            if id_reassign_info.get('game_id_zero_stats') is not None:
+                stats = id_reassign_info['game_id_zero_stats']
+                print(
+                    "旧数据 id 重排后 game_id=0 校验通过："
+                    f"{stats['row_count']} 行/{stats['id_count']} 个id"
+                )
             print(
                 f"旧数据 id 重排完成：旧数据 {staging_state['base_existing_count']} 行，"
                 f"旧 id {int(id_reassign_info['id_count'])} 个；"

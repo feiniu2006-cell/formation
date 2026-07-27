@@ -113,11 +113,59 @@ def append_compatible_column_signature(columns):
     ]
 
 
+def compare_table_structure_for_append(source_columns, final_columns):
+    """Describe append compatibility while ignoring length/Null/Extra metadata."""
+    if source_columns is None or final_columns is None:
+        return {
+            'compatible': False,
+            'unreadable': True,
+            'missing_in_target': [],
+            'extra_in_target': [],
+            'type_mismatches': [],
+            'order_mismatch': False,
+        }
+
+    source_signature = append_compatible_column_signature(source_columns)
+    final_signature = append_compatible_column_signature(final_columns)
+    source_map = {str(name).lower(): (str(name), column_type) for name, column_type in source_signature}
+    final_map = {str(name).lower(): (str(name), column_type) for name, column_type in final_signature}
+    source_names = [str(name).lower() for name, _column_type in source_signature]
+    final_names = [str(name).lower() for name, _column_type in final_signature]
+
+    missing_keys = [name for name in source_names if name not in final_map]
+    extra_keys = [name for name in final_names if name not in source_map]
+    type_mismatches = []
+    for key in source_names:
+        if key not in final_map:
+            continue
+        source_name, source_type = source_map[key]
+        final_name, final_type = final_map[key]
+        if source_type != final_type:
+            type_mismatches.append({
+                'field': source_name,
+                'source_type': source_type,
+                'target_type': final_type,
+                'target_field': final_name,
+            })
+
+    order_mismatch = not missing_keys and not extra_keys and source_names != final_names
+    return {
+        'compatible': not missing_keys and not extra_keys and not type_mismatches and not order_mismatch,
+        'unreadable': False,
+        'missing_in_target': [source_map[key][0] for key in missing_keys],
+        'extra_in_target': [final_map[key][0] for key in extra_keys],
+        'type_mismatches': type_mismatches,
+        'order_mismatch': order_mismatch,
+    }
+
+
 def same_table_structure_for_append(source_conn, final_conn, source_table, final_table):
     """补充采样只要求字段名和基础类型一致，不要求长度、Null、Extra 完全一致。"""
-    src = append_compatible_column_signature(get_table_columns(source_conn, source_table))
-    dst = append_compatible_column_signature(get_table_columns(final_conn, final_table))
-    return src is not None and dst is not None and src == dst
+    comparison = compare_table_structure_for_append(
+        get_table_columns(source_conn, source_table),
+        get_table_columns(final_conn, final_table),
+    )
+    return comparison['compatible']
 
 
 def validate_table_config(table_config):

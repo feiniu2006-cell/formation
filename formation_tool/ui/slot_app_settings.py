@@ -10,6 +10,9 @@ from formation_tool.ui import ui_text
 from formation_tool.utils.file_utils import write_json_atomic
 
 
+_SETTINGS_VALUE_UNSET = object()
+
+
 def _format_setting_text(value):
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
@@ -178,8 +181,23 @@ class SlotAppSettingsMixin:
     def build_last_settings_data(self):
         return settings_logic.build_last_settings_data(**self.settings_deps.get_runtime_state())
 
-    def build_app_settings_data(self):
+    def build_app_settings_data(
+        self,
+        *,
+        group_weight_rules_override=_SETTINGS_VALUE_UNSET,
+        group_weight_group_rules_override=_SETTINGS_VALUE_UNSET,
+    ):
         deps = self.settings_deps
+        group_weight_rules = (
+            deps.get_group_weight_rules()
+            if group_weight_rules_override is _SETTINGS_VALUE_UNSET
+            else group_weight_rules_override
+        )
+        group_weight_group_rules = (
+            getattr(deps, "get_group_weight_group_rules", lambda: {})()
+            if group_weight_group_rules_override is _SETTINGS_VALUE_UNSET
+            else group_weight_group_rules_override
+        )
         get_buy_groups = getattr(
             deps,
             "get_buy_groups",
@@ -200,9 +218,9 @@ class SlotAppSettingsMixin:
             sampling_use_temp_db=True,
             sampling_temp_db=getattr(deps, "get_sampling_temp_db", lambda: None)(),
             sampling_auto_sync_to_target=getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)(),
-            group_weight_rules=deps.clone_group_weight_rules(deps.get_group_weight_rules()),
+            group_weight_rules=deps.clone_group_weight_rules(group_weight_rules),
             group_weight_group_rules=getattr(deps, "clone_group_weight_group_rules", lambda rules: rules or {})(
-                getattr(deps, "get_group_weight_group_rules", lambda: {})()
+                group_weight_group_rules
             ),
             group_weight_options={
                 'special_target_rtp': deps.get_special_group_target_rtp(),
@@ -331,9 +349,15 @@ class SlotAppSettingsMixin:
             )
             extra_buy_groups = group_options.get('extra_buy_groups', deps.get_extra_buy_groups())
             self.set_extra_buy_group_rows(extra_buy_groups)
-            extra_weight_groups = group_options.get(
-                'extra_weight_groups',
-                getattr(deps, "get_extra_weight_groups", lambda: [])(),
+            extra_weight_groups = getattr(
+                deps,
+                "normalize_extra_weight_groups",
+                lambda groups: groups or [],
+            )(
+                group_options.get(
+                    'extra_weight_groups',
+                    getattr(deps, "get_extra_weight_groups", lambda: [])(),
+                )
             )
             self.set_extra_weight_group_rows(extra_weight_groups)
             if group_options.get('buy_groups'):
@@ -430,14 +454,23 @@ class SlotAppSettingsMixin:
         finally:
             self._loading_settings = False
 
-    def save_app_settings(self):
+    def save_app_settings(
+        self,
+        *,
+        silent=False,
+        group_weight_rules_override=_SETTINGS_VALUE_UNSET,
+        group_weight_group_rules_override=_SETTINGS_VALUE_UNSET,
+    ):
         if self.running:
             messagebox.showinfo("正在运行", "当前任务还没有结束，请稍后再操作。")
-            return
+            return False
         if not self.apply_selected_config():
-            return
+            return False
         deps = self.settings_deps
-        data = self.build_app_settings_data()
+        data = self.build_app_settings_data(
+            group_weight_rules_override=group_weight_rules_override,
+            group_weight_group_rules_override=group_weight_group_rules_override,
+        )
         last_data = self.build_last_settings_data()
         profile_path = deps.get_app_profile_settings_path()
         last_path = deps.get_app_settings_path()
@@ -447,13 +480,15 @@ class SlotAppSettingsMixin:
                 write_json_atomic(last_path, last_data)
         except Exception as e:
             messagebox.showerror("保存配置失败", str(e))
-            return
+            return False
         self._last_profile_key_loaded = deps.get_profile_key()
         self.status_var.set(f"已保存配置：{profile_path}")
-        messagebox.showinfo(
-            "保存配置",
-            f"当前房间完整配置已保存到：\n{profile_path}\n\n上次选择已记录到：\n{last_path}",
-        )
+        if not silent:
+            messagebox.showinfo(
+                "保存配置",
+                f"当前房间完整配置已保存到：\n{profile_path}\n\n上次选择已记录到：\n{last_path}",
+            )
+        return True
 
     def load_app_settings(self):
         if self.running:

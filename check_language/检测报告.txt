@@ -1,22 +1,22 @@
 ================================================================================
-完整检测报告  (2026-07-06 16:07:07)
+完整检测报告  (2026-07-21 11:04:49)
 ================================================================================
 检查语言：eng, sch, por, spa, hin, ind, tha, vie, ben, khm, tgl, tch, msa, mya, lao, jpn, kor
-汇总：共 13 个项目（已跳过 status=1/room_name 表外 ID 68 个）
+汇总：共 9 个项目（已跳过 status=1/room_name 表外 ID 72 个）
   ✅ 无问题：0 个
-  ⚠️  有问题：13 个
+  ⚠️  有问题：9 个
   ❌ 缺少多语言目录：0 个
 
 ████████████████████████████████████████████████████████████████████████████████
   VegasGames  (C:\VegasGames\策划\language)
 ████████████████████████████████████████████████████████████████████████████████
-共检测 游戏文件夹：13 个
+共检测 游戏文件夹：9 个
   ✅ 完整（文件存在 + 翻译正确）：0 个
-  ⚠️  存在问题：13 个
+  ⚠️  存在问题：9 个
   ❌ 缺少「多语言」文件夹：0 个
 
 ────────────────────────────────────────────────────────────────────────────────
-⚠️  存在问题 (13 个)：
+⚠️  存在问题 (9 个)：
 ────────────────────────────────────────────────────────────────────────────────
     1. 3033
          ⚠️  tgl         部分内容未翻译（3 处）：
@@ -25,8 +25,6 @@
                   • GoldenMoneyTreeCommonRules.RedEnvelopeExplain4  (特殊短语未使用配置翻译："Feature" → "Feature")
          ⚠️  mya         部分内容未翻译（1 处）：
                   • GoldenMoneyTreeCommonRules.RedEnvelopeExplain2  (特殊短语未使用配置翻译："Reels" → "ရစ်များ")
-         ⚠️  jpn         部分内容未翻译（1 处）：
-                  • GoldenMoneyTreeCommonRules.RedEnvelopeExplain2  (特殊短语未使用配置翻译："Feature" → "機能")
     2. 3041
          ⚠️  tgl         部分内容未翻译（1 处）：
                   • SuperAceFeatures.FreeSpinExplain1  (特殊短语未使用配置翻译："Reels" → "Reels")
@@ -92,120 +90,15 @@
                   • PayoutAndRules.Rule2_4  (特殊短语未使用配置翻译："Reels" → "ရစ်များ")
          ⚠️  lao         部分内容未翻译（1 处）：
                   • PayoutAndRules.Rule2_4  (特殊短语未使用配置翻译："Reels" → "ວົງລໍ້")
-    9. 3077
-         ⚠️  ind         部分内容未翻译（4 处）：
-                  • PayoutAndRules.Rule1_2  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
-                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
-                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
-                  • PayoutAndRules.Rule2_3  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
-         ⚠️  vie         部分内容未翻译（4 处）：
-                  • PayoutAndRules.Rule1_2  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
-                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
-                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
-                  • PayoutAndRules.Rule2_3  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
-         ⚠️  ben         部分内容未翻译（4 处）：
-                  • PayoutAndRules.Rule1_2  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
-                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
-                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
-                  • PayoutAndRules.Rule2_3  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
+    9. 3081
          ⚠️  khm         部分内容未翻译（4 处）：
-                  • PayoutAndRules.Rule1_2  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
-                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
-                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
-                  • PayoutAndRules.Rule2_3  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
-         ⚠️  tgl         部分内容未翻译（4 处）：
-                  • PayoutAndRules.Rule1_2  (特殊短语未使用配置翻译："Main Game" → "Main Game")
-                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "Main Game")
-                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "Main Game")
-                  • PayoutAndRules.Rule2_3  (特殊短语未使用配置翻译："Main Game" → "Main Game")
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "အဓိကဂိမ်း")
-   10. 3079
-         ⚠️  ind         部分内容未翻译（2 处）：
-                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
-                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
-         ⚠️  ben         部分内容未翻译（2 处）：
-                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
-                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
-         ⚠️  khm         部分内容未翻译（2 处）：
-                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
-                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
-         ⚠️  tgl         部分内容未翻译（2 处）：
-                  • PayoutAndRules.Rule2_2  (特殊短语未使用配置翻译："Main Game" → "Main Game")
-                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "Main Game")
-   11. 3080
-         ⚠️  hin         部分内容未翻译（1 处）：
-                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "मुख्य गेम")
-         ⚠️  ind         部分内容未翻译（2 处）：
-                  • PayoutAndRules.Rule3_2  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
-                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
-         ⚠️  vie         部分内容未翻译（1 处）：
-                  • PayoutAndRules.Rule3_2  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
-         ⚠️  ben         部分内容未翻译（2 处）：
-                  • PayoutAndRules.Rule3_2  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
-                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
-         ⚠️  khm         部分内容未翻译（2 处）：
-                  • PayoutAndRules.Rule3_2  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
-                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
-         ⚠️  tgl         部分内容未翻译（2 处）：
-                  • PayoutAndRules.Rule3_2  (特殊短语未使用配置翻译："Main Game" → "Main Game")
-                  • PayoutAndRules.Rule5_3  (特殊短语未使用配置翻译："Main Game" → "Main Game")
-   12. 3081
-         ⚠️  por         部分内容未翻译（1 处）：
-                  • PayoutAndRules.Rule1_7  (特殊短语未使用配置翻译："Main Game" → "Jogo Principal")
-         ⚠️  ind         部分内容未翻译（4 处）：
-                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
-                  • PayoutAndRules.Rule1_6  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
-                  • PayoutAndRules.Rule1_7  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
-                  • PayoutAndRules.Rule3_10  (特殊短语未使用配置翻译："Main Game" → "Game Utama")
-         ⚠️  vie         部分内容未翻译（4 处）：
-                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
-                  • PayoutAndRules.Rule1_6  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
-                  • PayoutAndRules.Rule1_7  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
-                  • PayoutAndRules.Rule3_10  (特殊短语未使用配置翻译："Main Game" → "Trò Chơi Chính")
-         ⚠️  ben         部分内容未翻译（4 处）：
-                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
-                  • PayoutAndRules.Rule1_6  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
-                  • PayoutAndRules.Rule1_7  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
-                  • PayoutAndRules.Rule3_10  (特殊短语未使用配置翻译："Main Game" → "প্রধান গেম")
-         ⚠️  khm         部分内容未翻译（8 处）：
-                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
-                  • PayoutAndRules.Rule1_6  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
-                  • PayoutAndRules.Rule1_7  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
-                  • PayoutAndRules.Rule3_10  (特殊短语未使用配置翻译："Main Game" → "ហ្គេមចម្បង")
                   • Rule.Rule1  (特殊短语未使用配置翻译："Video Slot" → "វីដេអូស្លត")
                   • Rule.Rule1  (特殊短语未使用配置翻译："Free Spins" → "បង្វិលឥតគិតថ្លៃ")
                   • Rule.Rule1  (特殊短语未使用配置翻译："Bonus" → "ប្រាក់រង្វាន់")
                   • Rule.Rule1  (特殊短语未使用配置翻译："Reel" → "កង់")
-         ⚠️  tgl         部分内容未翻译（5 处）：
-                  • PayoutAndRules.Rule1_3  (特殊短语未使用配置翻译："Main Game" → "Main Game")
-                  • PayoutAndRules.Rule1_6  (特殊短语未使用配置翻译："Main Game" → "Main Game")
-                  • PayoutAndRules.Rule1_7  (特殊短语未使用配置翻译："Main Game" → "Main Game")
-                  • PayoutAndRules.Rule3_10  (特殊短语未使用配置翻译："Main Game" → "Main Game")
+         ⚠️  tgl         部分内容未翻译（1 处）：
                   • Rule.Rule1  (疑似英文残留："chain combo gameplay")
          ⚠️  mya         部分内容未翻译（1 处）：
                   • Rule.Rule1  (特殊短语未使用配置翻译："Reel" → "ရစ်")
-   13. 3082
-         ⚠️  eng         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="Three Crazy Piggies"  DB="Superb Ace 5"
-         ⚠️  sch         部分内容未翻译（1 处）：
-                  • 名称不匹配：文件="三只疯狂小猪"  DB="超凡王牌5"
-         ❌ por         文件夹不存在
-         ❌ spa         文件夹不存在
-         ❌ hin         文件夹不存在
-         ❌ ind         文件夹不存在
-         ❌ tha         文件夹不存在
-         ❌ vie         文件夹不存在
-         ❌ ben         文件夹不存在
-         ❌ khm         文件夹不存在
-         ❌ tgl         文件夹不存在
-         ❌ tch         文件夹不存在
-         ❌ msa         文件夹不存在
-         ❌ mya         文件夹不存在
-         ❌ lao         文件夹不存在
-         ❌ jpn         文件夹不存在
-         ❌ kor         文件夹不存在
 
 ================================================================================

@@ -217,7 +217,7 @@ REBATE_RULES = {
 # ==================  group_weight 区间权重配置 ==================
 # 每个局类型各自维护一套区间规则，区间按“当前 rebate_min <= rebate < 下一 rebate_min”匹配。
 # weight 为 0 的 rebate 也写入 group_weight 表，但不参与 RTP 权重计算。
-GROUP_WEIGHT_RULES = {
+GROUP_WEIGHT_RULES_0 = {
     '1': [  # 普通局
         {'rebate_min': 0,       'weight': 0},
         {'rebate_min': 1,       'weight': 10000},
@@ -277,12 +277,12 @@ GROUP_WEIGHT_RULES = {
     '3': [  # 免费局
         {'rebate_min': 0,        'weight': 0},
         {'rebate_min': 1,       'weight': 0},
-        {'rebate_min': 5000,    'weight': 8000},
-        {'rebate_min': 6000,    'weight': 8000},
-        {'rebate_min': 7000,    'weight': 8000},
-        {'rebate_min': 8000,    'weight': 8000},
-        {'rebate_min': 9000,    'weight': 8000},
-        {'rebate_min': 10000,   'weight': 8000},
+        {'rebate_min': 5000,    'weight': 0},
+        {'rebate_min': 6000,    'weight': 0},
+        {'rebate_min': 7000,    'weight': 0},
+        {'rebate_min': 8000,    'weight': 0},
+        {'rebate_min': 9000,    'weight': 0},
+        {'rebate_min': 10000,   'weight': 6000},
         {'rebate_min': 20000,   'weight': 4000},
         {'rebate_min': 30000,   'weight': 2000},
         {'rebate_min': 40000,   'weight': 1000},
@@ -291,7 +291,7 @@ GROUP_WEIGHT_RULES = {
         {'rebate_min': 70000,   'weight': 50},
         {'rebate_min': 80000,   'weight': 10},
         {'rebate_min': 90000,   'weight': 5},
-        {'rebate_min': 100000,  'weight': 1},
+        {'rebate_min': 100000,  'weight': 2},
         {'rebate_min': 200000,  'weight': 1},
         {'rebate_min': 300000,  'weight': 1},
         {'rebate_min': 400000,  'weight': 1},
@@ -381,12 +381,12 @@ GROUP_WEIGHT_RULES = {
     '8': [  # ex免费局
         {'rebate_min': 0,        'weight': 0},
         {'rebate_min': 1,       'weight': 0},
-        {'rebate_min': 5000,    'weight': 8000},
-        {'rebate_min': 6000,    'weight': 8000},
-        {'rebate_min': 7000,    'weight': 8000},
-        {'rebate_min': 8000,    'weight': 8000},
-        {'rebate_min': 9000,    'weight': 8000},
-        {'rebate_min': 10000,   'weight': 8000},
+        {'rebate_min': 5000,    'weight': 0},
+        {'rebate_min': 6000,    'weight': 0},
+        {'rebate_min': 7000,    'weight': 0},
+        {'rebate_min': 8000,    'weight': 0},
+        {'rebate_min': 9000,    'weight': 0},
+        {'rebate_min': 10000,   'weight': 6000},
         {'rebate_min': 20000,   'weight': 4000},
         {'rebate_min': 30000,   'weight': 2000},
         {'rebate_min': 40000,   'weight': 1000},
@@ -395,7 +395,7 @@ GROUP_WEIGHT_RULES = {
         {'rebate_min': 70000,   'weight': 50},
         {'rebate_min': 80000,   'weight': 10},
         {'rebate_min': 90000,   'weight': 5},
-        {'rebate_min': 100000,  'weight': 1},
+        {'rebate_min': 100000,  'weight': 2},
         {'rebate_min': 200000,  'weight': 1},
         {'rebate_min': 300000,  'weight': 1},
         {'rebate_min': 400000,  'weight': 1},
@@ -428,6 +428,15 @@ GROUP_WEIGHT_RULES = {
     ],
 }
 
-# Optional overrides for group_weight rules by group_id last digit.
-# Empty means every group falls back to GROUP_WEIGHT_RULES.
-GROUP_WEIGHT_GROUP_RULES = {}
+# 尾号 1 默认独立维护；初始内容复制尾号 0，后续可单独调整且不会互相影响。
+GROUP_WEIGHT_RULES_1 = clone_rule_map(GROUP_WEIGHT_RULES_0)
+
+# 兼容原有调用：共享规则代表尾号 0，也作为旧配置和缺失模式的最终回退。
+GROUP_WEIGHT_RULES = clone_rule_map(GROUP_WEIGHT_RULES_0)
+
+# group_weight 默认按 group_id 尾号拆分为 0、1 两套规则。
+# 新增尾号 2-9 没有专属规则时，运行时统一回退到尾号 0。
+GROUP_WEIGHT_GROUP_RULES = {
+    '0': clone_rule_map(GROUP_WEIGHT_RULES_0),
+    '1': clone_rule_map(GROUP_WEIGHT_RULES_1),
+}

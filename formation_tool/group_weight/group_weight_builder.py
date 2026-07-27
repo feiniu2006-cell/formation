@@ -58,9 +58,13 @@ def get_group_weight_rules_for_mode(game_type):
 
 def get_group_weight_rules_for_mode_group(game_type, group_id):
     suffix = str(group_weight_pair_sets.get_group_suffix(group_id))
-    mode_rules = (globals().get('GROUP_WEIGHT_GROUP_RULES', {}) or {}).get(suffix, {})
+    group_rules = globals().get('GROUP_WEIGHT_GROUP_RULES', {}) or {}
+    mode_rules = group_rules.get(suffix, {})
     if game_type in mode_rules:
         return mode_rules.get(game_type, [])
+    group_zero_rules = group_rules.get('0', {})
+    if game_type in group_zero_rules:
+        return group_zero_rules.get(game_type, [])
     return get_group_weight_rules_for_mode(game_type)
 
 

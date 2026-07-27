@@ -11,7 +11,7 @@ from formation_tool.core import formation_modes
 
 APP_SETTINGS_FILE_NAME = 'formation_tool_settings.json'
 APP_SETTINGS_DIR_ENV = 'FORMATION_TOOL_SETTINGS_DIR'
-CURRENT_SETTINGS_VERSION = 4
+CURRENT_SETTINGS_VERSION = 5
 RULE_SETTINGS_SCHEMA_VERSION = 1
 
 
@@ -137,6 +137,22 @@ def migrate_settings_data(data):
     if not isinstance(data, dict):
         return data
     migrated = dict(data)
+    shared_group_weight_rules = migrated.get('group_weight_rules')
+    if isinstance(shared_group_weight_rules, dict):
+        raw_group_rules = migrated.get('group_weight_group_rules')
+        if raw_group_rules in (None, {}) or isinstance(raw_group_rules, dict):
+            group_rules_by_suffix = formation_defaults.clone_group_rule_map(
+                raw_group_rules or {}
+            )
+            group_rules_by_suffix.setdefault(
+                '0',
+                formation_defaults.clone_rule_map(shared_group_weight_rules),
+            )
+            group_rules_by_suffix.setdefault(
+                '1',
+                formation_defaults.clone_rule_map(shared_group_weight_rules),
+            )
+            migrated['group_weight_group_rules'] = group_rules_by_suffix
     sampling_options = dict(migrated.get('sampling_options') or {})
     if sampling_options:
         sampling_options.setdefault(
