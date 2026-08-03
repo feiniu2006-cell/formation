@@ -10,6 +10,17 @@ from formation_tool.ui import ui_layout_defaults
 
 ZERO_REBATE_MISSING_TEXT = "不存在rebate=0"
 DEFAULT_RTP_GROUP_ID = 9650
+REBATE_RANGE_BUCKETS = (
+    ("0\u500d", 0, 1),
+    ("1\u500d\u4ee5\u4e0b", 1, 1000),
+    ("1~10\u500d", 1000, 10000),
+    ("10~20\u500d", 10000, 20000),
+    ("20~50\u500d", 20000, 50000),
+    ("50~80\u500d", 50000, 80000),
+    ("80~100\u500d", 80000, 100000),
+    ("100~500\u500d", 100000, 500000),
+    ("500\u500d\u4ee5\u4e0a", 500000, None),
+)
 
 
 def clone_mode_rules_map(rules):
@@ -77,6 +88,39 @@ def format_zero_rebate_share_text(points):
     )
 
 
+def calculate_rebate_range_shares(points):
+    """Return final weight shares grouped by the configured rebate ranges."""
+    normalized_points = normalize_weight_curve_points(
+        {'rebate_min': rebate, 'weight': weight}
+        for rebate, weight in (points or [])
+    )
+    total_weight = sum(weight for _rebate, weight in normalized_points)
+    results = []
+    for label, lower, upper in REBATE_RANGE_BUCKETS:
+        bucket_weight = sum(
+            weight
+            for rebate, weight in normalized_points
+            if rebate >= lower and (upper is None or rebate < upper)
+        )
+        results.append({
+            'label': label,
+            'weight': bucket_weight,
+            'ratio': bucket_weight / total_weight if total_weight > 0 else None,
+        })
+    return results
+
+
+def format_rebate_range_share(ratio):
+    if ratio is None:
+        return "--"
+    if ratio <= 0:
+        return "0%"
+    percent = ratio * 100
+    if percent < 0.000001:
+        return f"{percent:.3e}%"
+    return f"{percent:.8f}".rstrip('0').rstrip('.') + "%"
+
+
 def format_chart_axis_value(value):
     value = int(round(float(value)))
     if abs(value) >= 10000 and value % 10000 == 0:
@@ -122,6 +166,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         self.weight_chart_canvases = {}
         self.weight_chart_points = {}
         self.zero_rebate_share_vars = {}
+        self.rebate_range_share_vars = {}
         self.hide_zero_rebate_chart_var = None
         self.base_rules = {}
         self.default_base_rules = {}
@@ -515,9 +560,10 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         chart_frame.grid(row=0, column=0, sticky="nsew")
         chart_frame.rowconfigure(1, weight=1)
         chart_frame.columnconfigure(0, weight=1)
+        chart_frame.columnconfigure(1, weight=0)
 
         header = ttk.Frame(chart_frame)
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text="权重柱状图", foreground="#444444").grid(row=0, column=0, sticky="w")
         ttk.Checkbutton(
@@ -544,6 +590,44 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         canvas.grid(row=1, column=0, sticky="nsew")
         self.weight_chart_canvases[mode] = canvas
         canvas.bind("<Configure>", lambda _event, m=mode: self.redraw_weight_chart(m))
+
+        range_frame = ttk.LabelFrame(
+            chart_frame,
+            text="rebate\u533a\u95f4\u5360\u6bd4",
+            padding=(8, 6),
+        )
+        range_frame.grid(row=1, column=1, sticky="ns", padx=(8, 0))
+        range_frame.columnconfigure(0, minsize=86)
+        range_frame.columnconfigure(1, minsize=92)
+        ttk.Label(range_frame, text="\u533a\u95f4", foreground="#555555").grid(
+            row=0,
+            column=0,
+            sticky="w",
+            pady=(0, 4),
+        )
+        ttk.Label(range_frame, text="\u6743\u91cd\u5360\u6bd4", foreground="#555555").grid(
+            row=0,
+            column=1,
+            sticky="e",
+            pady=(0, 4),
+        )
+        share_vars = []
+        for row, (label, _lower, _upper) in enumerate(REBATE_RANGE_BUCKETS, start=1):
+            ttk.Label(range_frame, text=label).grid(
+                row=row,
+                column=0,
+                sticky="w",
+                pady=2,
+            )
+            share_var = tk.StringVar(master=self.dialog, value="--")
+            ttk.Label(range_frame, textvariable=share_var).grid(
+                row=row,
+                column=1,
+                sticky="e",
+                pady=2,
+            )
+            share_vars.append(share_var)
+        self.rebate_range_share_vars[mode] = share_vars
         return True
 
     def mode_has_rebate_zero(self, mode):
@@ -850,6 +934,10 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         share_var = getattr(self, 'zero_rebate_share_vars', {}).get(mode)
         if share_var is not None:
             share_var.set(format_zero_rebate_share_text(self.weight_chart_points[mode]))
+        range_share_vars = getattr(self, 'rebate_range_share_vars', {}).get(mode, [])
+        range_shares = calculate_rebate_range_shares(self.weight_chart_points[mode])
+        for range_share_var, item in zip(range_share_vars, range_shares):
+            range_share_var.set(format_rebate_range_share(item['ratio']))
         self.redraw_weight_chart(mode)
 
     def hide_zero_rebate_in_chart(self):

@@ -5715,6 +5715,37 @@ class GroupWeightRulesDialogTests(unittest.TestCase):
             "rebate=0 占比（不中奖率）：--（总权重为0）",
         )
 
+    def test_rebate_range_shares_use_final_actual_weights_and_boundaries(self):
+        shares = group_weight_rules_dialog.calculate_rebate_range_shares([
+            (0, 300),
+            (999, 100),
+            (1000, 200),
+            (9999, 100),
+            (10000, 50),
+            (499999, 25),
+            (500000, 25),
+        ])
+
+        by_label = {item['label']: item for item in shares}
+        self.assertEqual(by_label["0\u500d"]['weight'], 300)
+        self.assertEqual(by_label["1\u500d\u4ee5\u4e0b"]['weight'], 100)
+        self.assertEqual(by_label["1~10\u500d"]['weight'], 300)
+        self.assertEqual(by_label["10~20\u500d"]['weight'], 50)
+        self.assertEqual(by_label["100~500\u500d"]['weight'], 25)
+        self.assertEqual(by_label["500\u500d\u4ee5\u4e0a"]['weight'], 25)
+        self.assertAlmostEqual(by_label["0\u500d"]['ratio'], 0.375)
+
+    def test_rebate_range_share_format_preserves_small_nonzero_values(self):
+        self.assertEqual(
+            group_weight_rules_dialog.format_rebate_range_share(0.789061446860401),
+            "78.90614469%",
+        )
+        self.assertNotEqual(
+            group_weight_rules_dialog.format_rebate_range_share(0.000000000001),
+            "0%",
+        )
+        self.assertEqual(group_weight_rules_dialog.format_rebate_range_share(None), "--")
+
     def test_missing_zero_rebate_locks_zero_weight_entry_and_parses_as_zero(self):
         class FakeEntry:
             def __init__(self):

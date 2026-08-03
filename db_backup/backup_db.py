@@ -408,30 +408,38 @@ def _fetch_source_objects_for_log(source_params: dict[str, str | int]) -> list[t
 def _print_dump_source_object_plan(
     source_params: dict[str, str | int],
     cancel_event: threading.Event | None,
-) -> None:
+) -> list[str]:
     _check_cancelled(cancel_event)
     database_name = str(source_params["database"])
     print(f"[进度] 正在读取源库 `{database_name}` 的表清单...")
     try:
         objects = _fetch_source_objects_for_log(source_params)
     except Exception as exc:
-        print(f"[提示] 无法读取源库表清单，仍将继续执行 dump：{str(exc)[:300]}")
-        return
+        raise RuntimeError(f"无法读取源库基础表清单，已停止仅数据备份：{str(exc)[:300]}") from exc
 
     if not objects:
-        print(f"[进度] 源库 `{database_name}` 未读取到表或视图，mysqldump 将继续尝试导出整个库。")
-        return
+        print(f"[进度] 源库 `{database_name}` 未读取到表或视图。")
+        return []
 
-    table_count = sum(1 for _, object_type in objects if object_type.upper() == "BASE TABLE")
+    base_tables = [
+        object_name
+        for object_name, object_type in objects
+        if object_type.upper() == "BASE TABLE"
+    ]
     view_count = sum(1 for _, object_type in objects if object_type.upper() == "VIEW")
     print(
         f"[进度] 源库 `{database_name}` 发现 {len(objects)} 个对象："
-        f"{table_count} 张表，{view_count} 个视图。"
+        f"{len(base_tables)} 张基础表，{view_count} 个视图。"
     )
-    for index, (object_name, object_type) in enumerate(objects, start=1):
+    if view_count:
+        print("[提示] 当前只备份基础表结构和数据，视图/触发器/存储过程/函数/事件将跳过。")
+    if not base_tables:
+        print(f"[进度] 源库 `{database_name}` 未读取到基础表。")
+        return []
+    for index, object_name in enumerate(base_tables, start=1):
         _check_cancelled(cancel_event)
-        label = "视图" if object_type.upper() == "VIEW" else "表"
-        print(f"[进度] [{index}/{len(objects)}] 将复制{label}: {object_name}")
+        print(f"[进度] [{index}/{len(base_tables)}] 将复制表: {object_name}")
+    return base_tables
 
 
 def _read_stderr_lines_for_log(pipe, buffer: list[bytes], label: str) -> None:
@@ -503,9 +511,7 @@ def backup_via_mysqldump(
             "--verbose",
             "--single-transaction",
             "--quick",
-            "--routines",
-            "--events",
-            "--triggers",
+            "--skip-triggers",
             "--set-gtid-purged=OFF",
             str(source_params["database"]),
         ]
@@ -519,200 +525,169 @@ def backup_via_mysqldump(
         # DEFINER 子句过滤：源库 DEFINER 用户在目标库不存在时需要 SUPER/SET_USER_ID，
         # 直接剥除可避免权限报错，导入后对象以导入用户身份生效。
         _definer_re = re.compile(rb"DEFINER=`[^`]*`@`[^`]*`\s*")
-        _print_dump_source_object_plan(source_params, cancel_event)
+        base_tables = _print_dump_source_object_plan(source_params, cancel_event)
+        if not base_tables:
+            raise RuntimeError("源库未读取到可备份的基础表，已停止仅数据备份。")
+        dump_base.extend(base_tables)
+        print("[参数] 仅导出基础表结构和数据，不导出视图/触发器/存储过程/函数/事件。")
 
-        # 导入含存储函数/触发器时，需要 log_bin_trust_function_creators=1（binlog 开启时）
-        # 尝试在导入前临时设置，完成后重置；若权限不足则提示用户手动配置。
-        _check_cancelled(cancel_event)
-        _trust_url = (
-            f"mysql+pymysql://{target_params['user']}:{target_params['password']}"
-            f"@{target_params['host']}:{int(target_params['port'])}/{target_database}"
-        )
         _trust_set = False
-        try:
-            _eng = create_engine(_trust_url)
-            with _eng.connect() as _c:
-                _c.execute(text("SET GLOBAL log_bin_trust_function_creators = 1"))
-                _c.commit()
-            _eng.dispose()
-            _trust_set = True
-            print("[阶段] 已临时启用目标库 log_bin_trust_function_creators=1")
-        except Exception as _exc:
-            print(f"[提示] 无法自动设置 log_bin_trust_function_creators：{str(_exc)[:300]}")
-            print("[提示] 若导入时出现 ERROR 1419，请在目标 MySQL my.ini 的 [mysqld] 节中添加：")
-            print("        log_bin_trust_function_creators = 1")
-            print("        然后重启 MySQL 服务。")
-            # 无法设置 trust 变量时，跳过存储函数/过程/事件/触发器，避免 ERROR 1419 导致备份失败
-            dump_base = [x for x in dump_base if x not in ('--routines', '--events')]
-            dump_base = [('--skip-triggers' if x == '--triggers' else x) for x in dump_base]
-            print("[提示] 已自动跳过存储函数/过程/事件/触发器的导出")
+        print("[参数] 仅数据备份不需要修改目标库 log_bin_trust_function_creators。")
 
-        try:
-            if dump_file is not None:
-                dump_path = dump_file.resolve()
-                print(f"[阶段] mysqldump 导出到文件: {dump_path}")
-                dump_path.parent.mkdir(parents=True, exist_ok=True)
-                dump_stderr_buf: list[bytes] = []
-                with dump_path.open("wb") as out_f:
-                    p_dump = subprocess.Popen(
-                        dump_base,
-                        stdout=out_f,
-                        stderr=subprocess.PIPE,
-                    )
-                    dump_stderr_thread = threading.Thread(
-                        target=_read_stderr_lines_for_log,
-                        args=(p_dump.stderr, dump_stderr_buf, "mysqldump"),
-                        daemon=True,
-                    )
-                    dump_stderr_thread.start()
-                    rc_dump = _wait_process_with_cancel(p_dump, "mysqldump", cancel_event)
-                    dump_stderr_thread.join()
-                if rc_dump != 0:
-                    err = b"".join(dump_stderr_buf).decode("utf-8", errors="replace")
-                    raise RuntimeError(f"mysqldump 失败 (code={rc_dump}): {err[:2000]}")
-                size_mb = dump_path.stat().st_size / (1024 * 1024)
-                print(f"[阶段] 导出完成，约 {size_mb:.2f} MB，正在剥除 DEFINER 子句...")
-                tmp_path = dump_path.with_suffix(".tmp")
-                with dump_path.open("rb") as src, tmp_path.open("wb") as dst:
-                    for line in src:
-                        dst.write(_definer_re.sub(b"", line))
-                tmp_path.replace(dump_path)
-                print(f"[阶段] DEFINER 剥除完成")
-
-                print(f"[阶段] mysql 从文件导入到库 `{target_database}`")
-                with dump_path.open("rb") as in_f:
-                    mysql_stdout_buf: list[bytes] = []
-                    mysql_stderr_buf: list[bytes] = []
-                    p_mysql_file = subprocess.Popen(
-                        mysql_base,
-                        stdin=in_f,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                    )
-                    mysql_stdout_thread = threading.Thread(
-                        target=_read_pipe_bytes,
-                        args=(p_mysql_file.stdout, mysql_stdout_buf),
-                        daemon=True,
-                    )
-                    mysql_stderr_thread = threading.Thread(
-                        target=_read_pipe_bytes,
-                        args=(p_mysql_file.stderr, mysql_stderr_buf),
-                        daemon=True,
-                    )
-                    mysql_stdout_thread.start()
-                    mysql_stderr_thread.start()
-                    try:
-                        rc_mysql_file = _wait_process_with_cancel(p_mysql_file, "mysql", cancel_event)
-                    finally:
-                        mysql_stdout_thread.join(timeout=5)
-                        mysql_stderr_thread.join(timeout=5)
-                if rc_mysql_file != 0:
-                    err = b"".join(mysql_stderr_buf).decode("utf-8", errors="replace")
-                    raise RuntimeError(f"mysql 导入失败 (code={rc_mysql_file}): {err[:2000]}")
-                print("[阶段] 导入完成")
-                return
-
-            _check_cancelled(cancel_event)
-            print("[阶段] mysqldump 流式管道导入目标库（无中间大文件，过滤 DEFINER）")
-            p_dump = subprocess.Popen(
-                dump_base,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            assert p_dump.stdout is not None
-            p_mysql = subprocess.Popen(
-                mysql_base,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            assert p_mysql.stdin is not None
-
-            dump_stderr_buf:  list[bytes] = []
-            mysql_stderr_buf: list[bytes] = []
-
-            def _read_dump_stderr():
-                _read_stderr_lines_for_log(p_dump.stderr, dump_stderr_buf, "mysqldump")
-
-            def _read_mysql_stderr():
-                if p_mysql.stderr:
-                    mysql_stderr_buf.append(p_mysql.stderr.read())
-
-            def _drain_mysql_stdout():
-                if p_mysql.stdout:
-                    while p_mysql.stdout.read(65536):
-                        pass
-
-            def _pipe_filter():
-                try:
-                    for line in p_dump.stdout:
-                        if _is_cancel_requested(cancel_event):
-                            break
-                        try:
-                            p_mysql.stdin.write(_definer_re.sub(b"", line))
-                        except (BrokenPipeError, ValueError, OSError):
-                            # mysql 已提前退出，排空剩余输出让 mysqldump 能正常结束
-                            while p_dump.stdout.read(65536):
-                                pass
-                            break
-                finally:
-                    try:
-                        p_mysql.stdin.close()
-                    except Exception:
-                        pass
-
-            filter_thread       = threading.Thread(target=_pipe_filter,        daemon=True)
-            dump_stderr_thread  = threading.Thread(target=_read_dump_stderr,   daemon=True)
-            mysql_stderr_thread = threading.Thread(target=_read_mysql_stderr,  daemon=True)
-            mysql_stdout_thread = threading.Thread(target=_drain_mysql_stdout, daemon=True)
-            filter_thread.start()
-            dump_stderr_thread.start()
-            mysql_stderr_thread.start()
-            mysql_stdout_thread.start()
-
-            try:
-                while p_dump.poll() is None or p_mysql.poll() is None:
-                    if _is_cancel_requested(cancel_event):
-                        _terminate_process(p_dump, "mysqldump")
-                        _terminate_process(p_mysql, "mysql")
-                        raise BackupCancelled("备份已被用户中断。")
-                    time.sleep(0.2)
-            finally:
-                # filter_thread 负责关闭 mysql stdin；其他线程随各自管道 EOF 自然结束
-                filter_thread.join(timeout=5)
-                mysql_stderr_thread.join(timeout=5)
-                mysql_stdout_thread.join(timeout=5)
-                dump_stderr_thread.join(timeout=5)
-
-            rc_mysql = p_mysql.wait()
-            rc_dump  = p_dump.wait()
-            err_dump_b  = b"".join(dump_stderr_buf)
-            err_mysql_b = b"".join(mysql_stderr_buf)
-
-            # 优先报 mysql 端错误：mysql 提前退出会导致管道断裂，
-            # mysqldump 写入时得到 errno 22，掩盖真正的根因
-            if rc_mysql != 0:
-                err_mysql_s = err_mysql_b.decode("utf-8", errors="replace")
-                err_dump_s  = err_dump_b.decode("utf-8", errors="replace")
-                detail = f"mysql 导入失败 (code={rc_mysql}): {err_mysql_s[:2000]}"
-                if err_dump_s.strip():
-                    detail += f"\nmysqldump 附加信息: {err_dump_s[:500]}"
-                raise RuntimeError(detail)
+        if dump_file is not None:
+            dump_path = dump_file.resolve()
+            print(f"[阶段] mysqldump 导出到文件: {dump_path}")
+            dump_path.parent.mkdir(parents=True, exist_ok=True)
+            dump_stderr_buf: list[bytes] = []
+            with dump_path.open("wb") as out_f:
+                p_dump = subprocess.Popen(
+                    dump_base,
+                    stdout=out_f,
+                    stderr=subprocess.PIPE,
+                )
+                dump_stderr_thread = threading.Thread(
+                    target=_read_stderr_lines_for_log,
+                    args=(p_dump.stderr, dump_stderr_buf, "mysqldump"),
+                    daemon=True,
+                )
+                dump_stderr_thread.start()
+                rc_dump = _wait_process_with_cancel(p_dump, "mysqldump", cancel_event)
+                dump_stderr_thread.join()
             if rc_dump != 0:
-                err_dump = err_dump_b.decode("utf-8", errors="replace")
-                raise RuntimeError(f"mysqldump 失败 (code={rc_dump}): {err_dump[:2000]}")
-            print("[阶段] 流式导入完成")
-        finally:
-            if _trust_set:
+                err = b"".join(dump_stderr_buf).decode("utf-8", errors="replace")
+                raise RuntimeError(f"mysqldump 失败 (code={rc_dump}): {err[:2000]}")
+            size_mb = dump_path.stat().st_size / (1024 * 1024)
+            print(f"[阶段] 导出完成，约 {size_mb:.2f} MB，正在剥除 DEFINER 子句...")
+            tmp_path = dump_path.with_suffix(".tmp")
+            with dump_path.open("rb") as src, tmp_path.open("wb") as dst:
+                for line in src:
+                    dst.write(_definer_re.sub(b"", line))
+            tmp_path.replace(dump_path)
+            print(f"[阶段] DEFINER 剥除完成")
+
+            print(f"[阶段] mysql 从文件导入到库 `{target_database}`")
+            with dump_path.open("rb") as in_f:
+                mysql_stdout_buf: list[bytes] = []
+                mysql_stderr_buf: list[bytes] = []
+                p_mysql_file = subprocess.Popen(
+                    mysql_base,
+                    stdin=in_f,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                mysql_stdout_thread = threading.Thread(
+                    target=_read_pipe_bytes,
+                    args=(p_mysql_file.stdout, mysql_stdout_buf),
+                    daemon=True,
+                )
+                mysql_stderr_thread = threading.Thread(
+                    target=_read_pipe_bytes,
+                    args=(p_mysql_file.stderr, mysql_stderr_buf),
+                    daemon=True,
+                )
+                mysql_stdout_thread.start()
+                mysql_stderr_thread.start()
                 try:
-                    _eng2 = create_engine(_trust_url)
-                    with _eng2.connect() as _c2:
-                        _c2.execute(text("SET GLOBAL log_bin_trust_function_creators = 0"))
-                        _c2.commit()
-                    _eng2.dispose()
-                    print("[阶段] 已重置目标库 log_bin_trust_function_creators=0")
+                    rc_mysql_file = _wait_process_with_cancel(p_mysql_file, "mysql", cancel_event)
+                finally:
+                    mysql_stdout_thread.join(timeout=5)
+                    mysql_stderr_thread.join(timeout=5)
+            if rc_mysql_file != 0:
+                err = b"".join(mysql_stderr_buf).decode("utf-8", errors="replace")
+                raise RuntimeError(f"mysql 导入失败 (code={rc_mysql_file}): {err[:2000]}")
+            print("[阶段] 导入完成")
+            return
+
+        _check_cancelled(cancel_event)
+        print("[阶段] mysqldump 流式管道导入目标库（无中间大文件，过滤 DEFINER）")
+        p_dump = subprocess.Popen(
+            dump_base,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert p_dump.stdout is not None
+        p_mysql = subprocess.Popen(
+            mysql_base,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert p_mysql.stdin is not None
+
+        dump_stderr_buf:  list[bytes] = []
+        mysql_stderr_buf: list[bytes] = []
+
+        def _read_dump_stderr():
+            _read_stderr_lines_for_log(p_dump.stderr, dump_stderr_buf, "mysqldump")
+
+        def _read_mysql_stderr():
+            if p_mysql.stderr:
+                mysql_stderr_buf.append(p_mysql.stderr.read())
+
+        def _drain_mysql_stdout():
+            if p_mysql.stdout:
+                while p_mysql.stdout.read(65536):
+                    pass
+
+        def _pipe_filter():
+            try:
+                for line in p_dump.stdout:
+                    if _is_cancel_requested(cancel_event):
+                        break
+                    try:
+                        p_mysql.stdin.write(_definer_re.sub(b"", line))
+                    except (BrokenPipeError, ValueError, OSError):
+                        # mysql 已提前退出，排空剩余输出让 mysqldump 能正常结束
+                        while p_dump.stdout.read(65536):
+                            pass
+                        break
+            finally:
+                try:
+                    p_mysql.stdin.close()
                 except Exception:
                     pass
+
+        filter_thread       = threading.Thread(target=_pipe_filter,        daemon=True)
+        dump_stderr_thread  = threading.Thread(target=_read_dump_stderr,   daemon=True)
+        mysql_stderr_thread = threading.Thread(target=_read_mysql_stderr,  daemon=True)
+        mysql_stdout_thread = threading.Thread(target=_drain_mysql_stdout, daemon=True)
+        filter_thread.start()
+        dump_stderr_thread.start()
+        mysql_stderr_thread.start()
+        mysql_stdout_thread.start()
+
+        try:
+            while p_dump.poll() is None or p_mysql.poll() is None:
+                if _is_cancel_requested(cancel_event):
+                    _terminate_process(p_dump, "mysqldump")
+                    _terminate_process(p_mysql, "mysql")
+                    raise BackupCancelled("备份已被用户中断。")
+                time.sleep(0.2)
+        finally:
+            # filter_thread 负责关闭 mysql stdin；其他线程随各自管道 EOF 自然结束
+            filter_thread.join(timeout=5)
+            mysql_stderr_thread.join(timeout=5)
+            mysql_stdout_thread.join(timeout=5)
+            dump_stderr_thread.join(timeout=5)
+
+        rc_mysql = p_mysql.wait()
+        rc_dump  = p_dump.wait()
+        err_dump_b  = b"".join(dump_stderr_buf)
+        err_mysql_b = b"".join(mysql_stderr_buf)
+
+        # 优先报 mysql 端错误：mysql 提前退出会导致管道断裂，
+        # mysqldump 写入时得到 errno 22，掩盖真正的根因
+        if rc_mysql != 0:
+            err_mysql_s = err_mysql_b.decode("utf-8", errors="replace")
+            err_dump_s  = err_dump_b.decode("utf-8", errors="replace")
+            detail = f"mysql 导入失败 (code={rc_mysql}): {err_mysql_s[:2000]}"
+            if err_dump_s.strip():
+                detail += f"\nmysqldump 附加信息: {err_dump_s[:500]}"
+            raise RuntimeError(detail)
+        if rc_dump != 0:
+            err_dump = err_dump_b.decode("utf-8", errors="replace")
+            raise RuntimeError(f"mysqldump 失败 (code={rc_dump}): {err_dump[:2000]}")
+        print("[阶段] 流式导入完成")
     finally:
         try:
             src_cnf.unlink(missing_ok=True)
