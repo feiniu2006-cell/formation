@@ -1,6 +1,7 @@
 import contextlib
 import io
 import importlib
+import inspect
 import os
 import subprocess
 import sys
@@ -57,6 +58,7 @@ from formation_tool.ui import single_sampling_dialog
 from formation_tool.ui import slot_app_settings
 from formation_tool.ui import slot_app_tasks
 from formation_tool.ui import ui_layout_defaults
+from formation_tool.ui import weight_group_ui
 from formation_tool.ui.slot_app_settings import SlotAppSettingsMixin
 
 
@@ -701,61 +703,93 @@ class GroupWeightLogicTests(unittest.TestCase):
         self.assertIn("ex倍数=2", preview)
         self.assertIn("最终RTP=6", preview)
 
-    def test_default_weight_group_ids_only_use_group_suffix_0_and_1(self):
+    def test_default_weight_group_ids_include_group_suffix_0_to_4(self):
         suffixes = {int(group_id) % 10 for group_id in formation_defaults.DEFAULT_WEIGHT_GROUP_IDS}
-        self.assertEqual(suffixes, {0, 1})
-        for group_id in (9652, 9653, 9654, 9655):
-            self.assertNotIn(group_id, formation_defaults.DEFAULT_WEIGHT_GROUP_IDS)
+        self.assertEqual(suffixes, {0, 1, 2, 3, 4})
+        for group_id in (9650, 9651, 9652, 9653, 9654):
+            self.assertIn(group_id, formation_defaults.DEFAULT_WEIGHT_GROUP_IDS)
+        self.assertNotIn(9655, formation_defaults.DEFAULT_WEIGHT_GROUP_IDS)
 
-    def test_default_group_weight_rules_have_independent_group_zero_and_one_sets(self):
+    def test_default_group_weight_rules_have_independent_group_zero_to_four_sets(self):
         group_defaults = formation_defaults.GROUP_WEIGHT_GROUP_RULES
 
-        self.assertEqual(set(group_defaults), {"0", "1"})
+        self.assertEqual(set(group_defaults), {"0", "1", "2", "3", "4"})
         self.assertEqual(formation_defaults.GROUP_WEIGHT_RULES, group_defaults["0"])
         self.assertIsNot(formation_defaults.GROUP_WEIGHT_RULES, group_defaults["0"])
-        for mode in formation_defaults.GROUP_WEIGHT_RULES:
-            self.assertIsNot(group_defaults["0"][mode], group_defaults["1"][mode])
+        for group_suffix in ("1", "2", "3", "4"):
+            for mode in formation_defaults.GROUP_WEIGHT_RULES:
+                self.assertIsNot(group_defaults["0"][mode], group_defaults[group_suffix][mode])
 
-    def test_extra_weight_group_suffix_expands_all_rtp_group_families(self):
+    def test_group_one_to_four_defaults_are_explicitly_declared(self):
+        source = inspect.getsource(formation_defaults)
+
+        for group_suffix in range(1, 5):
+            self.assertIn(f"GROUP_WEIGHT_RULES_{group_suffix} = {{", source)
+            self.assertNotIn(
+                f"GROUP_WEIGHT_RULES_{group_suffix} = clone_rule_map",
+                source,
+            )
+
+    def test_editable_weight_group_suffixes_control_generated_group_ids(self):
         module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
         groups = module.normalize_extra_weight_groups([
-            {"group_suffix": "2", "special_weight": "300", "free_weight": "150"},
+            {"group_suffix": "4", "special_weight": "500", "free_weight": "250"},
         ])
 
         group_ids = module.build_weight_group_ids(groups)
 
-        self.assertEqual(group_ids[:6], [10000, 10001, 10002, 9900, 9901, 9902])
         self.assertEqual(
-            [group_id for group_id in group_ids if group_id % 10 == 2],
-            [10002, 9902, 9802, 9702, 9652, 9602, 9502, 9402, 9302, 9202, 9102, 9002],
+            group_ids[:6],
+            [10000, 10004, 9900, 9904, 9800, 9804],
         )
+        self.assertEqual({group_id % 10 for group_id in group_ids}, {0, 4})
+        self.assertEqual(
+            [group_id for group_id in group_ids if group_id % 10 == 4],
+            [10004, 9904, 9804, 9704, 9654, 9604, 9504, 9404, 9304, 9204, 9104, 9004],
+        )
+
+    def test_removing_editable_group_removes_its_all_rtp_group_ids(self):
+        module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
+        groups = [
+            group
+            for group in formation_defaults.clone_extra_weight_groups()
+            if int(group['group_suffix']) != 2
+        ]
+
+        group_ids = module.build_weight_group_ids(groups)
+
+        self.assertEqual({group_id % 10 for group_id in group_ids}, {0, 1, 3, 4})
+        self.assertNotIn(9652, group_ids)
+        self.assertIn(9651, group_ids)
+        self.assertIn(9653, group_ids)
+        self.assertIn(9654, group_ids)
 
     def test_legacy_full_group_id_is_normalized_to_group_suffix(self):
         module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
 
         groups = module.normalize_extra_weight_groups([
-            {"group_id": "9652", "special_weight": "300", "free_weight": "150"},
+            {"group_id": "9654", "special_weight": "500", "free_weight": "250"},
         ])
 
         self.assertEqual(groups, [
-            {"group_suffix": 2, "special_weight": 300, "free_weight": 150},
+            {"group_suffix": 4, "special_weight": 500, "free_weight": 250},
         ])
 
     def test_extra_weight_groups_reject_conflicting_same_suffix_weights(self):
         module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
 
-        with self.assertRaisesRegex(ValueError, "尾号2"):
+        with self.assertRaisesRegex(ValueError, "尾号4"):
             module.normalize_extra_weight_groups([
-                {"group_id": "9652", "special_weight": "300", "free_weight": "150"},
-                {"group_suffix": "2", "special_weight": "400", "free_weight": "150"},
+                {"group_id": "9654", "special_weight": "500", "free_weight": "250"},
+                {"group_suffix": "4", "special_weight": "600", "free_weight": "250"},
             ])
 
-    def test_extra_weight_groups_reject_default_suffixes(self):
+    def test_extra_weight_groups_reject_fixed_group_zero(self):
         module = importlib.import_module("formation_tool.process_formation_slots_way_combined")
 
-        with self.assertRaisesRegex(ValueError, "尾号0已是默认分组"):
+        with self.assertRaisesRegex(ValueError, "尾号0是固定基础分组"):
             module.normalize_extra_weight_groups([
-                {"group_suffix": "0", "special_weight": "300", "free_weight": "150"},
+                {"group_suffix": "0", "special_weight": "100", "free_weight": "50"},
             ])
 
     def test_group_weight_pairs_use_group_suffix_specific_rules(self):
@@ -812,6 +846,67 @@ class GroupWeightLogicTests(unittest.TestCase):
         self.assertEqual(
             group_weight_pair_sets.get_pairs_for_mode_group(mode_pairs, "1", 9652),
             [(100, 30), (200, 30)],
+        )
+
+    def test_extra_buy_pairs_use_group_suffix_specific_rules(self):
+        mode = "extra_buy:92"
+        names = (
+            "WEIGHT_GROUP_IDS",
+            "GROUP_WEIGHT_RULES",
+            "GROUP_WEIGHT_GROUP_RULES",
+            "ZERO_REBATE_INFERENCE_MODES",
+            "BUY_GROUP_MODE",
+            "is_extra_buy_mode",
+            "get_extra_buy_group_by_mode",
+        )
+        missing = object()
+        old_values = {name: getattr(group_weight_builder, name, missing) for name in names}
+        try:
+            group_weight_builder.WEIGHT_GROUP_IDS = (9650, 9651, 9652, 9653)
+            group_weight_builder.GROUP_WEIGHT_RULES = {
+                "99": [{"rebate_min": 0, "weight": 10}],
+            }
+            group_weight_builder.GROUP_WEIGHT_GROUP_RULES = {}
+            group_weight_builder.ZERO_REBATE_INFERENCE_MODES = set()
+            group_weight_builder.BUY_GROUP_MODE = "99"
+            group_weight_builder.is_extra_buy_mode = lambda value: value == mode
+            group_weight_builder.get_extra_buy_group_by_mode = lambda _mode: {
+                "rules": [{"rebate_min": 0, "weight": 10}],
+                "group_rules": {
+                    "0": [{"rebate_min": 0, "weight": 20}],
+                    "1": [{"rebate_min": 0, "weight": 30}],
+                    "2": [{"rebate_min": 0, "weight": 40}],
+                    "3": [{"rebate_min": 0, "weight": 50}],
+                },
+            }
+
+            pair_set = group_weight_builder.build_group_weight_pair_set_for_mode(
+                mode,
+                [100],
+            )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(group_weight_builder, name):
+                        delattr(group_weight_builder, name)
+                else:
+                    setattr(group_weight_builder, name, value)
+
+        self.assertEqual(
+            group_weight_pair_sets.get_pairs_for_group(pair_set, 9650),
+            [(100, 20)],
+        )
+        self.assertEqual(
+            group_weight_pair_sets.get_pairs_for_group(pair_set, 9651),
+            [(100, 30)],
+        )
+        self.assertEqual(
+            group_weight_pair_sets.get_pairs_for_group(pair_set, 9652),
+            [(100, 40)],
+        )
+        self.assertEqual(
+            group_weight_pair_sets.get_pairs_for_group(pair_set, 9653),
+            [(100, 50)],
         )
 
     def test_zero_weight_rows_are_built_for_final_write_only(self):
@@ -1466,7 +1561,15 @@ class BuyGroupConfigTests(unittest.TestCase):
 
     def test_extra_buy_groups_preserve_source_suffix(self):
         groups = buy_group_config.normalize_extra_buy_groups(
-            [{"game_type": "120", "multiplier": "80", "source_suffix": "bonus_formation"}],
+            [{
+                "game_type": "120",
+                "multiplier": "80",
+                "source_suffix": "bonus_formation",
+                "group_rules": {
+                    "0": [{"rebate_min": 0, "weight": 10}],
+                    "1": [{"rebate_min": 0, "weight": 20}],
+                },
+            }],
             group_modes=formation_modes.GROUP_WEIGHT_MODES,
             default_buy_rules=[{"rebate_min": 0, "weight": 1}],
             buy_group_mode=formation_modes.BUY_GROUP_MODE,
@@ -1476,6 +1579,8 @@ class BuyGroupConfigTests(unittest.TestCase):
 
         self.assertEqual(groups[0]["source_suffix"], "bonus_formation")
         self.assertEqual(groups[0]["game_type"], 120)
+        self.assertEqual(groups[0]["group_rules"]["0"][0]["weight"], 10)
+        self.assertEqual(groups[0]["group_rules"]["1"][0]["weight"], 20)
 
     def test_default_buy_game_type_can_change_and_free_99_for_extra_buy(self):
         groups = buy_group_config.normalize_extra_buy_groups(
@@ -1546,7 +1651,10 @@ class BuyGroupConfigTests(unittest.TestCase):
         self.assertEqual(group_options["buy_game_type"], 99)
         self.assertEqual(group_options["buy_source_suffix"], "free_formation")
         self.assertEqual(group_options["independent_rtp_modes"], [])
-        self.assertEqual(group_options["extra_weight_groups"], [])
+        self.assertEqual(
+            group_options["extra_weight_groups"],
+            formation_defaults.DEFAULT_EXTRA_WEIGHT_GROUPS,
+        )
         self.assertEqual(group_options["extra_buy_groups"][0]["source_suffix"], "free_formation")
         self.assertEqual(group_options["buy_groups"][0]["game_type"], 99)
         self.assertEqual(group_options["buy_groups"][1]["game_type"], 120)
@@ -1563,10 +1671,70 @@ class BuyGroupConfigTests(unittest.TestCase):
 
         self.assertEqual(migrated["group_weight_group_rules"]["0"], shared_rules)
         self.assertEqual(migrated["group_weight_group_rules"]["1"], group_one_rules)
+        self.assertEqual(migrated["group_weight_group_rules"]["2"], shared_rules)
+        self.assertEqual(migrated["group_weight_group_rules"]["3"], shared_rules)
+        self.assertEqual(migrated["group_weight_group_rules"]["4"], shared_rules)
         self.assertIsNot(
             migrated["group_weight_group_rules"]["0"]["1"],
             migrated["group_weight_rules"]["1"],
         )
+        self.assertIsNot(
+            migrated["group_weight_group_rules"]["2"]["1"],
+            migrated["group_weight_group_rules"]["0"]["1"],
+        )
+
+    def test_settings_migration_promotes_old_extra_groups_two_and_three(self):
+        migrated = settings_logic.migrate_settings_data({
+            "version": 5,
+            "trigger_weights": {
+                "special_0": 100,
+                "special_1": 200,
+                "free_0": 50,
+                "free_1": 100,
+            },
+            "group_weight_options": {
+                "extra_weight_groups": [
+                    {"group_suffix": 2, "special_weight": 320, "free_weight": 160},
+                    {"group_id": 9653, "special_weight": 430, "free_weight": 215},
+                    {"group_suffix": 4, "special_weight": 500, "free_weight": 250},
+                ],
+            },
+        })
+
+        self.assertEqual(migrated["trigger_weights"]["special_2"], 320)
+        self.assertEqual(migrated["trigger_weights"]["free_2"], 160)
+        self.assertEqual(migrated["trigger_weights"]["special_3"], 430)
+        self.assertEqual(migrated["trigger_weights"]["free_3"], 215)
+        self.assertEqual(
+            migrated["group_weight_options"]["extra_weight_groups"],
+            [
+                {"group_suffix": 1, "special_weight": 200, "free_weight": 100},
+                {"group_suffix": 2, "special_weight": 320, "free_weight": 160},
+                {"group_suffix": 3, "special_weight": 430, "free_weight": 215},
+                {"group_suffix": 4, "special_weight": 500, "free_weight": 250},
+            ],
+        )
+
+    def test_current_settings_keep_deleted_editable_groups_deleted(self):
+        migrated = settings_logic.migrate_settings_data({
+            "version": settings_logic.CURRENT_SETTINGS_VERSION,
+            "group_weight_rules": {"1": [{"rebate_min": 0, "weight": 10}]},
+            "group_weight_group_rules": {
+                "0": {"1": [{"rebate_min": 0, "weight": 10}]},
+                "4": {"1": [{"rebate_min": 0, "weight": 40}]},
+            },
+            "group_weight_options": {
+                "extra_weight_groups": [
+                    {"group_suffix": 4, "special_weight": 500, "free_weight": 250},
+                ],
+            },
+        })
+
+        self.assertEqual(
+            migrated["group_weight_options"]["extra_weight_groups"],
+            [{"group_suffix": 4, "special_weight": 500, "free_weight": 250}],
+        )
+        self.assertEqual(set(migrated["group_weight_group_rules"]), {"0", "4"})
 
     def test_settings_migration_prefers_unified_buy_groups(self):
         migrated = settings_logic.migrate_settings_data(
@@ -4373,6 +4541,24 @@ class CommonConfigTests(unittest.TestCase):
 
 
 class SlotAppDepsTests(unittest.TestCase):
+    def test_build_trigger_weights_includes_default_groups_zero_to_three(self):
+        self.assertEqual(
+            slot_app_deps.build_trigger_weights(
+                {0: 100, 1: 200, 2: 300, 3: 400},
+                {0: 50, 1: 100, 2: 150, 3: 200},
+            ),
+            {
+                "special_0": 100,
+                "special_1": 200,
+                "special_2": 300,
+                "special_3": 400,
+                "free_0": 50,
+                "free_1": 100,
+                "free_2": 150,
+                "free_3": 200,
+            },
+        )
+
     def build_task_header_app(self):
         class FakeTaskHeaderApp(slot_app_tasks.SlotAppTaskMixin):
             def __init__(self):
@@ -4665,8 +4851,12 @@ class FakeSettingsApp(SlotAppSettingsMixin):
         self.config_db_var = tk.StringVar(master=master, value="CFG")
         self.special_weight_0_var = tk.StringVar(master=master, value="10")
         self.special_weight_1_var = tk.StringVar(master=master, value="20")
+        self.special_weight_2_var = tk.StringVar(master=master, value="30")
+        self.special_weight_3_var = tk.StringVar(master=master, value="40")
         self.free_weight_0_var = tk.StringVar(master=master, value="30")
         self.free_weight_1_var = tk.StringVar(master=master, value="40")
+        self.free_weight_2_var = tk.StringVar(master=master, value="50")
+        self.free_weight_3_var = tk.StringVar(master=master, value="60")
         self.sampling_append_mode_var = tk.BooleanVar(master=master, value=False)
         self.sampling_detailed_log_var = tk.BooleanVar(master=master, value=False)
         self.sampling_auto_sync_to_target_var = tk.BooleanVar(master=master, value=False)
@@ -4764,7 +4954,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             {"game_type": 120, "multiplier": 80, "source_suffix": "bonus_formation", "rules": []}
         ]
         extra_weight_groups = [
-            {"group_suffix": 2, "special_weight": 300, "free_weight": 150}
+            {"group_suffix": 4, "special_weight": 500, "free_weight": 250}
         ]
         group_weight_group_rules = {
             "0": {"1": [{"rebate_min": 0, "weight": 12345}]},
@@ -4781,8 +4971,12 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             get_trigger_weights=lambda: {
                 "special_0": 10,
                 "special_1": 20,
+                "special_2": 30,
+                "special_3": 40,
                 "free_0": 30,
                 "free_1": 40,
+                "free_2": 50,
+                "free_3": 60,
             },
             get_rebate_rules=lambda: {"1": [{"rebate": 0, "count": 1}]},
             clone_rebate_rules=lambda rules: {key: [dict(item) for item in value] for key, value in rules.items()},
@@ -4871,7 +5065,7 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             {"game_type": 120, "multiplier": 80, "source_suffix": "bonus_formation", "rules": []}
         ]
         extra_weight_groups = [
-            {"group_suffix": 2, "special_weight": 300, "free_weight": 150}
+            {"group_suffix": 4, "special_weight": 500, "free_weight": 250}
         ]
         deps = SimpleNamespace(
             clear_config_warnings=lambda: calls.append(("clear", None)),
@@ -4920,7 +5114,16 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
                 "final_db": "DB1",
                 "config_db": "MY",
             },
-            trigger_weights={"special_0": 11, "special_1": 22, "free_0": 33, "free_1": 44},
+            trigger_weights={
+                "special_0": 11,
+                "special_1": 22,
+                "special_2": 33,
+                "special_3": 44,
+                "free_0": 55,
+                "free_1": 66,
+                "free_2": 77,
+                "free_3": 88,
+            },
             rebate_rules={"1": [{"rebate": 0, "count": 2}]},
             sampling_append_mode=True,
             sampling_detailed_log=True,
@@ -4965,6 +5168,10 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         self.assertEqual(app.ex_buy_source_suffix_var.get(), "custom_ex_buy_formation")
         self.assertEqual(app.buy_multiplier_var.get(), "60")
         self.assertEqual(app.buy_source_suffix_var.get(), "custom_free_formation")
+        self.assertEqual(app.special_weight_2_var.get(), "33")
+        self.assertEqual(app.special_weight_3_var.get(), "44")
+        self.assertEqual(app.free_weight_2_var.get(), "77")
+        self.assertEqual(app.free_weight_3_var.get(), "88")
         self.assertTrue(app.sampling_detailed_log_var.get())
         self.assertTrue(app.sampling_auto_sync_to_target_var.get())
         self.assertEqual(app.ex_source_suffix_vars["1"].get(), "custom_formation")
@@ -5367,6 +5574,26 @@ class ExternalConfigStatusTests(unittest.TestCase):
         self.assertIn("- 源库: XP1", message)
 
 
+class WeightGroupUiTests(unittest.TestCase):
+    def test_extra_weight_group_rows_start_after_fixed_group_zero(self):
+        class Widget:
+            def grid(self, **kwargs):
+                self.grid_options = kwargs
+
+        row_info = {
+            "group_suffix_entry": Widget(),
+            "special_weight_entry": Widget(),
+            "free_weight_entry": Widget(),
+            "remove_button": Widget(),
+        }
+        app = SimpleNamespace(extra_weight_group_rows=[row_info])
+
+        weight_group_ui.refresh_extra_weight_group_rows(app)
+
+        for widget in row_info.values():
+            self.assertEqual(widget.grid_options["row"], 2)
+
+
 class BuyGroupUiTests(unittest.TestCase):
     def test_collect_extra_buy_groups_preserves_existing_rules(self):
         class Var:
@@ -5506,6 +5733,35 @@ class GuiDialogSmokeTests(unittest.TestCase):
 
 
 class GroupWeightRulesDialogTests(unittest.TestCase):
+    def test_extra_buy_group_rules_are_independent_for_each_group_suffix(self):
+        dialog = group_weight_rules_dialog.GroupWeightRulesDialog.__new__(
+            group_weight_rules_dialog.GroupWeightRulesDialog
+        )
+        dialog.deps = SimpleNamespace(
+            rules={"99": [{"rebate_min": 0, "weight": 10}]},
+            default_rules={"99": [{"rebate_min": 0, "weight": 10}]},
+            group_rules={},
+            default_group_rules={},
+            extra_buy_groups=[{
+                "game_type": 92,
+                "rules": [{"rebate_min": 0, "weight": 20}],
+            }],
+            make_extra_buy_mode=lambda game_type: f"extra_buy:{game_type}",
+            buy_group_mode="99",
+            weight_group_ids=[9650, 9651, 9652, 9653],
+        )
+
+        dialog.initialize_group_rule_state()
+        rules_by_suffix = dialog.extra_buy_rules_by_mode["extra_buy:92"]
+        rules_by_suffix["0"][0]["weight"] = 123
+
+        self.assertEqual(rules_by_suffix["0"][0]["weight"], 123)
+        self.assertEqual(rules_by_suffix["1"][0]["weight"], 20)
+        self.assertEqual(rules_by_suffix["2"][0]["weight"], 20)
+        self.assertEqual(rules_by_suffix["3"][0]["weight"], 20)
+        self.assertIsNot(rules_by_suffix["0"], rules_by_suffix["1"])
+        self.assertIsNot(rules_by_suffix["0"][0], rules_by_suffix["1"][0])
+
     def test_new_group_suffix_defaults_to_current_group_zero_rules(self):
         dialog = group_weight_rules_dialog.GroupWeightRulesDialog.__new__(
             group_weight_rules_dialog.GroupWeightRulesDialog
@@ -5580,6 +5836,28 @@ class GroupWeightRulesDialogTests(unittest.TestCase):
         self.assertEqual(collected["2"], collected["0"])
         self.assertEqual(collected["3"], collected["0"])
         self.assertEqual(collected["4"], collected["0"])
+
+    def test_collect_group_rules_removes_deleted_group_suffixes(self):
+        dialog = group_weight_rules_dialog.GroupWeightRulesDialog.__new__(
+            group_weight_rules_dialog.GroupWeightRulesDialog
+        )
+        dialog.base_rules = {"1": [{"rebate_min": 0, "weight": 10}]}
+        dialog.group_rules_by_suffix = {
+            "0": {"1": [{"rebate_min": 0, "weight": 10}]},
+            "1": {"1": [{"rebate_min": 0, "weight": 20}]},
+            "2": {"1": [{"rebate_min": 0, "weight": 30}]},
+            "4": {"1": [{"rebate_min": 0, "weight": 50}]},
+        }
+        dialog.group_suffixes = [0, 1, 2, 4]
+        dialog.deps = SimpleNamespace(
+            group_weight_modes=("1",),
+            weight_group_ids=[9650, 9651, 9654],
+        )
+
+        collected = dialog.collect_group_weight_group_rules()
+
+        self.assertEqual(set(collected), {"0", "1", "4"})
+        self.assertNotIn("2", collected)
 
     def test_confirm_and_run_saves_group_weight_settings_before_starting_task(self):
         events = []

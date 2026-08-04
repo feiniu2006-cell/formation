@@ -116,20 +116,6 @@ class SlotAppUiMixin:
         for col in range(4):
             weight_frame.columnconfigure(col, weight=1)
 
-        weight_items = [
-            ("特殊局0", self.special_weight_0_var),
-            ("特殊局1", self.special_weight_1_var),
-            ("免费局0", self.free_weight_0_var),
-            ("免费局1", self.free_weight_1_var),
-        ]
-        for col, (label, variable) in enumerate(weight_items):
-            ttk.Label(weight_frame, text=label).grid(
-                row=0, column=col, sticky="w", padx=(0, 8), pady=(0, 2)
-            )
-            entry = ttk.Entry(weight_frame, textvariable=variable, width=14)
-            entry.grid(row=1, column=col, sticky="ew", padx=(0, 8))
-            self.config_widgets.append((entry, "normal"))
-
         self.build_extra_weight_group_section(weight_frame)
         self.build_purchase_section(weight_frame)
 

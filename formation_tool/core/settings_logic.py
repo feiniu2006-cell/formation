@@ -11,7 +11,7 @@ from formation_tool.core import formation_modes
 
 APP_SETTINGS_FILE_NAME = 'formation_tool_settings.json'
 APP_SETTINGS_DIR_ENV = 'FORMATION_TOOL_SETTINGS_DIR'
-CURRENT_SETTINGS_VERSION = 5
+CURRENT_SETTINGS_VERSION = 7
 RULE_SETTINGS_SCHEMA_VERSION = 1
 
 
@@ -137,6 +137,10 @@ def migrate_settings_data(data):
     if not isinstance(data, dict):
         return data
     migrated = dict(data)
+    try:
+        source_version = int(migrated.get('version', 0))
+    except (TypeError, ValueError):
+        source_version = 0
     shared_group_weight_rules = migrated.get('group_weight_rules')
     if isinstance(shared_group_weight_rules, dict):
         raw_group_rules = migrated.get('group_weight_group_rules')
@@ -148,10 +152,13 @@ def migrate_settings_data(data):
                 '0',
                 formation_defaults.clone_rule_map(shared_group_weight_rules),
             )
-            group_rules_by_suffix.setdefault(
-                '1',
-                formation_defaults.clone_rule_map(shared_group_weight_rules),
-            )
+            if source_version < 7:
+                default_group_rules = group_rules_by_suffix['0']
+                for group_suffix in formation_defaults.DEFAULT_WEIGHT_GROUP_SUFFIXES[1:]:
+                    group_rules_by_suffix.setdefault(
+                        str(group_suffix),
+                        formation_defaults.clone_rule_map(default_group_rules),
+                    )
             migrated['group_weight_group_rules'] = group_rules_by_suffix
     sampling_options = dict(migrated.get('sampling_options') or {})
     if sampling_options:
@@ -185,7 +192,58 @@ def migrate_settings_data(data):
         group_options.setdefault('ex_buy_source_suffix', formation_defaults.DEFAULT_EX_BUY_GROUP_SOURCE_SUFFIX)
         group_options.setdefault('ex_source_suffixes', {})
         group_options.setdefault('ex_group_target_rtps', {})
-        group_options.setdefault('extra_weight_groups', formation_defaults.clone_extra_weight_groups())
+        group_options.setdefault('extra_weight_groups', [])
+        if source_version < 7:
+            trigger_weights = dict(migrated.get('trigger_weights') or {})
+            editable_weight_groups = []
+            existing_suffixes = set()
+            for group in group_options.get('extra_weight_groups') or []:
+                if not isinstance(group, dict):
+                    editable_weight_groups.append(group)
+                    continue
+                item = dict(group)
+                raw_suffix = group.get('group_suffix', group.get('group_id'))
+                try:
+                    group_suffix = int(raw_suffix)
+                except (TypeError, ValueError):
+                    editable_weight_groups.append(item)
+                    continue
+                if 'group_suffix' not in group and abs(group_suffix) >= 10:
+                    group_suffix %= 10
+                item['group_suffix'] = group_suffix
+                item.pop('group_id', None)
+                existing_suffixes.add(group_suffix)
+                special_weight = group.get('special_weight')
+                free_weight = group.get('free_weight')
+                if special_weight not in (None, ''):
+                    trigger_weights.setdefault(f'special_{group_suffix}', special_weight)
+                if free_weight not in (None, ''):
+                    trigger_weights.setdefault(f'free_{group_suffix}', free_weight)
+                editable_weight_groups.append(item)
+            for default_group in formation_defaults.clone_extra_weight_groups():
+                group_suffix = int(default_group['group_suffix'])
+                if group_suffix in existing_suffixes:
+                    continue
+                editable_weight_groups.append({
+                    'group_suffix': group_suffix,
+                    'special_weight': trigger_weights.get(
+                        f'special_{group_suffix}',
+                        default_group['special_weight'],
+                    ),
+                    'free_weight': trigger_weights.get(
+                        f'free_{group_suffix}',
+                        default_group['free_weight'],
+                    ),
+                })
+            editable_weight_groups.sort(
+                key=lambda group: (
+                    int(group.get('group_suffix', 99))
+                    if isinstance(group, dict) and str(group.get('group_suffix', '')).isdigit()
+                    else 99
+                )
+            )
+            group_options['extra_weight_groups'] = editable_weight_groups
+            migrated['trigger_weights'] = trigger_weights
         group_options.setdefault(
             'zero_rebate_inference_modes',
             list(formation_modes.DEFAULT_ZERO_REBATE_INFERENCE_MODES),

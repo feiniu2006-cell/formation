@@ -23,6 +23,7 @@ class BuyGroupConfig:
     source_suffix: str = DEFAULT_BUY_GROUP_SOURCE_SUFFIX
     enabled: bool = True
     rules: list | None = None
+    group_rules: dict | None = None
 
 
 def make_extra_buy_mode(game_type):
@@ -85,6 +86,7 @@ def build_buy_group_entry(
     multiplier,
     source_suffix=DEFAULT_BUY_GROUP_SOURCE_SUFFIX,
     rules=None,
+    group_rules=None,
 ):
     """Return one normalized buy-group row in the unified settings shape."""
     entry = {
@@ -94,7 +96,13 @@ def build_buy_group_entry(
         'source_suffix': normalize_buy_source_suffix(source_suffix),
     }
     if rules is not None:
-        entry['rules'] = rules
+        entry['rules'] = [dict(rule) for rule in rules]
+    if group_rules is not None:
+        entry['group_rules'] = {
+            str(group_suffix): [dict(rule) for rule in mode_rules]
+            for group_suffix, mode_rules in group_rules.items()
+            if isinstance(mode_rules, list)
+        }
     return entry
 
 
@@ -123,6 +131,7 @@ def build_buy_groups_from_legacy(
                 multiplier=group.get('multiplier', buy_multiplier),
                 source_suffix=group.get('source_suffix', group.get('formation_suffix', buy_source_suffix)),
                 rules=group.get('rules'),
+                group_rules=group.get('group_rules'),
             )
         )
     return groups
@@ -149,6 +158,7 @@ def normalize_buy_groups(
                     multiplier=group.get('multiplier', default_buy_multiplier),
                     source_suffix=group.get('source_suffix', group.get('formation_suffix', default_buy_source_suffix)),
                     rules=group.get('rules'),
+                    group_rules=group.get('group_rules'),
                 )
             )
         except (TypeError, ValueError):
@@ -200,6 +210,8 @@ def split_buy_groups_to_legacy(
         }
         if group.get('rules') is not None:
             extra['rules'] = group['rules']
+        if group.get('group_rules') is not None:
+            extra['group_rules'] = group['group_rules']
         extra_groups.append(extra)
 
     return {
@@ -293,10 +305,26 @@ def normalize_extra_buy_groups(
         if rules is None:
             rules = default_buy_rules
         rules = rule_config_state.normalize_group_weight_rule_list(f"额外购买局{game_type}", rules)
+        raw_group_rules = group.get('group_rules') or {}
+        if not isinstance(raw_group_rules, dict):
+            raise ValueError(f"额外购买局{game_type}分组权重规则必须是对象")
+        group_rules = {}
+        for raw_suffix, suffix_rules in raw_group_rules.items():
+            try:
+                group_suffix = int(raw_suffix)
+            except (TypeError, ValueError):
+                raise ValueError(f"额外购买局{game_type}分组尾号必须是0-9: {raw_suffix}") from None
+            if group_suffix < 0 or group_suffix > 9:
+                raise ValueError(f"额外购买局{game_type}分组尾号必须是0-9: {group_suffix}")
+            group_rules[str(group_suffix)] = rule_config_state.normalize_group_weight_rule_list(
+                f"额外购买局{game_type}分组{group_suffix}",
+                suffix_rules,
+            )
         parsed.append({
             'game_type': game_type,
             'multiplier': multiplier,
             'source_suffix': source_suffix,
             'rules': rules,
+            'group_rules': group_rules,
         })
     return parsed

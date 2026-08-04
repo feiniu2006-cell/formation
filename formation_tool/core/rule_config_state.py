@@ -87,6 +87,12 @@ def clone_extra_buy_groups(groups):
         item = dict(group)
         if 'rules' in item and item['rules'] is not None:
             item['rules'] = [dict(rule) for rule in item['rules']]
+        if 'group_rules' in item and isinstance(item['group_rules'], dict):
+            item['group_rules'] = {
+                str(group_suffix): [dict(rule) for rule in group_rules]
+                for group_suffix, group_rules in item['group_rules'].items()
+                if isinstance(group_rules, list)
+            }
         cloned.append(item)
     return cloned
 

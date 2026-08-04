@@ -347,13 +347,24 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         self.extra_buy_rules_by_mode = {}
         for group in getattr(self.deps, 'extra_buy_groups', []):
             mode = self.deps.make_extra_buy_mode(group['game_type'])
-            self.extra_buy_rules_by_mode[mode] = [
+            legacy_rules = [
                 dict(rule)
                 for rule in group.get(
                     'rules',
                     self.base_rules.get(self.deps.buy_group_mode, []),
                 )
             ]
+            rules_by_suffix = {
+                str(group_suffix): [dict(rule) for rule in group_rules]
+                for group_suffix, group_rules in (group.get('group_rules') or {}).items()
+                if isinstance(group_rules, list)
+            }
+            for group_suffix in self.get_available_group_suffixes():
+                rules_by_suffix.setdefault(
+                    str(group_suffix),
+                    [dict(rule) for rule in legacy_rules],
+                )
+            self.extra_buy_rules_by_mode[mode] = rules_by_suffix
 
     def get_selected_group_id(self):
         text = self.current_group_var.get() if self.current_group_var is not None else ""
@@ -363,7 +374,15 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         return self.get_selected_group_id() % 10
 
     def get_available_group_suffixes(self):
-        suffixes = sorted({int(group_id) % 10 for group_id in self.deps.weight_group_ids})
+        suffixes = sorted({
+            int(group_id) % 10
+            for group_id in getattr(self.deps, 'weight_group_ids', ())
+        })
+        if not suffixes:
+            suffixes = sorted({
+                int(group_suffix)
+                for group_suffix in getattr(self, 'group_suffixes', ())
+            })
         return suffixes or [0]
 
     def find_group_id_for_suffix(self, group_suffix, preferred_group_id=None):
@@ -401,7 +420,13 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         mode = str(mode)
         is_extra_buy_mode = getattr(self.deps, 'is_extra_buy_mode', lambda _mode: False)
         if is_extra_buy_mode(mode):
-            return getattr(self, 'extra_buy_rules_by_mode', {}).get(mode, self.get_default_rules_for_mode(mode))
+            rules_by_suffix = getattr(self, 'extra_buy_rules_by_mode', {}).get(mode, {})
+            suffix_key = str(group_suffix)
+            if suffix_key in rules_by_suffix:
+                return rules_by_suffix[suffix_key]
+            if '0' in rules_by_suffix:
+                return rules_by_suffix['0']
+            return self.get_default_rules_for_mode(mode)
         group_rules = getattr(self, 'group_rules_by_suffix', {}).get(str(group_suffix), {})
         if mode in group_rules:
             return group_rules.get(mode, [])
@@ -421,7 +446,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
                     self.rule_editor.get_rows(mode),
                 )
                 if self.deps.is_extra_buy_mode(mode):
-                    self.extra_buy_rules_by_mode[mode] = parsed
+                    self.extra_buy_rules_by_mode.setdefault(mode, {})[str(group_suffix)] = parsed
                 elif mode in self.deps.group_weight_modes:
                     suffix_rules[mode] = parsed
             self.group_rules_by_suffix[str(group_suffix)] = suffix_rules
@@ -798,11 +823,15 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         self.group_rules_by_suffix = clone_group_rules_map(
             getattr(self, 'default_group_rules_by_suffix', getattr(self.deps, 'default_group_rules', {}))
         )
-        self.extra_buy_rules_by_mode = {
-            mode: [dict(rule) for rule in self.get_default_rules_for_mode(mode)]
-            for mode in getattr(self.rule_editor, 'mode_rows', {})
-            if getattr(self.deps, 'is_extra_buy_mode', lambda _mode: False)(mode)
-        }
+        self.extra_buy_rules_by_mode = {}
+        for mode in getattr(self.rule_editor, 'mode_rows', {}):
+            if not getattr(self.deps, 'is_extra_buy_mode', lambda _mode: False)(mode):
+                continue
+            default_rules = self.get_default_rules_for_mode(mode)
+            self.extra_buy_rules_by_mode[mode] = {
+                str(group_suffix): [dict(rule) for rule in default_rules]
+                for group_suffix in self.get_available_group_suffixes()
+            }
         self.load_rules_for_group(getattr(self, 'current_rule_group_suffix', None))
         self.apply_zero_rebate_entry_states()
         default_target = getattr(self.deps, 'default_special_target_rtp', None)
@@ -1203,10 +1232,9 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         group_zero_rules = clone_mode_rules_map(
             group_rules.get('0', getattr(self, 'base_rules', {}))
         )
-        configured_suffixes = set(group_rules)
-        configured_suffixes.update(
+        configured_suffixes = {
             str(group_suffix) for group_suffix in self.get_available_group_suffixes()
-        )
+        }
         for group_suffix in sorted(configured_suffixes, key=int):
             suffix_key = str(group_suffix)
             materialized_rules = clone_mode_rules_map(group_zero_rules)
@@ -1221,19 +1249,34 @@ class GroupWeightRulesDialog(LoadingDialogBase):
                 if mode in self.deps.group_weight_modes
             }
             for group_suffix, rules_by_mode in group_rules.items()
-            if any(mode in self.deps.group_weight_modes for mode in rules_by_mode)
+            if (
+                str(group_suffix) in configured_suffixes
+                and any(mode in self.deps.group_weight_modes for mode in rules_by_mode)
+            )
         }
 
     def collect_extra_buy_groups_with_rules(self):
         groups = []
+        active_suffixes = {
+            str(group_suffix) for group_suffix in self.get_available_group_suffixes()
+        }
         for group in self.deps.extra_buy_groups:
             mode = self.deps.make_extra_buy_mode(group['game_type'])
             updated = dict(group)
-            if mode in self.displayed_modes:
-                updated['rules'] = self.parse_group_weight_rule_rows(
-                    mode,
-                    self.rule_editor.get_rows(mode),
-                )
+            rules_by_suffix = {
+                str(group_suffix): [dict(rule) for rule in group_rules]
+                for group_suffix, group_rules in self.extra_buy_rules_by_mode.get(mode, {}).items()
+                if str(group_suffix) in active_suffixes
+            }
+            if rules_by_suffix:
+                updated['group_rules'] = rules_by_suffix
+                updated['rules'] = [
+                    dict(rule)
+                    for rule in rules_by_suffix.get(
+                        '0',
+                        group.get('rules', self.get_default_rules_for_mode(mode)),
+                    )
+                ]
             groups.append(updated)
         return self.deps.normalize_extra_buy_groups(groups)
 
@@ -1306,4 +1349,3 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             self.deps.generate_config,
             preflight={"kind": "group_weight"},
         )
-

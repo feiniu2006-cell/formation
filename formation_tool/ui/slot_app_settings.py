@@ -129,8 +129,12 @@ class SlotAppSettingsMixin:
         deps = self.settings_deps
         self.special_weight_0_var.set(str(deps.default_trigger_weights['special_0']))
         self.special_weight_1_var.set(str(deps.default_trigger_weights['special_1']))
+        self.special_weight_2_var.set(str(deps.default_trigger_weights['special_2']))
+        self.special_weight_3_var.set(str(deps.default_trigger_weights['special_3']))
         self.free_weight_0_var.set(str(deps.default_trigger_weights['free_0']))
         self.free_weight_1_var.set(str(deps.default_trigger_weights['free_1']))
+        self.free_weight_2_var.set(str(deps.default_trigger_weights['free_2']))
+        self.free_weight_3_var.set(str(deps.default_trigger_weights['free_3']))
         self.sampling_detailed_log_var.set(deps.default_sampling_detailed_log)
         self.sampling_auto_sync_to_target_var.set(
             getattr(deps, "default_sampling_auto_sync_to_target", False)
@@ -287,8 +291,12 @@ class SlotAppSettingsMixin:
         if trigger_weights:
             self.special_weight_0_var.set(str(trigger_weights.get('special_0', self.special_weight_0_var.get())))
             self.special_weight_1_var.set(str(trigger_weights.get('special_1', self.special_weight_1_var.get())))
+            self.special_weight_2_var.set(str(trigger_weights.get('special_2', self.special_weight_2_var.get())))
+            self.special_weight_3_var.set(str(trigger_weights.get('special_3', self.special_weight_3_var.get())))
             self.free_weight_0_var.set(str(trigger_weights.get('free_0', self.free_weight_0_var.get())))
             self.free_weight_1_var.set(str(trigger_weights.get('free_1', self.free_weight_1_var.get())))
+            self.free_weight_2_var.set(str(trigger_weights.get('free_2', self.free_weight_2_var.get())))
+            self.free_weight_3_var.set(str(trigger_weights.get('free_3', self.free_weight_3_var.get())))
 
         if 'rebate_rules' in data:
             deps.apply_rebate_rules_config(deps.normalize_rebate_rules_for_load(data['rebate_rules']))
@@ -675,6 +683,10 @@ class SlotAppSettingsMixin:
                 self.special_weight_1_var.get(),
                 self.free_weight_0_var.get(),
                 self.free_weight_1_var.get(),
+                self.special_weight_2_var.get(),
+                self.special_weight_3_var.get(),
+                self.free_weight_2_var.get(),
+                self.free_weight_3_var.get(),
             )
             deps.apply_buy_group_enabled(self.buy_group_enabled_var.get())
             deps.apply_ex_buy_group_enabled(self.ex_buy_group_enabled_var.get())

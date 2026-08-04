@@ -156,8 +156,12 @@ def _check_trigger_weights(report, deps):
     for label, key in (
         ("特殊局0", "special_0"),
         ("特殊局1", "special_1"),
+        ("特殊局2", "special_2"),
+        ("特殊局3", "special_3"),
         ("免费局0", "free_0"),
         ("免费局1", "free_1"),
+        ("免费局2", "free_2"),
+        ("免费局3", "free_3"),
     ):
         try:
             value = int(weights.get(key))

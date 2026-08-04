@@ -68,8 +68,12 @@ class SlotAppTaskMixin:
         self.append_log(
             f"权重配置：特殊局个位0={trigger_weights['special_0']}，"
             f"特殊局个位1={trigger_weights['special_1']}，"
+            f"特殊局个位2={trigger_weights.get('special_2', '-')}，"
+            f"特殊局个位3={trigger_weights.get('special_3', '-')}，"
             f"免费局个位0={trigger_weights['free_0']}，"
-            f"免费局个位1={trigger_weights['free_1']}\n"
+            f"免费局个位1={trigger_weights['free_1']}，"
+            f"免费局个位2={trigger_weights.get('free_2', '-')}，"
+            f"免费局个位3={trigger_weights.get('free_3', '-')}\n"
         )
 
     def append_sampling_config_log(self, *, append_mode=False):

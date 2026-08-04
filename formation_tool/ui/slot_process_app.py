@@ -51,8 +51,12 @@ class SlotProcessApp(SlotAppUiMixin, SlotAppSettingsMixin, SlotAppTaskMixin, Slo
         self.sampling_use_temp_db_var = self.sampling_auto_sync_to_target_var
         self.special_weight_0_var = tk.StringVar(value=str(trigger_weights['special_0']))
         self.special_weight_1_var = tk.StringVar(value=str(trigger_weights['special_1']))
+        self.special_weight_2_var = tk.StringVar(value=str(trigger_weights['special_2']))
+        self.special_weight_3_var = tk.StringVar(value=str(trigger_weights['special_3']))
         self.free_weight_0_var = tk.StringVar(value=str(trigger_weights['free_0']))
         self.free_weight_1_var = tk.StringVar(value=str(trigger_weights['free_1']))
+        self.free_weight_2_var = tk.StringVar(value=str(trigger_weights['free_2']))
+        self.free_weight_3_var = tk.StringVar(value=str(trigger_weights['free_3']))
         self.sampling_append_mode_var = tk.BooleanVar(value=app_deps.get_sampling_append_mode())
         self.sampling_detailed_log_var = tk.BooleanVar(value=app_deps.get_sampling_detailed_log())
         self.buy_group_enabled_var = tk.BooleanVar(value=app_deps.get_buy_group_enabled())
@@ -79,6 +83,7 @@ class SlotProcessApp(SlotAppUiMixin, SlotAppSettingsMixin, SlotAppTaskMixin, Slo
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.build_ui()
+        self.set_extra_weight_group_rows(app_deps.get_extra_weight_groups())
         self.setup_profile_auto_load()
         self.show_external_config_status()
         self.auto_load_app_settings()

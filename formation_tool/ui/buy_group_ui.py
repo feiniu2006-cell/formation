@@ -131,7 +131,7 @@ def collect_extra_buy_groups(app):
 
 def build_purchase_section(app, weight_frame):
     purchase_frame = ttk.Frame(weight_frame)
-    purchase_frame.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(6, 0))
+    purchase_frame.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(6, 0))
     for col in range(4):
         purchase_frame.columnconfigure(col, weight=1)
 

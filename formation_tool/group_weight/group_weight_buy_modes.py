@@ -32,14 +32,25 @@ def append_buy_like_group_rows_with_optional_inference(
     rules,
     write_game_type,
     multiplier,
+    prepared_pairs=None,
 ):
     should_infer = should_infer_buy_zero_rebate(mode, source_rebates)
-    pairs, skipped_zero, skipped_rebate_zero = build_rebate_weight_pairs(
-        source_rebates,
-        rules,
-        exclude_rebate_zero=should_infer,
-    )
-    if not pairs:
+    if prepared_pairs is None:
+        pairs, skipped_zero, skipped_rebate_zero = build_rebate_weight_pairs(
+            source_rebates,
+            rules,
+            exclude_rebate_zero=should_infer,
+        )
+    else:
+        pairs = prepared_pairs
+        first_stats = (
+            group_weight_pair_sets.get_stats_for_group(pairs, WEIGHT_GROUP_IDS[0])
+            if WEIGHT_GROUP_IDS
+            else {}
+        )
+        skipped_zero = first_stats.get('skipped_zero', 0)
+        skipped_rebate_zero = first_stats.get('skipped_rebate_zero', 0)
+    if not group_weight_pair_sets.has_any_pairs(pairs):
         return {
             'write_game_type': int(write_game_type),
             'multiplier': float(multiplier),
@@ -93,7 +104,7 @@ def append_buy_like_group_rows_with_optional_inference(
     }
 
 
-def append_extra_buy_group_weight_rows(rows, source_rebates, extra_buy):
+def append_extra_buy_group_weight_rows(rows, source_rebates, extra_buy, prepared_pairs=None):
     """额外购买局：复用配置的源 rebate_count，并使用自己的 game_type、倍数和权重规则。"""
     write_game_type = int(extra_buy['game_type'])
     multiplier = float(extra_buy['multiplier'])
@@ -104,6 +115,7 @@ def append_extra_buy_group_weight_rows(rows, source_rebates, extra_buy):
         extra_buy.get('rules', GROUP_WEIGHT_RULES.get(BUY_GROUP_MODE, [])),
         write_game_type,
         multiplier,
+        prepared_pairs=prepared_pairs,
     )
 
 
@@ -178,8 +190,9 @@ def append_buy_group_weight_modes(rows, rebates_by_mode, mode_exists, mode_pairs
             rows,
             rebates_by_mode[source_mode],
             extra_buy,
+            prepared_pairs=mode_pairs.get(source_mode),
         )
-        if not extra_info['pairs']:
+        if not group_weight_pair_sets.has_any_pairs(extra_info['pairs']):
             print(f"\n[额外购买局 game_type={write_game_type}] 没有可写入的非0权重 rebate，跳过")
             continue
         if extra_info['should_infer']:

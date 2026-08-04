@@ -267,8 +267,12 @@ def build_trigger_weights(special_weights, free_weights):
     return {
         'special_0': special_weights[0],
         'special_1': special_weights[1],
+        'special_2': special_weights[2],
+        'special_3': special_weights[3],
         'free_0': free_weights[0],
         'free_1': free_weights[1],
+        'free_2': free_weights[2],
+        'free_3': free_weights[3],
     }
 
 

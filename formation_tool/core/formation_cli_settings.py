@@ -27,6 +27,10 @@ def apply_cli_settings_data(data, *, deps, runtime_only=False):
             trigger_weights.get('special_1', defaults['special_1']),
             trigger_weights.get('free_0', defaults['free_0']),
             trigger_weights.get('free_1', defaults['free_1']),
+            trigger_weights.get('special_2', defaults.get('special_2')),
+            trigger_weights.get('special_3', defaults.get('special_3')),
+            trigger_weights.get('free_2', defaults.get('free_2')),
+            trigger_weights.get('free_3', defaults.get('free_3')),
         )
 
     if 'rebate_rules' in data:

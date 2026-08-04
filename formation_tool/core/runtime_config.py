@@ -393,6 +393,10 @@ class RuntimeState:
         return {
             'special_0': self.special_weight_by_last_digit.get(0, 0),
             'special_1': self.special_weight_by_last_digit.get(1, 0),
+            'special_2': self.special_weight_by_last_digit.get(2, 0),
+            'special_3': self.special_weight_by_last_digit.get(3, 0),
             'free_0': self.free_weight_by_last_digit.get(0, 0),
             'free_1': self.free_weight_by_last_digit.get(1, 0),
+            'free_2': self.free_weight_by_last_digit.get(2, 0),
+            'free_3': self.free_weight_by_last_digit.get(3, 0),
         }

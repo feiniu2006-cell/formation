@@ -125,8 +125,12 @@ def build_cli_settings_deps():
         get_trigger_weights=lambda: {
             'special_0': SPECIAL_WEIGHT_BY_LAST_DIGIT[0],
             'special_1': SPECIAL_WEIGHT_BY_LAST_DIGIT[1],
+            'special_2': SPECIAL_WEIGHT_BY_LAST_DIGIT[2],
+            'special_3': SPECIAL_WEIGHT_BY_LAST_DIGIT[3],
             'free_0': FREE_WEIGHT_BY_LAST_DIGIT[0],
             'free_1': FREE_WEIGHT_BY_LAST_DIGIT[1],
+            'free_2': FREE_WEIGHT_BY_LAST_DIGIT[2],
+            'free_3': FREE_WEIGHT_BY_LAST_DIGIT[3],
         },
         get_sampling_append_mode=lambda: SAMPLING_APPEND_MODE,
         get_sampling_detailed_log=lambda: SAMPLING_DETAILED_LOG,
@@ -280,25 +284,20 @@ def get_extra_weight_group_suffix(group):
 
 
 def build_weight_group_ids(extra_weight_groups=None):
-    group_bases = []
-    default_suffixes = []
-    seen_bases = set()
-    for group_id in formation_defaults.DEFAULT_WEIGHT_GROUP_IDS:
-        group_id = int(group_id)
-        suffix = group_id % 10
-        group_base = group_id - suffix
-        if group_base not in seen_bases:
-            seen_bases.add(group_base)
-            group_bases.append(group_base)
-        if suffix not in default_suffixes:
-            default_suffixes.append(suffix)
+    group_bases = list(formation_defaults.DEFAULT_WEIGHT_GROUP_BASE_IDS)
+    fixed_suffixes = list(formation_defaults.FIXED_WEIGHT_GROUP_SUFFIXES)
+    configured_groups = (
+        formation_defaults.DEFAULT_EXTRA_WEIGHT_GROUPS
+        if extra_weight_groups is None
+        else extra_weight_groups
+    )
 
     extra_suffixes = sorted({
         get_extra_weight_group_suffix(group)
-        for group in (extra_weight_groups or [])
+        for group in configured_groups
     })
-    suffixes = default_suffixes + [
-        suffix for suffix in extra_suffixes if suffix not in default_suffixes
+    suffixes = fixed_suffixes + [
+        suffix for suffix in extra_suffixes if suffix not in fixed_suffixes
     ]
     return [
         group_base + suffix
@@ -320,7 +319,7 @@ def normalize_extra_weight_groups(groups):
             f"额外权重分组第 {idx} 行分组尾号",
         )
         if has_canonical_suffix and suffix_value > 9:
-            raise ValueError(f"额外权重分组第 {idx} 行分组尾号必须是 2-9")
+            raise ValueError(f"额外权重分组第 {idx} 行分组尾号必须是 1-9")
         suffix = suffix_value if suffix_value <= 9 else suffix_value % 10
         special_weight = rule_config_state.parse_non_negative_int_text(
             group.get('special_weight'),
@@ -330,10 +329,11 @@ def normalize_extra_weight_groups(groups):
             group.get('free_weight'),
             f"额外权重分组第 {idx} 行免费局权重",
         )
-        if suffix in (0, 1):
+        fixed_suffixes = set(formation_defaults.FIXED_WEIGHT_GROUP_SUFFIXES)
+        if suffix in fixed_suffixes:
             raise ValueError(
-                f"额外权重分组第 {idx} 行尾号{suffix}已是默认分组；"
-                "额外分组请使用尾号2-9"
+                f"额外权重分组第 {idx} 行尾号{suffix}是固定基础分组；"
+                "可删除分组请使用尾号1-9"
             )
         weights = (special_weight, free_weight)
         if suffix in suffix_weights:
@@ -356,12 +356,12 @@ def _rebuild_trigger_weight_maps():
     global SPECIAL_WEIGHT_BY_LAST_DIGIT, FREE_WEIGHT_BY_LAST_DIGIT
 
     special_base = {
-        0: int(SPECIAL_WEIGHT_BY_LAST_DIGIT.get(0, formation_defaults.DEFAULT_SPECIAL_WEIGHT_BY_LAST_DIGIT[0])),
-        1: int(SPECIAL_WEIGHT_BY_LAST_DIGIT.get(1, formation_defaults.DEFAULT_SPECIAL_WEIGHT_BY_LAST_DIGIT[1])),
+        suffix: int(SPECIAL_WEIGHT_BY_LAST_DIGIT.get(suffix, default_weight))
+        for suffix, default_weight in formation_defaults.DEFAULT_SPECIAL_WEIGHT_BY_LAST_DIGIT.items()
     }
     free_base = {
-        0: int(FREE_WEIGHT_BY_LAST_DIGIT.get(0, formation_defaults.DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT[0])),
-        1: int(FREE_WEIGHT_BY_LAST_DIGIT.get(1, formation_defaults.DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT[1])),
+        suffix: int(FREE_WEIGHT_BY_LAST_DIGIT.get(suffix, default_weight))
+        for suffix, default_weight in formation_defaults.DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT.items()
     }
     for group in EXTRA_WEIGHT_GROUPS:
         suffix = get_extra_weight_group_suffix(group)
@@ -388,7 +388,16 @@ def apply_extra_weight_groups_config(groups):
     return EXTRA_WEIGHT_GROUPS
 
 
-def apply_weight_config(special_weight_0, special_weight_1, free_weight_0, free_weight_1):
+def apply_weight_config(
+    special_weight_0,
+    special_weight_1,
+    free_weight_0,
+    free_weight_1,
+    special_weight_2=None,
+    special_weight_3=None,
+    free_weight_2=None,
+    free_weight_3=None,
+):
     """Apply trigger weight values from the UI."""
     global SPECIAL_WEIGHT_BY_LAST_DIGIT, FREE_WEIGHT_BY_LAST_DIGIT
 
@@ -397,6 +406,26 @@ def apply_weight_config(special_weight_0, special_weight_1, free_weight_0, free_
         'special_1': ('特殊局个位1权重', special_weight_1),
         'free_0': ('免费局个位0权重', free_weight_0),
         'free_1': ('免费局个位1权重', free_weight_1),
+        'special_2': (
+            '特殊局个位2权重',
+            SPECIAL_WEIGHT_BY_LAST_DIGIT.get(2, formation_defaults.DEFAULT_SPECIAL_WEIGHT_BY_LAST_DIGIT[2])
+            if special_weight_2 is None else special_weight_2,
+        ),
+        'special_3': (
+            '特殊局个位3权重',
+            SPECIAL_WEIGHT_BY_LAST_DIGIT.get(3, formation_defaults.DEFAULT_SPECIAL_WEIGHT_BY_LAST_DIGIT[3])
+            if special_weight_3 is None else special_weight_3,
+        ),
+        'free_2': (
+            '免费局个位2权重',
+            FREE_WEIGHT_BY_LAST_DIGIT.get(2, formation_defaults.DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT[2])
+            if free_weight_2 is None else free_weight_2,
+        ),
+        'free_3': (
+            '免费局个位3权重',
+            FREE_WEIGHT_BY_LAST_DIGIT.get(3, formation_defaults.DEFAULT_FREE_WEIGHT_BY_LAST_DIGIT[3])
+            if free_weight_3 is None else free_weight_3,
+        ),
     }
     parsed = {}
     for key, (label, value) in values.items():
@@ -414,10 +443,14 @@ def apply_weight_config(special_weight_0, special_weight_1, free_weight_0, free_
     SPECIAL_WEIGHT_BY_LAST_DIGIT = {
         0: parsed['special_0'],
         1: parsed['special_1'],
+        2: parsed['special_2'],
+        3: parsed['special_3'],
     }
     FREE_WEIGHT_BY_LAST_DIGIT = {
         0: parsed['free_0'],
         1: parsed['free_1'],
+        2: parsed['free_2'],
+        3: parsed['free_3'],
     }
     _rebuild_trigger_weight_maps()
 
@@ -643,8 +676,12 @@ DEFAULT_INDEPENDENT_RTP_MODES = set(formation_modes.DEFAULT_INDEPENDENT_RTP_MODE
 DEFAULT_TRIGGER_WEIGHTS = {
     'special_0': SPECIAL_WEIGHT_BY_LAST_DIGIT[0],
     'special_1': SPECIAL_WEIGHT_BY_LAST_DIGIT[1],
+    'special_2': SPECIAL_WEIGHT_BY_LAST_DIGIT[2],
+    'special_3': SPECIAL_WEIGHT_BY_LAST_DIGIT[3],
     'free_0': FREE_WEIGHT_BY_LAST_DIGIT[0],
     'free_1': FREE_WEIGHT_BY_LAST_DIGIT[1],
+    'free_2': FREE_WEIGHT_BY_LAST_DIGIT[2],
+    'free_3': FREE_WEIGHT_BY_LAST_DIGIT[3],
 }
 CONFIG_WARNINGS = []
 RUNTIME_STATE = runtime_config.RuntimeState()
