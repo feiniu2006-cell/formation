@@ -55,6 +55,8 @@ class SettingsDeps:
     get_sampling_auto_sync_to_target: Any
     get_group_weight_rules: Any
     get_group_weight_group_rules: Any
+    get_group_weight_formation_exists: Any
+    get_displayed_group_weight_modes: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
     get_zero_rebate_inference_modes: Any
@@ -339,6 +341,8 @@ def build_settings_deps(ctx):
         get_sampling_auto_sync_to_target=ctx.get_sampling_auto_sync_to_target,
         get_group_weight_rules=ctx.get_group_weight_rules,
         get_group_weight_group_rules=getattr(ctx, 'get_group_weight_group_rules', lambda: {}),
+        get_group_weight_formation_exists=ctx.get_group_weight_formation_exists,
+        get_displayed_group_weight_modes=ctx.get_displayed_group_weight_modes,
         get_special_group_target_rtp=ctx.get_special_group_target_rtp,
         get_ex_group_target_rtps=ctx.get_ex_group_target_rtps,
         get_zero_rebate_inference_modes=ctx.get_zero_rebate_inference_modes,

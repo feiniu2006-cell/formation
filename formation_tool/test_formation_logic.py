@@ -23,6 +23,7 @@ from formation_tool.core import game_type_config
 from formation_tool.core import runtime_config
 from formation_tool.core import runtime_state_sync
 from formation_tool.core import runtime_context_sync
+from formation_tool.core import rule_config_state
 from formation_tool.core import formation_modes
 from formation_tool.core import formation_defaults
 from formation_tool.core import settings_logic
@@ -728,6 +729,42 @@ class GroupWeightLogicTests(unittest.TestCase):
             self.assertNotIn(
                 f"GROUP_WEIGHT_RULES_{group_suffix} = clone_rule_map",
                 source,
+            )
+
+    def test_loading_empty_group_weight_mode_uses_default_rules(self):
+        defaults = {
+            "1": [{"rebate_min": 0, "weight": 10}],
+            "2": [{"rebate_min": 0, "weight": 20}],
+        }
+
+        normalized = rule_config_state.validate_group_weight_rules(
+            {
+                "1": [{"rebate_min": 0, "weight": 11}],
+                "2": [],
+            },
+            group_modes=("1", "2"),
+            game_type_names={"1": "普通局", "2": "特殊局"},
+            default_rules=defaults,
+            fill_missing=True,
+        )
+
+        self.assertEqual(normalized["1"], [{"rebate_min": 0, "weight": 11}])
+        self.assertEqual(normalized["2"], defaults["2"])
+
+    def test_manual_empty_group_weight_mode_is_still_rejected(self):
+        with self.assertRaisesRegex(ValueError, "特殊局 至少需要一条"):
+            rule_config_state.validate_group_weight_rules(
+                {
+                    "1": [{"rebate_min": 0, "weight": 11}],
+                    "2": [],
+                },
+                group_modes=("1", "2"),
+                game_type_names={"1": "普通局", "2": "特殊局"},
+                default_rules={
+                    "1": [{"rebate_min": 0, "weight": 10}],
+                    "2": [{"rebate_min": 0, "weight": 20}],
+                },
+                fill_missing=False,
             )
 
     def test_editable_weight_group_suffixes_control_generated_group_ids(self):
@@ -4983,9 +5020,21 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             get_sampling_append_mode=lambda: True,
             get_sampling_detailed_log=lambda: True,
             get_sampling_auto_sync_to_target=lambda: True,
-            get_group_weight_rules=lambda: {"99": [{"rebate_min": 0, "weight": 10}]},
+            get_group_weight_rules=lambda: {
+                "1": [{"rebate_min": 0, "weight": 11}],
+                "2": [{"rebate_min": 0, "weight": 22}],
+                "99": [{"rebate_min": 0, "weight": 10}],
+            },
             clone_group_weight_rules=lambda rules: {key: [dict(item) for item in value] for key, value in rules.items()},
             get_group_weight_group_rules=lambda: group_weight_group_rules,
+            get_group_weight_formation_exists=lambda: {
+                "1": True,
+                "2": False,
+                "99": False,
+            },
+            get_displayed_group_weight_modes=lambda exists: [
+                mode for mode, is_present in exists.items() if is_present
+            ],
             clone_group_weight_group_rules=lambda rules: {
                 suffix: {
                     mode: [dict(item) for item in mode_rules]
@@ -5032,6 +5081,13 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         )
 
         self.assertNotIn("append_mode", data["sampling_options"])
+        self.assertEqual(data["group_weight_rules"], {
+            "1": [{"rebate_min": 0, "weight": 11}],
+        })
+        self.assertEqual(data["group_weight_group_rules"], {
+            "0": {"1": [{"rebate_min": 0, "weight": 12345}]},
+            "1": {"1": [{"rebate_min": 0, "weight": 6789}]},
+        })
         self.assertTrue(data["sampling_options"]["detailed_log"])
         self.assertTrue(data["sampling_options"]["use_temp_db"])
         self.assertTrue(data["sampling_options"]["auto_sync_to_target"])
@@ -5048,7 +5104,6 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
         )
         self.assertEqual(data["group_weight_options"]["extra_buy_groups"], extra_groups)
         self.assertEqual(data["group_weight_options"]["extra_weight_groups"], extra_weight_groups)
-        self.assertEqual(data["group_weight_group_rules"], group_weight_group_rules)
         self.assertEqual(explicit_data["group_weight_rules"], explicit_group_rules)
         self.assertEqual(
             explicit_data["group_weight_group_rules"],
@@ -5733,6 +5788,23 @@ class GuiDialogSmokeTests(unittest.TestCase):
 
 
 class GroupWeightRulesDialogTests(unittest.TestCase):
+    def test_group_weight_save_rules_only_include_displayed_modes(self):
+        dialog = group_weight_rules_dialog.GroupWeightRulesDialog.__new__(
+            group_weight_rules_dialog.GroupWeightRulesDialog
+        )
+        dialog.deps = SimpleNamespace(group_weight_modes=("1", "2", "3"))
+        dialog.displayed_modes = ["1"]
+
+        filtered = dialog.filter_group_weight_rules_for_save({
+            "1": [{"rebate_min": 0, "weight": 10}],
+            "2": [{"rebate_min": 0, "weight": 20}],
+            "3": [{"rebate_min": 0, "weight": 30}],
+        })
+
+        self.assertEqual(filtered, {
+            "1": [{"rebate_min": 0, "weight": 10}],
+        })
+
     def test_extra_buy_group_rules_are_independent_for_each_group_suffix(self):
         dialog = group_weight_rules_dialog.GroupWeightRulesDialog.__new__(
             group_weight_rules_dialog.GroupWeightRulesDialog

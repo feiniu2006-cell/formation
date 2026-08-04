@@ -1227,6 +1227,38 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             rules.setdefault(mode, self.base_rules.get(mode, []))
         return self.deps.validate_rules(rules)
 
+    def get_configured_group_weight_modes(self):
+        displayed_modes = getattr(self, 'displayed_modes', None)
+        if displayed_modes is None:
+            displayed_modes = getattr(
+                self.deps,
+                'group_weight_modes',
+                tuple(getattr(self, 'base_rules', {})),
+            )
+        supported_modes = {
+            str(mode)
+            for mode in getattr(self.deps, 'group_weight_modes', displayed_modes)
+        }
+        return [
+            str(mode)
+            for mode in displayed_modes
+            if str(mode) in supported_modes
+        ]
+
+    def filter_group_weight_rules_for_save(self, rules):
+        if (
+            getattr(self, 'displayed_modes', None) is None
+            and not hasattr(self.deps, 'group_weight_modes')
+        ):
+            configured_modes = {str(mode) for mode in (rules or {})}
+        else:
+            configured_modes = set(self.get_configured_group_weight_modes())
+        return {
+            str(mode): [dict(rule) for rule in mode_rules]
+            for mode, mode_rules in (rules or {}).items()
+            if str(mode) in configured_modes
+        }
+
     def collect_group_weight_group_rules(self):
         group_rules = clone_group_rules_map(self.group_rules_by_suffix)
         group_zero_rules = clone_mode_rules_map(
@@ -1235,6 +1267,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         configured_suffixes = {
             str(group_suffix) for group_suffix in self.get_available_group_suffixes()
         }
+        configured_modes = set(self.get_configured_group_weight_modes())
         for group_suffix in sorted(configured_suffixes, key=int):
             suffix_key = str(group_suffix)
             materialized_rules = clone_mode_rules_map(group_zero_rules)
@@ -1246,12 +1279,12 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             str(group_suffix): {
                 mode: [dict(rule) for rule in mode_rules]
                 for mode, mode_rules in rules_by_mode.items()
-                if mode in self.deps.group_weight_modes
+                if mode in configured_modes
             }
             for group_suffix, rules_by_mode in group_rules.items()
             if (
                 str(group_suffix) in configured_suffixes
-                and any(mode in self.deps.group_weight_modes for mode in rules_by_mode)
+                and any(mode in configured_modes for mode in rules_by_mode)
             )
         }
 
@@ -1291,6 +1324,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             rules = self.collect_group_weight_rules(
                 self.deps.buy_enabled or self.deps.has_extra_buy_groups()
             )
+            rules_for_save = self.filter_group_weight_rules_for_save(rules)
             group_rules = self.collect_group_weight_group_rules()
             extra_buy_groups = self.collect_extra_buy_groups_with_rules()
             special_target_text = self.special_target_rtp_var.get().strip()
@@ -1319,7 +1353,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         save_settings = getattr(self.app, 'save_app_settings', None)
         if save_settings is not None and save_settings(
             silent=True,
-            group_weight_rules_override=rules,
+            group_weight_rules_override=rules_for_save,
             group_weight_group_rules_override=group_rules,
         ) is False:
             return False

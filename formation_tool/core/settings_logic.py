@@ -15,6 +15,31 @@ CURRENT_SETTINGS_VERSION = 7
 RULE_SETTINGS_SCHEMA_VERSION = 1
 
 
+def filter_group_weight_rules_by_modes(rules, configured_modes):
+    """Keep only base group_weight rule modes configured in the dialog."""
+    configured = {str(mode) for mode in configured_modes or ()}
+    return {
+        str(mode): mode_rules
+        for mode, mode_rules in (rules or {}).items()
+        if str(mode) in configured
+    }
+
+
+def filter_group_weight_group_rules_by_modes(group_rules, configured_modes):
+    """Filter every group-suffix rule map to configured group_weight modes."""
+    configured = {str(mode) for mode in configured_modes or ()}
+    return {
+        str(group_suffix): {
+            str(mode): mode_rules
+            for mode, mode_rules in rules_by_mode.items()
+            if str(mode) in configured
+        }
+        for group_suffix, rules_by_mode in (group_rules or {}).items()
+        if isinstance(rules_by_mode, dict)
+        and any(str(mode) in configured for mode in rules_by_mode)
+    }
+
+
 def get_app_settings_base_dir(*, module_file, env=None, frozen=None, executable=None, cwd=None):
     """Return the directory used by source and packaged runs for settings files."""
     env = env or {}

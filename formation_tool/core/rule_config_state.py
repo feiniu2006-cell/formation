@@ -282,7 +282,9 @@ def validate_group_weight_rules(
     normalized = {}
     for mode in group_modes:
         mode_name = game_type_names.get(mode, mode)
-        if mode not in normalized_input:
+        mode_missing = mode not in normalized_input
+        mode_empty_on_load = fill_missing and normalized_input.get(mode) == []
+        if mode_missing or mode_empty_on_load:
             if not fill_missing:
                 raise ValueError(f"缺少 {mode_name} 的 group_weight 权重规则")
             mode_rules = default_rules.get(mode)
@@ -333,6 +335,8 @@ def validate_group_weight_group_rules(
         for mode, mode_rules in mode_rules_input.items():
             mode = str(mode)
             if mode not in allowed_modes:
+                continue
+            if warn_unknown and mode_rules == []:
                 continue
             mode_name = game_type_names.get(mode, mode)
             suffix_rules[mode] = normalize_group_weight_rule_list(

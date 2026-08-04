@@ -202,6 +202,26 @@ class SlotAppSettingsMixin:
             if group_weight_group_rules_override is _SETTINGS_VALUE_UNSET
             else group_weight_group_rules_override
         )
+        if (
+            group_weight_rules_override is _SETTINGS_VALUE_UNSET
+            or group_weight_group_rules_override is _SETTINGS_VALUE_UNSET
+        ):
+            get_formation_exists = getattr(deps, "get_group_weight_formation_exists", None)
+            get_displayed_modes = getattr(deps, "get_displayed_group_weight_modes", None)
+            if get_formation_exists is not None and get_displayed_modes is not None:
+                configured_modes = get_displayed_modes(get_formation_exists())
+                if group_weight_rules_override is _SETTINGS_VALUE_UNSET:
+                    group_weight_rules = settings_logic.filter_group_weight_rules_by_modes(
+                        group_weight_rules,
+                        configured_modes,
+                    )
+                if group_weight_group_rules_override is _SETTINGS_VALUE_UNSET:
+                    group_weight_group_rules = (
+                        settings_logic.filter_group_weight_group_rules_by_modes(
+                            group_weight_group_rules,
+                            configured_modes,
+                        )
+                    )
         get_buy_groups = getattr(
             deps,
             "get_buy_groups",
@@ -475,14 +495,14 @@ class SlotAppSettingsMixin:
         if not self.apply_selected_config():
             return False
         deps = self.settings_deps
-        data = self.build_app_settings_data(
-            group_weight_rules_override=group_weight_rules_override,
-            group_weight_group_rules_override=group_weight_group_rules_override,
-        )
-        last_data = self.build_last_settings_data()
-        profile_path = deps.get_app_profile_settings_path()
-        last_path = deps.get_app_settings_path()
         try:
+            data = self.build_app_settings_data(
+                group_weight_rules_override=group_weight_rules_override,
+                group_weight_group_rules_override=group_weight_group_rules_override,
+            )
+            last_data = self.build_last_settings_data()
+            profile_path = deps.get_app_profile_settings_path()
+            last_path = deps.get_app_settings_path()
             write_json_atomic(profile_path, data)
             if profile_path != last_path:
                 write_json_atomic(last_path, last_data)
