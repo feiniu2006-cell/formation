@@ -12,6 +12,8 @@ build_backup_db/
 数据处理.code-workspace
 db_config.py
 db_backup/db_config.example.json
+db_compare/db_config.example.json
+db_compare/db_config.json
 formation_tool/formation_tool_settings.json
 formation_tool/formation_tool_settings.json.bak
 formation_tool/formation_tool_settings/
