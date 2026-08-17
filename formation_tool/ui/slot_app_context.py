@@ -22,6 +22,7 @@ class SlotAppDepsContext:
     default_sampling_detailed_log: Any
     default_sampling_use_temp_db: Any
     default_sampling_temp_db: Any
+    default_sampling_increment_db: Any
     default_sampling_auto_sync_to_target: Any
     default_buy_group_enabled: Any
     default_ex_buy_group_enabled: Any
@@ -48,6 +49,7 @@ class SlotAppDepsContext:
     get_sampling_detailed_log: Any
     get_sampling_use_temp_db: Any
     get_sampling_temp_db: Any
+    get_sampling_increment_db: Any
     get_sampling_auto_sync_to_target: Any
     get_group_weight_rules: Any
     get_group_weight_group_rules: Any
@@ -117,6 +119,7 @@ class SlotAppDepsContext:
     apply_sampling_append_mode: Any
     apply_sampling_detailed_log: Any
     apply_sampling_temp_db_config: Any
+    apply_sampling_increment_db_config: Any
     apply_sampling_auto_sync_to_target: Any
     format_weighted_rtp: Any
     clear_cancel_request: Any
@@ -222,6 +225,7 @@ REQUIRED_MODULE_ATTRS = (
     'DEFAULT_SAMPLING_DETAILED_LOG',
     'DEFAULT_SAMPLING_USE_TEMP_DB',
     'DEFAULT_SAMPLING_TEMP_DB',
+    'DEFAULT_SAMPLING_INCREMENT_DB',
     'DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET',
     'DEFAULT_BUY_GROUP_ENABLED',
     'DEFAULT_EX_BUY_GROUP_ENABLED',
@@ -281,6 +285,7 @@ REQUIRED_MODULE_ATTRS = (
     'apply_sampling_append_mode',
     'apply_sampling_detailed_log',
     'apply_sampling_temp_db_config',
+    'apply_sampling_increment_db_config',
     'apply_sampling_auto_sync_to_target',
     'get_rebate_config_direct_count_tiers',
     'normalize_direct_count_tiers_for_load',
@@ -368,6 +373,7 @@ def build_slot_app_deps_context(runtime, module):
         default_sampling_detailed_log=m.DEFAULT_SAMPLING_DETAILED_LOG,
         default_sampling_use_temp_db=m.DEFAULT_SAMPLING_USE_TEMP_DB,
         default_sampling_temp_db=m.DEFAULT_SAMPLING_TEMP_DB,
+        default_sampling_increment_db=m.DEFAULT_SAMPLING_INCREMENT_DB,
         default_sampling_auto_sync_to_target=m.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET,
         default_buy_group_enabled=m.DEFAULT_BUY_GROUP_ENABLED,
         default_ex_buy_group_enabled=m.DEFAULT_EX_BUY_GROUP_ENABLED,
@@ -394,6 +400,7 @@ def build_slot_app_deps_context(runtime, module):
         get_sampling_detailed_log=lambda: runtime.sampling_detailed_log,
         get_sampling_use_temp_db=lambda: True,
         get_sampling_temp_db=lambda: runtime.sampling_temp_db,
+        get_sampling_increment_db=lambda: runtime.sampling_increment_db,
         get_sampling_auto_sync_to_target=lambda: runtime.sampling_auto_sync_to_target,
         get_group_weight_rules=lambda: runtime.group_weight_rules,
         get_group_weight_group_rules=lambda: getattr(runtime, 'group_weight_group_rules', {}),
@@ -475,6 +482,7 @@ def build_slot_app_deps_context(runtime, module):
         apply_sampling_append_mode=m.apply_sampling_append_mode,
         apply_sampling_detailed_log=m.apply_sampling_detailed_log,
         apply_sampling_temp_db_config=m.apply_sampling_temp_db_config,
+        apply_sampling_increment_db_config=m.apply_sampling_increment_db_config,
         apply_sampling_auto_sync_to_target=m.apply_sampling_auto_sync_to_target,
         format_weighted_rtp=m.format_weighted_rtp,
         clear_cancel_request=m.clear_cancel_request,

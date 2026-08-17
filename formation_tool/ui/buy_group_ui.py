@@ -99,8 +99,12 @@ def set_extra_buy_group_rows(app, groups):
 
 def collect_extra_buy_groups(app):
     deps = app.ui_deps
-    existing_rules = {
-        int(group['game_type']): group.get('rules')
+    existing_rule_configs = {
+        int(group['game_type']): {
+            key: group[key]
+            for key in ('rules', 'group_rules')
+            if group.get(key) is not None
+        }
         for group in deps.get_extra_buy_groups()
         if 'game_type' in group
     }
@@ -123,8 +127,7 @@ def collect_extra_buy_groups(app):
         }
         with contextlib.suppress(ValueError):
             game_type = int(float(game_type_text))
-            if game_type in existing_rules and existing_rules[game_type] is not None:
-                group['rules'] = existing_rules[game_type]
+            group.update(existing_rule_configs.get(game_type, {}))
         groups.append(group)
     return deps.normalize_extra_buy_groups(groups)
 

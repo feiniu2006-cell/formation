@@ -45,6 +45,9 @@ class SlotProcessApp(SlotAppUiMixin, SlotAppSettingsMixin, SlotAppTaskMixin, Slo
         self.sampling_temp_db_var = tk.StringVar(
             value=str(runtime.get('sampling_temp_db') or app_deps.default_sampling_temp_db)
         )
+        self.sampling_increment_db_var = tk.StringVar(
+            value=str(runtime.get('sampling_increment_db') or app_deps.default_sampling_increment_db)
+        )
         self.sampling_auto_sync_to_target_var = tk.BooleanVar(
             value=bool(runtime.get('sampling_auto_sync_to_target', False))
         )

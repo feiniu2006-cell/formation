@@ -142,6 +142,11 @@ def _check_selected_database_names(report, runtime, database_configs):
             report.add_fatal("采样临时库未选择")
         elif temp_db not in database_configs:
             report.add_fatal(f"采样临时库 {temp_db} 不在当前数据库配置中")
+    increment_db = runtime.get("sampling_increment_db")
+    if not increment_db:
+        report.add_fatal("补充采样增量库未选择")
+    elif increment_db not in database_configs:
+        report.add_fatal(f"补充采样增量库 {increment_db} 不在当前数据库配置中")
 
 
 def _check_runtime_identity(report, runtime):
@@ -388,7 +393,7 @@ def _check_sampling_target_tables(report, modes, game_configs, connections, deps
         elif append_mode:
             report.add_warning(
                 f"{config['name']} 目标表已存在：{final_db}.{final_table}，当前 {row_count} 行；"
-                "补充采样会复制旧数据到中转库、重排旧 id，并让新采样 id 顺延"
+                "补充采样会复制旧数据到中转库并保留旧 id，新采样 id 从旧表最大值加1后顺延"
             )
         else:
             report.add_warning(
@@ -426,7 +431,10 @@ def _collect_sampling_databases(game_configs, modes, deps, *, append_mode=False)
     db_names = set()
     use_temp = bool(getattr(deps, "get_sampling_use_temp_db", lambda: False)())
     temp_db = getattr(deps, "get_sampling_temp_db", lambda: None)()
+    increment_db = getattr(deps, "get_sampling_increment_db", lambda: None)()
     auto_sync = bool(getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)())
+    if append_mode and increment_db:
+        db_names.add(increment_db)
     for mode in modes:
         config = game_configs.get(mode)
         if not config:
@@ -551,18 +559,33 @@ def preflight_sampling(report, metadata, deps):
     append_mode = bool(metadata.get("append_mode"))
     use_temp = bool(getattr(deps, "get_sampling_use_temp_db", lambda: False)())
     temp_db = getattr(deps, "get_sampling_temp_db", lambda: None)()
+    increment_db = getattr(deps, "get_sampling_increment_db", lambda: None)()
     target_game_configs = game_configs
     if use_temp and temp_db:
         target_game_configs = _with_sampling_target_db(game_configs, modes, temp_db)
         if append_mode:
             report.add_info(
                 f"补充采样中转库已开启：将读取目标库旧正式表，合并后写入 {temp_db}，"
-                "并重排旧 id 后让新采样 id 顺延"
+                "保留旧 id，并让新采样 id 从旧表最大值加1后顺延"
             )
         elif bool(getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)()):
             report.add_info(f"采样中转库已开启：本次采样先写入 {temp_db}，完成后将自动镜像到目标库")
         else:
             report.add_info(f"采样中转库已开启：本次采样只检查并写入 {temp_db}，目标库不参与采样预检查")
+    if append_mode:
+        if increment_db:
+            report.add_info(f"补充采样增量库已开启：本次新增数据将单独写入 {increment_db} 同名正式表")
+            final_dbs = {
+                (config.get("table_config") or {}).get("FINAL_TABLE", {}).get("database")
+                for mode, config in game_configs.items()
+                if mode in modes
+            }
+            if increment_db == temp_db or increment_db in final_dbs:
+                report.add_fatal(
+                    f"补充采样增量库必须独立于目标库和中转库：增量库={increment_db}，中转库={temp_db}"
+                )
+        else:
+            report.add_fatal("补充采样缺少增量库配置")
     connections = _connect_required_databases(
         report,
         _collect_sampling_databases(game_configs, modes, deps, append_mode=append_mode),

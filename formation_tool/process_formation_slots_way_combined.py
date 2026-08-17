@@ -119,6 +119,7 @@ def build_cli_settings_deps():
             'final_db': FINAL_DB,
             'config_db': CONFIG_DB,
             'sampling_temp_db': SAMPLING_TEMP_DB,
+            'sampling_increment_db': SAMPLING_INCREMENT_DB,
             'sampling_use_temp_db': True,
             'sampling_auto_sync_to_target': SAMPLING_AUTO_SYNC_TO_TARGET,
         },
@@ -136,6 +137,7 @@ def build_cli_settings_deps():
         get_sampling_detailed_log=lambda: SAMPLING_DETAILED_LOG,
         get_sampling_use_temp_db=lambda: True,
         get_sampling_temp_db=lambda: SAMPLING_TEMP_DB,
+        get_sampling_increment_db=lambda: SAMPLING_INCREMENT_DB,
         get_sampling_auto_sync_to_target=lambda: SAMPLING_AUTO_SYNC_TO_TARGET,
         get_extra_weight_groups=lambda: EXTRA_WEIGHT_GROUPS,
         get_app_settings_path=get_app_settings_path,
@@ -154,6 +156,7 @@ def build_cli_settings_deps():
         apply_sampling_append_mode=apply_sampling_append_mode,
         apply_sampling_detailed_log=apply_sampling_detailed_log,
         apply_sampling_temp_db_config=apply_sampling_temp_db_config,
+        apply_sampling_increment_db_config=apply_sampling_increment_db_config,
         apply_sampling_auto_sync_to_target=apply_sampling_auto_sync_to_target,
         apply_group_weight_rules_config=apply_group_weight_rules_config,
         apply_group_weight_group_rules_config=apply_group_weight_group_rules_config,
@@ -205,6 +208,7 @@ GAME_TABLE_PREFIX, _GAME_DEFS, GAME_CONFIGS = build_game_configs(
 WEIGHT_CONFIG_DB = FINAL_DB  # 写入目标库
 SAMPLING_USE_TEMP_DB = formation_defaults.DEFAULT_SAMPLING_USE_TEMP_DB
 SAMPLING_TEMP_DB = formation_defaults.DEFAULT_SAMPLING_TEMP_DB
+SAMPLING_INCREMENT_DB = formation_defaults.DEFAULT_SAMPLING_INCREMENT_DB
 SAMPLING_AUTO_SYNC_TO_TARGET = formation_defaults.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET
 SPECIAL_WEIGHT_TABLE   = runtime_config.SPECIAL_WEIGHT_TABLE
 FREE_GAME_CONFIG_TABLE = runtime_config.FREE_GAME_CONFIG_TABLE
@@ -500,6 +504,7 @@ DEFAULT_SAMPLING_APPEND_MODE = formation_defaults.DEFAULT_SAMPLING_APPEND_MODE
 DEFAULT_SAMPLING_DETAILED_LOG = formation_defaults.DEFAULT_SAMPLING_DETAILED_LOG
 DEFAULT_SAMPLING_USE_TEMP_DB = formation_defaults.DEFAULT_SAMPLING_USE_TEMP_DB
 DEFAULT_SAMPLING_TEMP_DB = formation_defaults.DEFAULT_SAMPLING_TEMP_DB
+DEFAULT_SAMPLING_INCREMENT_DB = formation_defaults.DEFAULT_SAMPLING_INCREMENT_DB
 DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET = formation_defaults.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET
 
 # ================== 代码区域 =================
@@ -733,6 +738,7 @@ def _sync_globals_from_runtime_state():
     global REBATE_RULES, GROUP_WEIGHT_RULES, GROUP_WEIGHT_GROUP_RULES
     global ZERO_REBATE_INFERENCE_MODES, INDEPENDENT_RTP_MODES
     global SAMPLING_APPEND_MODE, SAMPLING_DETAILED_LOG
+    global SAMPLING_USE_TEMP_DB, SAMPLING_TEMP_DB, SAMPLING_INCREMENT_DB, SAMPLING_AUTO_SYNC_TO_TARGET
     global REBATE_CONFIG_DIRECT_COUNT_MODES, SPECIAL_GROUP_TARGET_RTP
     global EX_GROUP_TARGET_RTPS
     global BUY_GROUP_ENABLED, EX_BUY_GROUP_ENABLED, EX_BUY_GROUP_GAME_TYPE, EX_BUY_GROUP_SOURCE_SUFFIX
@@ -765,6 +771,10 @@ def _sync_globals_from_runtime_state():
     INDEPENDENT_RTP_MODES = target.INDEPENDENT_RTP_MODES
     SAMPLING_APPEND_MODE = target.SAMPLING_APPEND_MODE
     SAMPLING_DETAILED_LOG = target.SAMPLING_DETAILED_LOG
+    SAMPLING_USE_TEMP_DB = target.SAMPLING_USE_TEMP_DB
+    SAMPLING_TEMP_DB = target.SAMPLING_TEMP_DB
+    SAMPLING_INCREMENT_DB = target.SAMPLING_INCREMENT_DB
+    SAMPLING_AUTO_SYNC_TO_TARGET = target.SAMPLING_AUTO_SYNC_TO_TARGET
     REBATE_CONFIG_DIRECT_COUNT_MODES = target.REBATE_CONFIG_DIRECT_COUNT_MODES
     SPECIAL_GROUP_TARGET_RTP = target.SPECIAL_GROUP_TARGET_RTP
     EX_GROUP_TARGET_RTPS = target.EX_GROUP_TARGET_RTPS
@@ -1028,6 +1038,18 @@ def apply_sampling_temp_db_config(enabled, temp_db):
     SAMPLING_TEMP_DB = temp_db
     RUNTIME_STATE.sampling_use_temp_db = True
     RUNTIME_STATE.sampling_temp_db = temp_db
+
+
+def apply_sampling_increment_db_config(increment_db):
+    """Apply the database used to store only newly appended sampling rows."""
+    global SAMPLING_INCREMENT_DB
+    increment_db = str(increment_db or "").strip()
+    if not increment_db:
+        increment_db = formation_defaults.DEFAULT_SAMPLING_INCREMENT_DB
+    if increment_db not in DATABASE_CONFIGS:
+        raise ValueError(f"补充采样增量库配置不存在: {increment_db}，可选数据库: {list(DATABASE_CONFIGS.keys())}")
+    SAMPLING_INCREMENT_DB = increment_db
+    RUNTIME_STATE.sampling_increment_db = increment_db
 
 
 def apply_sampling_auto_sync_to_target(enabled):
@@ -1541,6 +1563,7 @@ def build_sampling_core_context():
             check_cancelled=check_cancelled,
             chunked=chunked,
             close_safely=close_safely,
+            connect_to_database=connect_to_database,
             connect_by_table=connect_by_table,
             count_table_rows=count_table_rows,
             copy_table_rows=copy_table_rows,

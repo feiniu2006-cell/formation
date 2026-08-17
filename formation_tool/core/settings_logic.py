@@ -93,6 +93,7 @@ def build_last_settings_data(
     final_db,
     config_db,
     sampling_temp_db=None,
+    sampling_increment_db=None,
     sampling_use_temp_db=False,
     sampling_auto_sync_to_target=formation_defaults.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET,
 ):
@@ -105,6 +106,7 @@ def build_last_settings_data(
             'final_db': final_db,
             'config_db': config_db,
             'sampling_temp_db': sampling_temp_db or formation_defaults.DEFAULT_SAMPLING_TEMP_DB,
+            'sampling_increment_db': sampling_increment_db or formation_defaults.DEFAULT_SAMPLING_INCREMENT_DB,
             'sampling_use_temp_db': True,
             'sampling_auto_sync_to_target': bool(sampling_auto_sync_to_target),
         },
@@ -120,6 +122,7 @@ def build_app_settings_data(
     sampling_detailed_log,
     sampling_use_temp_db=formation_defaults.DEFAULT_SAMPLING_USE_TEMP_DB,
     sampling_temp_db=None,
+    sampling_increment_db=None,
     sampling_auto_sync_to_target=formation_defaults.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET,
     group_weight_rules,
     group_weight_group_rules=None,
@@ -147,6 +150,7 @@ def build_app_settings_data(
             'detailed_log': bool(sampling_detailed_log),
             'use_temp_db': True,
             'temp_db': sampling_temp_db or formation_defaults.DEFAULT_SAMPLING_TEMP_DB,
+            'increment_db': sampling_increment_db or formation_defaults.DEFAULT_SAMPLING_INCREMENT_DB,
             'auto_sync_to_target': bool(sampling_auto_sync_to_target),
         },
         'group_weight_rules': group_weight_rules,
@@ -199,6 +203,11 @@ def migrate_settings_data(data):
             'temp_db',
             (migrated.get('runtime') or {}).get('sampling_temp_db')
             or formation_defaults.DEFAULT_SAMPLING_TEMP_DB,
+        )
+        sampling_options.setdefault(
+            'increment_db',
+            (migrated.get('runtime') or {}).get('sampling_increment_db')
+            or formation_defaults.DEFAULT_SAMPLING_INCREMENT_DB,
         )
         sampling_options.setdefault(
             'auto_sync_to_target',

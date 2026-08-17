@@ -30,6 +30,7 @@ SAMPLE_ROW_WRITE_CHUNK_SIZE = 20
 SAMPLE_TABLE_COPY_CHUNK_SIZE = 1000
 MYSQL_DUMP_IMPORT_RETRIES = 5
 SAMPLING_DETAILED_LOG = False
+SAMPLING_INCREMENT_DB = formation_defaults.DEFAULT_SAMPLING_INCREMENT_DB
 SLOW_REBATE_SUMMARY_LIMIT = 5
 SAMPLING_TIMING_KEYS = (
     'id_query_seconds',
@@ -1059,7 +1060,15 @@ def write_dataframe_to_staging_with_retry(
                 raise
 
 
-def write_sample_chunk_to_staging(current_df, final_engine, staging_table_name, target_rebate, *, timing=None):
+def write_sample_chunk_to_staging(
+    current_df,
+    final_engine,
+    staging_table_name,
+    target_rebate,
+    *,
+    timing=None,
+    table_label="临时表",
+):
     start = time.perf_counter()
     row_count = len(current_df)
     total_batches = max(1, (row_count + SAMPLE_ROW_WRITE_CHUNK_SIZE - 1) // SAMPLE_ROW_WRITE_CHUNK_SIZE)
@@ -1067,7 +1076,13 @@ def write_sample_chunk_to_staging(current_df, final_engine, staging_table_name, 
         f"准备写入临时表：行数={row_count}，"
         f"批次={total_batches}，每批最多 {SAMPLE_ROW_WRITE_CHUNK_SIZE} 行 (rebate={target_rebate})"
     )
-    write_dataframe_to_staging_with_retry(current_df, final_engine, staging_table_name, target_rebate)
+    write_dataframe_to_staging_with_retry(
+        current_df,
+        final_engine,
+        staging_table_name,
+        target_rebate,
+        table_label=table_label,
+    )
     elapsed = time.perf_counter() - start
     add_sampling_timing(timing, 'row_write_seconds', elapsed)
     print_sampling_detail(
@@ -1310,6 +1325,8 @@ def fetch_and_write_sample_rows_in_chunks(
     append_mode,
     id_mapping,
     next_id_state,
+    increment_engine=None,
+    increment_staging_table_name=None,
     require_game_id_zero=False,
     timing=None,
 ):
@@ -1368,6 +1385,15 @@ def fetch_and_write_sample_rows_in_chunks(
             target_rebate,
             timing=timing,
         )
+        if increment_engine is not None and increment_staging_table_name:
+            write_sample_chunk_to_staging(
+                current_df,
+                increment_engine,
+                increment_staging_table_name,
+                target_rebate,
+                timing=timing,
+                table_label="增量临时表",
+            )
         totals['row_count'] += len(current_df)
         if append_mode:
             final_conn = refresh_connection_read_view(final_conn, final_db_name, "目标库")
@@ -1393,6 +1419,8 @@ def sample_rebate_to_staging(
     append_mode,
     id_mapping,
     next_id_state,
+    increment_engine=None,
+    increment_staging_table_name=None,
     timing=None,
 ):
     """按一条 rebate_count 配置采样并写入临时目标表。"""
@@ -1442,6 +1470,8 @@ def sample_rebate_to_staging(
         append_mode=append_mode,
         id_mapping=id_mapping,
         next_id_state=next_id_state,
+        increment_engine=increment_engine,
+        increment_staging_table_name=increment_staging_table_name,
         require_game_id_zero=sample_conditions.get('require_game_id_zero_for_validation', False),
         timing=timing,
     )
@@ -1472,11 +1502,16 @@ def get_direct_sampling_names(table_config):
         'source_db_name': get_table_database('SOURCE_TABLE', table_config),
         'final_db_name': final_db_name,
         'staging_db_name': staging_db_name,
+        'increment_db_name': get_sampling_increment_db_name(),
         'config_db_name': get_table_database('REBATE_CONFIG_TABLE', table_config),
         'source_table_name': get_table_name('SOURCE_TABLE', table_config),
         'final_table_name': get_table_name('FINAL_TABLE', table_config),
         'rebate_config_table_name': get_table_name('REBATE_CONFIG_TABLE', table_config),
     }
+
+
+def get_sampling_increment_db_name():
+    return str(globals().get('SAMPLING_INCREMENT_DB') or '').strip()
 
 
 def get_sampling_staging_db_name(final_db_name):
@@ -1496,6 +1531,13 @@ def get_sampling_staging_table_config(table_config):
             staging_config['FINAL_TABLE'].get('database')
         )
     return staging_config
+
+
+def get_sampling_increment_table_config(table_config):
+    increment_db_name = get_sampling_increment_db_name()
+    if not increment_db_name:
+        return None
+    return get_table_config_with_final_database(table_config, increment_db_name)
 
 
 def get_table_config_with_final_database(table_config, database):
@@ -1586,115 +1628,6 @@ def validate_game_id_zero_stats_preserved(expected, actual, operation_label):
     )
 
 
-def _ordered_append_id_columns(columns):
-    order_columns = []
-    for name in ('game_id', 'sort'):
-        if name in columns:
-            order_columns.append(name)
-    return order_columns
-
-
-def reassign_staging_table_ids_for_append(conn, table_name, db_name):
-    """将已复制进中转表的旧数据 id 按旧 id 顺序重排为 1..N。"""
-    columns = get_table_column_names(conn, table_name)
-    if not columns or 'id' not in columns:
-        raise ValueError("追加写入模式要求目标表包含 id 字段")
-
-    row_count = count_table_rows(conn, table_name)
-    game_id_zero_stats = get_table_game_id_zero_stats(conn, table_name, columns)
-    if row_count <= 0:
-        return {
-            'row_count': 0,
-            'id_count': 0,
-            'next_id': 1,
-        }
-
-    table_ref = quote_identifier(table_name, "追加重排表名")
-    mapping_table = make_staging_table_name(table_name, 'idmap')
-    remapped_table = make_staging_table_name(table_name, 'idremap')
-    mapping_ref = quote_identifier(mapping_table, "追加id映射表名")
-    remapped_ref = quote_identifier(remapped_table, "追加id重排表名")
-    replaced = False
-    try:
-        drop_table_if_exists(conn, mapping_table)
-        drop_table_if_exists(conn, remapped_table)
-        with conn.cursor() as cur:
-            cur.execute(
-                f"CREATE TABLE {mapping_ref} ("
-                "`old_id` BIGINT NOT NULL PRIMARY KEY, "
-                "`new_id` BIGINT NOT NULL, "
-                "KEY `idx_new_id` (`new_id`)"
-                ") ENGINE=InnoDB"
-            )
-            cur.execute("SET @formation_append_next_id := 0")
-            cur.execute(
-                f"INSERT INTO {mapping_ref} (`old_id`, `new_id`) "
-                "SELECT old_id, (@formation_append_next_id := @formation_append_next_id + 1) AS new_id "
-                f"FROM (SELECT DISTINCT `id` AS old_id FROM {table_ref} ORDER BY `id`) AS old_ids"
-            )
-        conn.commit()
-
-        id_count = count_table_rows(conn, mapping_table)
-        if id_count <= 0:
-            drop_table_if_exists(conn, mapping_table)
-            conn.commit()
-            return {
-                'row_count': row_count,
-                'id_count': 0,
-                'next_id': 1,
-            }
-
-        column_list = ', '.join(quote_identifier(column, "追加重排列名") for column in columns)
-        select_items = []
-        for column in columns:
-            column_ref = quote_identifier(column, "追加重排列名")
-            if column == 'id':
-                select_items.append(f"m.`new_id` AS {column_ref}")
-            else:
-                select_items.append(f"t.{column_ref}")
-        select_list = ', '.join(select_items)
-        order_columns = _ordered_append_id_columns(columns)
-        order_clause = "m.`new_id`"
-        if order_columns:
-            order_clause += ", " + ', '.join(f"t.{quote_identifier(column, '追加排序列名')}" for column in order_columns)
-
-        with conn.cursor() as cur:
-            cur.execute(f"CREATE TABLE {remapped_ref} LIKE {table_ref}")
-            cur.execute(
-                f"INSERT INTO {remapped_ref} ({column_list}) "
-                f"SELECT {select_list} "
-                f"FROM {table_ref} AS t "
-                f"JOIN {mapping_ref} AS m ON t.`id` = m.`old_id` "
-                f"ORDER BY {order_clause}"
-            )
-        conn.commit()
-
-        remapped_count = count_table_rows(conn, remapped_table)
-        if remapped_count != row_count:
-            raise RuntimeError(f"旧数据 id 重排数量不一致：原表 {row_count}，重排表 {remapped_count}")
-        remapped_game_id_zero_stats = get_table_game_id_zero_stats(conn, remapped_table, columns)
-        validate_game_id_zero_stats_preserved(
-            game_id_zero_stats,
-            remapped_game_id_zero_stats,
-            "旧数据id重排",
-        )
-
-        replace_table_with_staging(conn, remapped_table, table_name, db_name)
-        replaced = True
-        return {
-            'row_count': row_count,
-            'id_count': id_count,
-            'next_id': id_count + 1,
-            'game_id_zero_stats': game_id_zero_stats,
-        }
-    finally:
-        with contextlib.suppress(Exception):
-            drop_table_if_exists(conn, mapping_table)
-            if not replaced:
-                drop_table_if_exists(conn, remapped_table)
-            conn.commit()
-
-
 def prepare_staging_table_like_source(staging_conn, source_conn, staging_table_config, staging_table_name):
     drop_table_if_exists(staging_conn, staging_table_name)
     create_table_like_source(
@@ -1704,6 +1637,30 @@ def prepare_staging_table_like_source(staging_conn, source_conn, staging_table_c
         staging_table_name,
     )
     staging_conn.commit()
+
+
+def prepare_increment_sampling_staging(source_conn, increment_conn, table_config, names):
+    increment_db_name = names.get('increment_db_name') or get_sampling_increment_db_name()
+    if not increment_db_name:
+        return None
+    increment_table_name = names['final_table_name']
+    increment_staging_table_name = make_staging_table_name(increment_table_name, 'increment_tmp')
+    increment_table_config = get_table_config_with_final_database(table_config, increment_db_name)
+    prepare_staging_table_like_source(
+        increment_conn,
+        source_conn,
+        increment_table_config,
+        increment_staging_table_name,
+    )
+    print(
+        f"补充采样增量库已准备：本次新增数据将写入 {increment_db_name}.{increment_staging_table_name}，"
+        f"成功后替换 {increment_db_name}.{increment_table_name}"
+    )
+    return {
+        'increment_db_name': increment_db_name,
+        'increment_table_name': increment_table_name,
+        'increment_staging_table_name': increment_staging_table_name,
+    }
 
 
 def prepare_staging_table_like_existing(source_conn, source_table_name, target_conn, target_table_name):
@@ -1854,25 +1811,11 @@ def prepare_direct_sampling_staging(
                     f"{copied_game_id_zero_stats['row_count']} 行/"
                     f"{copied_game_id_zero_stats['id_count']} 个id"
                 )
+            old_max_id = get_table_max_id(final_conn, staging_table_name)
+            staging_state['next_id_state'][0] = int(old_max_id) + 1
             print(
-                f"旧目标表复制完成：{staging_state['base_existing_count']} 行，"
-                "正在按旧 id 顺序重排为连续新 id..."
-            )
-            id_reassign_info = reassign_staging_table_ids_for_append(
-                final_conn,
-                staging_table_name,
-                staging_db_name,
-            )
-            staging_state['next_id_state'][0] = int(id_reassign_info['next_id'])
-            if id_reassign_info.get('game_id_zero_stats') is not None:
-                stats = id_reassign_info['game_id_zero_stats']
-                print(
-                    "旧数据 id 重排后 game_id=0 校验通过："
-                    f"{stats['row_count']} 行/{stats['id_count']} 个id"
-                )
-            print(
-                f"旧数据 id 重排完成：旧数据 {staging_state['base_existing_count']} 行，"
-                f"旧 id {int(id_reassign_info['id_count'])} 个；"
+                f"旧目标表复制完成：{staging_state['base_existing_count']} 行；"
+                f"旧数据 id 保持不变，当前最大 id={old_max_id}；"
                 f"新采样数据将从 id={staging_state['next_id_state'][0]} 起继续分配。"
             )
             return staging_state
@@ -1916,6 +1859,8 @@ def sample_config_rows_to_staging(
     append_mode,
     task_state=None,
     initial_totals=None,
+    increment_engine=None,
+    increment_staging_table_name=None,
 ):
     """执行 rebate_count 采样循环并写入临时表。"""
     config_df = normalize_sampling_config_df(
@@ -1960,6 +1905,8 @@ def sample_config_rows_to_staging(
             append_mode=append_mode,
             id_mapping=staging_state['id_mapping'],
             next_id_state=staging_state['next_id_state'],
+            increment_engine=increment_engine,
+            increment_staging_table_name=increment_staging_table_name,
             timing=timing,
         )
         totals['sampled_count'] += sampled_count
@@ -2031,6 +1978,30 @@ def try_resume_direct_sampling_staging(final_conn, names, state):
         )
         return None
 
+    increment_db_name = staging_state.get('increment_db_name')
+    increment_staging_table_name = staging_state.get('increment_staging_table_name')
+    if names.get('increment_db_name') and increment_db_name and increment_staging_table_name:
+        increment_conn = connect_to_database(increment_db_name)
+        try:
+            if not increment_conn:
+                print(f"检测到历史采样状态，但无法连接增量库 {increment_db_name}，本次重新采样")
+                return None
+            if not table_exists_exact(increment_conn, increment_staging_table_name):
+                print(
+                    f"检测到历史采样状态，但增量临时表 "
+                    f"{increment_db_name}.{increment_staging_table_name} 不存在，本次重新采样"
+                )
+                return None
+            increment_count = count_table_rows(increment_conn, increment_staging_table_name)
+            if increment_count != totals['sampled_count']:
+                print(
+                    f"检测到历史采样状态，但增量临时表行数不匹配：预期 {totals['sampled_count']}，"
+                    f"实际 {increment_count}，本次重新采样"
+                )
+                return None
+        finally:
+            close_safely(increment_conn)
+
     completed_count = len(sampling_task_state.completed_rebate_set(state))
     print(
         f"检测到可恢复采样任务：临时表 {staging_db_name}.{staging_table_name}，"
@@ -2059,6 +2030,7 @@ def finalize_direct_sampling_staging(
     staging_conn=None,
     staging_engine=None,
     final_engine=None,
+    increment_conn=None,
 ):
     """校验临时表写入数量，并用临时表替换正式表。"""
     final_db_name = names['final_db_name']
@@ -2074,6 +2046,7 @@ def finalize_direct_sampling_staging(
         drop_table_if_exists(staging_conn, staging_table_name)
         staging_conn.commit()
         staging_state['staging_table_name'] = None
+        cleanup_increment_sampling_staging(staging_state, increment_conn=increment_conn)
         return False, final_conn
 
     print("\n采样循环已完成，正在校验临时表并准备替换正式表...")
@@ -2086,7 +2059,7 @@ def finalize_direct_sampling_staging(
         print(
             f"\n追加采样写入临时表完成：旧数据 {base_existing_count} 条，"
             f"新增 {total_sampled_count} 条，临时表共 {staging_count} 条；"
-            f"改写冲突 id {totals['remapped_id_count']} 个、影响 {totals['remapped_row_count']} 行。"
+            f"为新采样数据分配新 id {totals['remapped_id_count']} 个、改写 {totals['remapped_row_count']} 行。"
         )
     else:
         print(f"\n采样写入临时表完成：{staging_count} 条。")
@@ -2114,6 +2087,11 @@ def finalize_direct_sampling_staging(
             f"采样处理完成！已写入临时库正式表 {staging_db_name}.{final_table_name}，"
             f"共 {temp_final_count} 条；目标库 {final_db_name}.{final_table_name} 尚未同步。"
         )
+        finalize_increment_sampling_staging(
+            staging_state,
+            increment_conn=increment_conn,
+            expected_rows=total_sampled_count,
+        )
         return True, final_conn
 
     final_conn = ensure_database_connection(final_conn, final_db_name, "目标库")
@@ -2136,7 +2114,63 @@ def finalize_direct_sampling_staging(
         )
     else:
         print(f"采样处理完成！总共写入 {total_sampled_count} 条数据到 {final_db_name}.{final_table_name}")
+    finalize_increment_sampling_staging(
+        staging_state,
+        increment_conn=increment_conn,
+        expected_rows=total_sampled_count,
+    )
     return True, final_conn
+
+
+def finalize_increment_sampling_staging(staging_state, *, increment_conn=None, expected_rows=0):
+    increment_db_name = staging_state.get('increment_db_name')
+    increment_table_name = staging_state.get('increment_table_name')
+    increment_staging_table_name = staging_state.get('increment_staging_table_name')
+    if not increment_db_name or not increment_table_name or not increment_staging_table_name:
+        return
+    own_conn = None
+    try:
+        if increment_conn is None:
+            own_conn = connect_to_database(increment_db_name)
+            increment_conn = own_conn
+        if not increment_conn:
+            raise RuntimeError(f"无法连接增量库 {increment_db_name}")
+        increment_conn = refresh_connection_read_view(increment_conn, increment_db_name, "增量库")
+        increment_count = count_table_rows(increment_conn, increment_staging_table_name)
+        if increment_count != int(expected_rows or 0):
+            raise RuntimeError(
+                f"增量临时表数量不一致：预期 {int(expected_rows or 0)}，实际 {increment_count}"
+            )
+        replace_table_with_staging(
+            increment_conn,
+            increment_staging_table_name,
+            increment_table_name,
+            increment_db_name,
+        )
+        staging_state['increment_staging_table_name'] = None
+        print(f"补充采样增量数据已写入：{increment_db_name}.{increment_table_name}，共 {increment_count} 条")
+    finally:
+        if own_conn is not None:
+            close_safely(own_conn)
+
+
+def cleanup_increment_sampling_staging(staging_state, *, increment_conn=None):
+    increment_db_name = staging_state.get('increment_db_name')
+    increment_staging_table_name = staging_state.get('increment_staging_table_name')
+    if not increment_db_name or not increment_staging_table_name:
+        return
+    own_conn = None
+    try:
+        if increment_conn is None:
+            own_conn = connect_to_database(increment_db_name)
+            increment_conn = own_conn
+        if increment_conn:
+            drop_table_if_exists(increment_conn, increment_staging_table_name)
+            increment_conn.commit()
+            staging_state['increment_staging_table_name'] = None
+    finally:
+        if own_conn is not None:
+            close_safely(own_conn)
 
 
 def create_table_like_existing(source_conn, source_table_name, target_conn, target_table_name):
@@ -2288,6 +2322,7 @@ def direct_sample_from_source(table_config, sample_conditions, *, append_mode=Fa
         check_cancelled=check_cancelled,
         get_direct_sampling_names=get_direct_sampling_names,
         get_sampling_staging_table_config=get_sampling_staging_table_config,
+        get_sampling_increment_table_config=get_sampling_increment_table_config,
         reject_same_physical_sampling_table=reject_same_physical_sampling_table,
         connect_by_table=connect_by_table,
         resolve_direct_sample_conditions=resolve_direct_sample_conditions,
@@ -2302,6 +2337,7 @@ def direct_sample_from_source(table_config, sample_conditions, *, append_mode=Fa
         mark_sampling_task_completed=mark_sampling_task_completed,
         mark_sampling_task_failed=mark_sampling_task_failed,
         prepare_direct_sampling_staging=prepare_direct_sampling_staging,
+        prepare_increment_sampling_staging=prepare_increment_sampling_staging,
         sample_config_rows_to_staging=sample_config_rows_to_staging,
         finalize_direct_sampling_staging=finalize_direct_sampling_staging,
         sync_sampling_temp_table_to_target=sync_sampling_temp_table_to_target,

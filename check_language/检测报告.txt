@@ -1,104 +1,34 @@
 ================================================================================
-完整检测报告  (2026-07-21 11:04:49)
+完整检测报告  (2026-08-13 10:37:21)
 ================================================================================
 检查语言：eng, sch, por, spa, hin, ind, tha, vie, ben, khm, tgl, tch, msa, mya, lao, jpn, kor
-汇总：共 9 个项目（已跳过 status=1/room_name 表外 ID 72 个）
+汇总：共 1 个项目
   ✅ 无问题：0 个
-  ⚠️  有问题：9 个
+  ⚠️  有问题：1 个
   ❌ 缺少多语言目录：0 个
 
 ████████████████████████████████████████████████████████████████████████████████
-  VegasGames  (C:\VegasGames\策划\language)
+  公用多语言  (C:\VegasGames\策划\language\common)
 ████████████████████████████████████████████████████████████████████████████████
-共检测 游戏文件夹：9 个
+共检测 文本目录：1 个
+  注：公用多语言按根目录下各语言 common.json 检测，不按游戏 ID 扫描。
   ✅ 完整（文件存在 + 翻译正确）：0 个
-  ⚠️  存在问题：9 个
-  ❌ 缺少「多语言」文件夹：0 个
+  ⚠️  存在问题：1 个
+  ❌ 缺少公用多语言目录：0 个
 
 ────────────────────────────────────────────────────────────────────────────────
-⚠️  存在问题 (9 个)：
+⚠️  存在问题 (1 个)：
 ────────────────────────────────────────────────────────────────────────────────
-    1. 3033
-         ⚠️  tgl         部分内容未翻译（3 处）：
-                  • GoldenMoneyTreeCommonRules.RedEnvelopeExplain1  (特殊短语未使用配置翻译："Feature" → "Feature")
-                  • GoldenMoneyTreeCommonRules.RedEnvelopeExplain1  (特殊短语未使用配置翻译："Reels" → "Reels")
-                  • GoldenMoneyTreeCommonRules.RedEnvelopeExplain4  (特殊短语未使用配置翻译："Feature" → "Feature")
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • GoldenMoneyTreeCommonRules.RedEnvelopeExplain2  (特殊短语未使用配置翻译："Reels" → "ရစ်များ")
-    2. 3041
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • SuperAceFeatures.FreeSpinExplain1  (特殊短语未使用配置翻译："Reels" → "Reels")
-    3. 3052
-         ⚠️  por         部分内容未翻译（2 处）：
-                  • FortuneAquariusPaytable.Desc6  (特殊短语未使用配置翻译："Feature" → "Recurso")
-                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "Recurso")
-         ⚠️  spa         部分内容未翻译（2 处）：
-                  • FortuneAquariusPaytable.Desc4  (特殊短语未使用配置翻译："Reels" → "Carretes")
-                  • FortuneAquariusPaytable.Desc6  (特殊短语未使用配置翻译："Multiplier" → "Multiplicador")
-         ⚠️  hin         部分内容未翻译（2 处）：
-                  • FortuneAquariusPaytable.Desc4  (特殊短语未使用配置翻译："Feature" → "फीचर")
-                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "फीचर")
-         ⚠️  ind         部分内容未翻译（2 处）：
-                  • FortuneAquariusPaytable.Desc4  (特殊短语未使用配置翻译："Reels" → "Reel")
-                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "Fitur")
-         ⚠️  tha         部分内容未翻译（2 处）：
-                  • FortuneAquariusPaytable.Desc4  (特殊短语未使用配置翻译："Reels" → "รีล")
-                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "ฟีเจอร์")
-         ⚠️  vie         部分内容未翻译（2 处）：
-                  • FortuneAquariusPaytable.Desc6  (特殊短语未使用配置翻译："Multiplier" → "Hệ số nhân")
-                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "Tính Năng")
-         ⚠️  ben         部分内容未翻译（7 处）：
-                  • FortuneAquariusPaytable.Desc5  ("During the Respin Until Win Feature, the...")
-                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Feature" → "ফিচার")
-                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Reels" → "রিল")
-                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Reel" → "রিল")
-                  • FortuneAquariusPaytable.Desc6  (特殊短语未使用配置翻译："Multiplier" → "গুণক")
-                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "ফিচার")
-                  • FortuneAquariusPaytable.Desc5  (疑似英文残留："during the respin until win the stacked symbol will appear fully on and the other will respin until there is a win")
-         ⚠️  khm         部分内容未翻译（2 处）：
-                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Reels" → "កង់")
-                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Reel" → "កង់")
+    1. 公用多语言
+         ⚠️  spa         部分内容未翻译（1 处）：
+                  • TubroMode.Balance  ("Balance")
          ⚠️  tgl         部分内容未翻译（2 处）：
-                  • FortuneAquariusPaytable.Desc4  (特殊短语未使用配置翻译："Reels" → "Reels")
-                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "Feature")
-         ⚠️  mya         部分内容未翻译（6 处）：
-                  • FortuneAquariusPaytable.Desc4  (特殊短语未使用配置翻译："Reels" → "ရစ်များ")
-                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Feature" → "အင်္ဂါရပ်")
-                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Reels" → "ရစ်များ")
-                  • FortuneAquariusPaytable.Desc5  (特殊短语未使用配置翻译："Reel" → "ရစ်")
-                  • FortuneAquariusPaytable.Desc6  (特殊短语未使用配置翻译："Feature" → "အင်္ဂါရပ်")
-                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "အင်္ဂါရပ်")
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • FortuneAquariusPaytable.Desc8  (特殊短语未使用配置翻译："Feature" → "ຟີເຈີ")
-    4. 3053
-         ⚠️  tgl         部分内容未翻译（2 处）：
-                  • FortuneGeminiPayoutAndRulesShared.Rule2_8_Payout2_8  (特殊短语未使用配置翻译："Feature" → "Feature")
-                  • FortuneGeminiPayoutAndRulesShared.Rule2_8_Payout2_8  (特殊短语未使用配置翻译："Reels" → "Reels")
-    5. 3060
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • Payout.SureWinBetDesc2  (疑似英文残留："sure win bet")
-    6. 3067
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • PayoutAndRules.Rule2_3  (特殊短语未使用配置翻译："Feature" → "Feature")
-    7. 3070
-         ⚠️  tch         部分内容未翻译（1 处）：
-                  • PayoutAndRules.Rule2_2  (疑似英文残留："wild scatter x x")
-    8. 3073
-         ⚠️  khm         部分内容未翻译（1 处）：
-                  • PayoutAndRules.Rule2_4  (特殊短语未使用配置翻译："Reels" → "កង់")
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • PayoutAndRules.Rule2_4  (特殊短语未使用配置翻译："Reels" → "ရစ်များ")
-         ⚠️  lao         部分内容未翻译（1 处）：
-                  • PayoutAndRules.Rule2_4  (特殊短语未使用配置翻译："Reels" → "ວົງລໍ້")
-    9. 3081
-         ⚠️  khm         部分内容未翻译（4 处）：
-                  • Rule.Rule1  (特殊短语未使用配置翻译："Video Slot" → "វីដេអូស្លត")
-                  • Rule.Rule1  (特殊短语未使用配置翻译："Free Spins" → "បង្វិលឥតគិតថ្លៃ")
-                  • Rule.Rule1  (特殊短语未使用配置翻译："Bonus" → "ប្រាក់រង្វាន់")
-                  • Rule.Rule1  (特殊短语未使用配置翻译："Reel" → "កង់")
-         ⚠️  tgl         部分内容未翻译（1 处）：
-                  • Rule.Rule1  (疑似英文残留："chain combo gameplay")
-         ⚠️  mya         部分内容未翻译（1 处）：
-                  • Rule.Rule1  (特殊短语未使用配置翻译："Reel" → "ရစ်")
+                  • TubroMode.Rule2  (特殊短语未使用配置翻译："Feature" → "Feature")
+                  • TubroMode.Rule2  (特殊短语未使用配置翻译："Turbo" → "Turbo")
+         ⚠️  tch         部分内容未翻译（4 处）：
+                  • GameShell.PveChromeWebGLDisabledDesc  (疑似英文残留："chrome webgl chrome")
+                  • GameShell.PveSafariWebGLStep  (疑似英文残留："webgl safari webgl safari")
+                  • GameShell.AnimationTips  (疑似英文残留："safari chrome wifi")
+                  • History.HistoryVryBarTitle1  (疑似英文残留："pg color color")
 
 ================================================================================

@@ -44,7 +44,7 @@ def _json_key(data):
 
 
 def build_sampling_identity(names, sample_conditions, append_mode):
-    return {
+    identity = {
         'source_db_name': names.get('source_db_name'),
         'source_table_name': names.get('source_table_name'),
         'final_db_name': names.get('final_db_name'),
@@ -56,6 +56,9 @@ def build_sampling_identity(names, sample_conditions, append_mode):
         'random_seed': sample_conditions.get('random_seed'),
         'append_mode': bool(append_mode),
     }
+    if append_mode:
+        identity['append_id_policy'] = 'preserve_existing_max_plus_one'
+    return identity
 
 
 def build_state_path(identity):
@@ -126,6 +129,9 @@ def new_state(identity, staging_state, *, config_row_count):
         'staging': {
             'staging_table_name': staging_state.get('staging_table_name'),
             'staging_db_name': staging_state.get('staging_db_name'),
+            'increment_db_name': staging_state.get('increment_db_name'),
+            'increment_table_name': staging_state.get('increment_table_name'),
+            'increment_staging_table_name': staging_state.get('increment_staging_table_name'),
             'base_existing_count': int(staging_state.get('base_existing_count') or 0),
             'next_id': int((staging_state.get('next_id_state') or [1])[0]),
             'id_mapping': {
@@ -161,6 +167,9 @@ def update_staging_snapshot(state, staging_state):
     staging = state.setdefault('staging', {})
     staging['staging_table_name'] = staging_state.get('staging_table_name')
     staging['staging_db_name'] = staging_state.get('staging_db_name')
+    staging['increment_db_name'] = staging_state.get('increment_db_name')
+    staging['increment_table_name'] = staging_state.get('increment_table_name')
+    staging['increment_staging_table_name'] = staging_state.get('increment_staging_table_name')
     staging['base_existing_count'] = int(staging_state.get('base_existing_count') or 0)
     staging['next_id'] = int((staging_state.get('next_id_state') or [1])[0])
     staging['id_mapping'] = {
@@ -234,6 +243,9 @@ def build_staging_state_from_saved(state):
     return {
         'staging_table_name': staging.get('staging_table_name'),
         'staging_db_name': staging.get('staging_db_name'),
+        'increment_db_name': staging.get('increment_db_name'),
+        'increment_table_name': staging.get('increment_table_name'),
+        'increment_staging_table_name': staging.get('increment_staging_table_name'),
         'base_existing_count': int(staging.get('base_existing_count') or 0),
         'id_mapping': {
             int(k): int(v)

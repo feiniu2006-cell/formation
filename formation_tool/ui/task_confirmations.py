@@ -36,11 +36,12 @@ def build_dangerous_task_confirmation(title, preflight, *, deps):
         return "\n".join(lines)
     if kind == "sampling":
         temp_db = getattr(deps, "get_sampling_temp_db", lambda: "")()
+        increment_db = getattr(deps, "get_sampling_increment_db", lambda: "")()
         auto_sync = bool(getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)())
         append_mode = bool(preflight.get("append_mode"))
         action = f"写入中转库 {temp_db} 正式表"
         if append_mode:
-            action = f"读取目标库旧正式表，重排旧 id 后补充写入中转库 {temp_db} 正式表"
+            action = f"读取目标库旧正式表，保留旧 id 后补充写入中转库 {temp_db} 正式表"
         lines = [
             f"即将执行采样并{action}：{title}",
             "",
@@ -49,8 +50,10 @@ def build_dangerous_task_confirmation(title, preflight, *, deps):
         if append_mode:
             lines.extend([
                 "",
-                "补充采样会先复制目标库旧数据到中转库，并把旧数据 id 重排为连续值；新采样数据 id 会接在旧数据之后。",
+                "补充采样会先复制目标库旧数据到中转库并保留原始 id；新采样数据 id 从旧表最大 id + 1 开始连续分配。",
             ])
+        if append_mode:
+            lines.append(f"本次新增数据会单独写入增量库：{increment_db}")
         if auto_sync:
             lines.extend([
                 "",

@@ -174,6 +174,7 @@ class RuntimeState:
         self.sampling_detailed_log = formation_defaults.DEFAULT_SAMPLING_DETAILED_LOG
         self.sampling_use_temp_db = formation_defaults.DEFAULT_SAMPLING_USE_TEMP_DB
         self.sampling_temp_db = formation_defaults.DEFAULT_SAMPLING_TEMP_DB
+        self.sampling_increment_db = formation_defaults.DEFAULT_SAMPLING_INCREMENT_DB
         self.sampling_auto_sync_to_target = formation_defaults.DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET
         self.rebate_config_direct_count_modes = set(formation_defaults.DEFAULT_REBATE_CONFIG_DIRECT_COUNT_MODES)
         self.special_group_target_rtp = formation_defaults.DEFAULT_SPECIAL_GROUP_TARGET_RTP
@@ -231,6 +232,7 @@ class RuntimeState:
         self.sampling_detailed_log = bool(_read(namespace, 'SAMPLING_DETAILED_LOG', self.sampling_detailed_log))
         self.sampling_use_temp_db = True
         self.sampling_temp_db = _read(namespace, 'SAMPLING_TEMP_DB', self.sampling_temp_db)
+        self.sampling_increment_db = _read(namespace, 'SAMPLING_INCREMENT_DB', self.sampling_increment_db)
         self.sampling_auto_sync_to_target = bool(
             _read(namespace, 'SAMPLING_AUTO_SYNC_TO_TARGET', self.sampling_auto_sync_to_target)
         )
@@ -357,6 +359,7 @@ class RuntimeState:
         _assign(namespace, 'SAMPLING_DETAILED_LOG', self.sampling_detailed_log)
         _assign(namespace, 'SAMPLING_USE_TEMP_DB', True)
         _assign(namespace, 'SAMPLING_TEMP_DB', self.sampling_temp_db)
+        _assign(namespace, 'SAMPLING_INCREMENT_DB', self.sampling_increment_db)
         _assign(namespace, 'SAMPLING_AUTO_SYNC_TO_TARGET', self.sampling_auto_sync_to_target)
         _assign(namespace, 'REBATE_CONFIG_DIRECT_COUNT_MODES', set(self.rebate_config_direct_count_modes))
         _assign(namespace, 'SPECIAL_GROUP_TARGET_RTP', self.special_group_target_rtp)
@@ -385,6 +388,7 @@ class RuntimeState:
             'final_db': self.final_db,
             'config_db': self.config_db,
             'sampling_temp_db': self.sampling_temp_db,
+            'sampling_increment_db': self.sampling_increment_db,
             'sampling_use_temp_db': True,
             'sampling_auto_sync_to_target': self.sampling_auto_sync_to_target,
         }

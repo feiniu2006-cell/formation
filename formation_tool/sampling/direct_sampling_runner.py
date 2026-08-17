@@ -40,6 +40,7 @@ def direct_sample_from_source(table_config, sample_conditions, *, deps, append_m
     source_conn = None
     final_conn = None
     staging_conn = None
+    increment_conn = None
     using_separate_staging = False
     names = {}
     staging_state = None
@@ -79,6 +80,8 @@ def direct_sample_from_source(table_config, sample_conditions, *, deps, append_m
             lambda config: config,
         )
         staging_table_config = get_sampling_staging_table_config(table_config)
+        increment_table_config = None
+        increment_engine = None
         if names.get('staging_db_name') and names.get('staging_db_name') != names.get('final_db_name'):
             using_separate_staging = True
             staging_conn = deps.connect_by_table('FINAL_TABLE', staging_table_config)
@@ -101,6 +104,27 @@ def direct_sample_from_source(table_config, sample_conditions, *, deps, append_m
             final_engine = deps.get_engine_by_table('FINAL_TABLE', table_config)
             staging_conn = final_conn
             staging_engine = final_engine
+        if append_mode:
+            get_sampling_increment_table_config = getattr(
+                deps,
+                'get_sampling_increment_table_config',
+                lambda _config: None,
+            )
+            increment_table_config = get_sampling_increment_table_config(table_config)
+            if increment_table_config is not None:
+                increment_db_name = names.get('increment_db_name')
+                if increment_db_name in {names.get('final_db_name'), names.get('staging_db_name')}:
+                    print(
+                        f"补充采样增量库必须独立于目标库和中转库："
+                        f"增量库={increment_db_name}，目标库={names.get('final_db_name')}，"
+                        f"中转库={names.get('staging_db_name')}"
+                    )
+                    return False
+                increment_conn = deps.connect_by_table('FINAL_TABLE', increment_table_config)
+                if not increment_conn:
+                    print(f"无法建立补充采样增量库 {names.get('increment_db_name')} 连接，处理终止")
+                    return False
+                increment_engine = deps.get_engine_by_table('FINAL_TABLE', increment_table_config)
 
         try:
             config_df = deps.load_sampling_config_df(
@@ -133,6 +157,10 @@ def direct_sample_from_source(table_config, sample_conditions, *, deps, append_m
                 resume_result = try_resume_direct_sampling_staging(staging_conn, names, task_state)
                 if resume_result:
                     staging_state, resume_totals = resume_result
+                    if append_mode and not staging_state.get('increment_staging_table_name'):
+                        print("检测到历史补充采样状态缺少增量临时表信息，本次重新采样")
+                        staging_state = None
+                        resume_totals = None
 
         if staging_state is None:
             staging_state = _call_with_supported_kwargs(
@@ -149,6 +177,17 @@ def direct_sample_from_source(table_config, sample_conditions, *, deps, append_m
             )
             if staging_state is None:
                 return False
+            if append_mode and increment_conn is not None:
+                prepare_increment_sampling_staging = getattr(deps, 'prepare_increment_sampling_staging', None)
+                if prepare_increment_sampling_staging is not None:
+                    increment_state = prepare_increment_sampling_staging(
+                        source_conn,
+                        increment_conn,
+                        table_config,
+                        names,
+                    )
+                    if increment_state:
+                        staging_state.update(increment_state)
             if task_identity is not None:
                 task_state = start_sampling_task_state(task_identity, staging_state, config_df)
 
@@ -165,6 +204,8 @@ def direct_sample_from_source(table_config, sample_conditions, *, deps, append_m
             append_mode=append_mode,
             task_state=task_state,
             initial_totals=resume_totals,
+            increment_engine=increment_engine,
+            increment_staging_table_name=staging_state.get('increment_staging_table_name'),
         )
         if using_separate_staging:
             staging_conn = write_conn
@@ -183,6 +224,7 @@ def direct_sample_from_source(table_config, sample_conditions, *, deps, append_m
             staging_conn=staging_conn,
             staging_engine=staging_engine,
             final_engine=final_engine,
+            increment_conn=increment_conn,
         )
         mark_sampling_task_completed(task_state, success=success)
         return success
@@ -207,6 +249,8 @@ def direct_sample_from_source(table_config, sample_conditions, *, deps, append_m
         deps.close_safely(source_conn)
         if using_separate_staging and staging_conn is not None:
             deps.close_safely(staging_conn)
+        if increment_conn is not None:
+            deps.close_safely(increment_conn)
         if final_conn is not None:
             deps.close_safely(final_conn)
 

@@ -49,6 +49,7 @@ class SlotAppTaskMixin:
             f"源库={runtime['source_db']}，目标库={runtime['final_db']}，配置库={runtime['config_db']}\n"
         )
         self.append_log(f"采样临时库：{runtime.get('sampling_temp_db')}（默认中转）\n")
+        self.append_log(f"补充采样增量库：{runtime.get('sampling_increment_db')}\n")
         self.append_log(
             "采样后自动镜像："
             + ("开启\n" if runtime.get('sampling_auto_sync_to_target') else "关闭\n")
@@ -93,9 +94,11 @@ class SlotAppTaskMixin:
         )
         temp_db = getattr(deps, "get_sampling_temp_db", lambda: "")()
         if append_mode:
+            increment_db = getattr(deps, "get_sampling_increment_db", lambda: "")()
             self.append_log(
                 f"采样方案：补充采样，复制目标库旧表到中转库 {temp_db}，"
-                "重排旧 id 后追加新采样数据\n"
+                "保留旧 id，新采样 id 从旧表最大值加1开始分配；"
+                f"本次新增数据单独写入增量库 {increment_db}\n"
             )
         elif getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)():
             self.append_log(f"采样方案：写入中转库 {temp_db} 正式表，完成后自动镜像到目标库\n")

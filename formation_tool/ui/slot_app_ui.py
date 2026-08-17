@@ -70,7 +70,7 @@ class SlotAppUiMixin:
         deps = self.ui_deps
         config_frame = ttk.LabelFrame(root_frame, text="当前配置", padding=(8, 6))
         config_frame.grid(row=0, column=0, sticky="ew")
-        for col in range(6):
+        for col in range(7):
             config_frame.columnconfigure(col, weight=1)
 
         db_options = sorted(deps.database_configs.keys())
@@ -81,6 +81,7 @@ class SlotAppUiMixin:
             ("目标库", self.final_db_var, db_options, "readonly", "combo"),
             ("配置库", self.config_db_var, db_options, "readonly", "combo"),
             ("采样临时库", self.sampling_temp_db_var, db_options, "readonly", "combo"),
+            ("增量库", self.sampling_increment_db_var, db_options, "readonly", "combo"),
         ]
         for col, (label, variable, values, state, widget_type) in enumerate(config_items):
             ttk.Label(config_frame, text=label).grid(
@@ -200,6 +201,7 @@ class SlotAppUiMixin:
                 ("目标库", self.final_db_var.get()),
                 ("配置库", self.config_db_var.get()),
                 ("采样临时库", self.sampling_temp_db_var.get()),
+                ("增量库", self.sampling_increment_db_var.get()),
             ),
         )
         if missing_databases:

@@ -15,8 +15,8 @@ REBATE_RANGE_BUCKETS = (
     ("1\u500d\u4ee5\u4e0b", 1, 1000),
     ("1~10\u500d", 1000, 10000),
     ("10~20\u500d", 10000, 20000),
-    ("20~50\u500d", 20000, 50000),
-    ("50~80\u500d", 50000, 80000),
+    ("20~60\u500d", 20000, 60000),
+    ("60~80\u500d", 60000, 80000),
     ("80~100\u500d", 80000, 100000),
     ("100~500\u500d", 100000, 500000),
     ("500\u500d\u4ee5\u4e0a", 500000, None),
@@ -810,45 +810,41 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             )
         return getattr(self, 'default_base_rules', self.deps.default_rules).get(mode, [])
 
+    def get_default_rules_for_mode_group(self, mode, group_suffix):
+        mode = str(mode)
+        suffix_key = str(group_suffix)
+        default_group_rules = getattr(self, 'default_group_rules_by_suffix', {})
+        if suffix_key in default_group_rules and mode in default_group_rules[suffix_key]:
+            return [dict(rule) for rule in default_group_rules[suffix_key][mode]]
+        if '0' in default_group_rules and mode in default_group_rules['0']:
+            return [dict(rule) for rule in default_group_rules['0'][mode]]
+        return [dict(rule) for rule in self.get_default_rules_for_mode(mode)]
+
     def reset_group_weight_rules_to_defaults(self):
+        current_suffix = getattr(self, 'current_rule_group_suffix', None)
+        if current_suffix is None:
+            try:
+                current_suffix = int(self.group_suffix_var.get())
+            except (AttributeError, TypeError, ValueError):
+                current_suffix = self.get_selected_group_suffix()
         if not messagebox.askyesno(
             "恢复默认权重规则",
-            "将当前窗口里的 group_weight 权重规则恢复为代码默认值，点击“确认并开始”后生效。是否继续？",
+            f"仅将当前权重分组{current_suffix}的规则恢复为默认值，其他分组和全局设置不变。"
+            "点击“确认并开始”后生效。是否继续？",
             parent=self.dialog,
         ):
             return
-        self.base_rules = clone_mode_rules_map(
-            getattr(self, 'default_base_rules', self.deps.default_rules)
-        )
-        self.group_rules_by_suffix = clone_group_rules_map(
-            getattr(self, 'default_group_rules_by_suffix', getattr(self.deps, 'default_group_rules', {}))
-        )
-        self.extra_buy_rules_by_mode = {}
+        suffix_key = str(current_suffix)
+        suffix_rules = clone_mode_rules_map(self.group_rules_by_suffix.get(suffix_key, {}))
         for mode in getattr(self.rule_editor, 'mode_rows', {}):
-            if not getattr(self.deps, 'is_extra_buy_mode', lambda _mode: False)(mode):
-                continue
-            default_rules = self.get_default_rules_for_mode(mode)
-            self.extra_buy_rules_by_mode[mode] = {
-                str(group_suffix): [dict(rule) for rule in default_rules]
-                for group_suffix in self.get_available_group_suffixes()
-            }
-        self.load_rules_for_group(getattr(self, 'current_rule_group_suffix', None))
+            default_rules = self.get_default_rules_for_mode_group(mode, current_suffix)
+            if getattr(self.deps, 'is_extra_buy_mode', lambda _mode: False)(mode):
+                self.extra_buy_rules_by_mode.setdefault(mode, {})[suffix_key] = default_rules
+            elif mode in self.deps.group_weight_modes:
+                suffix_rules[mode] = default_rules
+        self.group_rules_by_suffix[suffix_key] = suffix_rules
+        self.load_rules_for_group(current_suffix)
         self.apply_zero_rebate_entry_states()
-        default_target = getattr(self.deps, 'default_special_target_rtp', None)
-        self.special_target_rtp_var.set("" if default_target is None else str(default_target))
-        default_ex_targets = getattr(self.deps, 'default_ex_group_target_rtps', {}) or {}
-        for mode, var in getattr(self, 'ex_target_rtp_vars', {}).items():
-            var.set("" if default_ex_targets.get(mode) is None else str(default_ex_targets.get(mode)))
-        default_inference_modes = {
-            str(mode) for mode in getattr(self.deps, 'default_zero_rebate_inference_modes', ())
-        }
-        for mode, var in getattr(self, 'zero_rebate_inference_vars', {}).items():
-            var.set(str(mode) in default_inference_modes)
-        default_independent_modes = {
-            str(mode) for mode in getattr(self.deps, 'default_independent_rtp_modes', ())
-        }
-        for mode, var in getattr(self, 'independent_rtp_vars', {}).items():
-            var.set(str(mode) in default_independent_modes)
         self.refresh_zero_rebate_option_states()
         self.update_rtp_info()
 

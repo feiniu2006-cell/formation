@@ -51,6 +51,10 @@ def apply_cli_settings_data(data, *, deps, runtime_only=False):
                 True,
                 sampling_options.get('temp_db', default_temp_db),
             )
+        apply_increment_db = getattr(deps, 'apply_sampling_increment_db_config', None)
+        if apply_increment_db is not None:
+            default_increment_db = getattr(deps, 'get_sampling_increment_db', lambda: None)()
+            apply_increment_db(sampling_options.get('increment_db', default_increment_db))
         apply_auto_sync = getattr(deps, 'apply_sampling_auto_sync_to_target', None)
         if apply_auto_sync is not None:
             default_auto_sync = getattr(deps, 'get_sampling_auto_sync_to_target', lambda: False)()

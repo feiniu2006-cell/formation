@@ -54,6 +54,11 @@ except ImportError:
 BACKUP_KEEP_COUNT = 5
 CONFIG_FILE_NAME = "db_config.example.json"
 CANCELLED_EXIT_CODE = 130
+ALWAYS_BACKUP_TABLES = {
+    "game_group_free_game_config",
+    "game_group_special_weight_config",
+}
+ROOM_PREFIX_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*_\d+(?:_.+)?$")
 
 # ── 备份配置：修改这两行即可 ──────────────────────────────────
 SOURCE_KEY = 'DB1'   # 源库（被备份的数据库）
@@ -426,6 +431,11 @@ def _print_dump_source_object_plan(
         for object_name, object_type in objects
         if object_type.upper() == "BASE TABLE"
     ]
+    selected_tables = [
+        table_name
+        for table_name in base_tables
+        if ROOM_PREFIX_TABLE_RE.fullmatch(table_name) or table_name in ALWAYS_BACKUP_TABLES
+    ]
     view_count = sum(1 for _, object_type in objects if object_type.upper() == "VIEW")
     print(
         f"[进度] 源库 `{database_name}` 发现 {len(objects)} 个对象："
@@ -436,10 +446,16 @@ def _print_dump_source_object_plan(
     if not base_tables:
         print(f"[进度] 源库 `{database_name}` 未读取到基础表。")
         return []
-    for index, object_name in enumerate(base_tables, start=1):
+    skipped_count = len(base_tables) - len(selected_tables)
+    print(
+        "[进度] 本次只备份房间前缀表 "
+        f"({ROOM_PREFIX_TABLE_RE.pattern}) 以及固定表：{', '.join(sorted(ALWAYS_BACKUP_TABLES))}"
+    )
+    print(f"[进度] 选中 {len(selected_tables)} 张表，跳过 {skipped_count} 张其他基础表。")
+    for index, object_name in enumerate(selected_tables, start=1):
         _check_cancelled(cancel_event)
-        print(f"[进度] [{index}/{len(base_tables)}] 将复制表: {object_name}")
-    return base_tables
+        print(f"[进度] [{index}/{len(selected_tables)}] 将复制表: {object_name}")
+    return selected_tables
 
 
 def _read_stderr_lines_for_log(pipe, buffer: list[bytes], label: str) -> None:
@@ -527,12 +543,9 @@ def backup_via_mysqldump(
         _definer_re = re.compile(rb"DEFINER=`[^`]*`@`[^`]*`\s*")
         base_tables = _print_dump_source_object_plan(source_params, cancel_event)
         if not base_tables:
-            raise RuntimeError("源库未读取到可备份的基础表，已停止仅数据备份。")
+            raise RuntimeError("源库未读取到符合规则的可备份表，已停止仅数据备份。")
         dump_base.extend(base_tables)
-        print("[参数] 仅导出基础表结构和数据，不导出视图/触发器/存储过程/函数/事件。")
-
-        _trust_set = False
-        print("[参数] 仅数据备份不需要修改目标库 log_bin_trust_function_creators。")
+        print("[参数] 仅导出选中表的结构和数据，不导出视图/触发器/存储过程/函数/事件。")
 
         if dump_file is not None:
             dump_path = dump_file.resolve()

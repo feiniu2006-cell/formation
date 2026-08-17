@@ -347,7 +347,7 @@ class GroupWeightLogicTests(unittest.TestCase):
         self.assertFalse(formation_modes.supports_independent_rtp("2"))
         self.assertFalse(formation_modes.supports_independent_rtp("buy"))
         self.assertEqual(formation_modes.normalize_independent_rtp_modes(["1", "2", "6", "buy"]), {"1", "6"})
-        self.assertEqual(formation_modes.DEFAULT_INDEPENDENT_RTP_MODES, ())
+        self.assertEqual(formation_modes.DEFAULT_INDEPENDENT_RTP_MODES, ("1", "6"))
 
     def test_normal_preview_independent_rtp_ignores_trigger_parse_errors(self):
         preview = group_weight_builder.group_weight_preview
@@ -1687,7 +1687,7 @@ class BuyGroupConfigTests(unittest.TestCase):
         self.assertEqual(migrated["version"], settings_logic.CURRENT_SETTINGS_VERSION)
         self.assertEqual(group_options["buy_game_type"], 99)
         self.assertEqual(group_options["buy_source_suffix"], "free_formation")
-        self.assertEqual(group_options["independent_rtp_modes"], [])
+        self.assertEqual(group_options["independent_rtp_modes"], ["1", "6"])
         self.assertEqual(
             group_options["extra_weight_groups"],
             formation_defaults.DEFAULT_EXTRA_WEIGHT_GROUPS,
@@ -3179,6 +3179,91 @@ class SamplingCoreWriteTests(unittest.TestCase):
         self.assertEqual(row_count, 3)
         self.assertEqual(pairs, [(10, 5), (20, 6)])
 
+    def test_append_staging_preserves_old_ids_and_starts_after_max_id(self):
+        class FakeConnection:
+            def ping(self, **_kwargs):
+                return None
+
+        source_conn = FakeConnection()
+        staging_conn = FakeConnection()
+        target_conn = FakeConnection()
+        names = {
+            "source_db_name": "SRC",
+            "source_table_name": "game_free_formation",
+            "final_db_name": "DST",
+            "staging_db_name": "TMP",
+            "final_table_name": "game_free_formation",
+        }
+        table_config = {
+            "SOURCE_TABLE": {"database": "SRC", "name": "game_free_formation"},
+            "FINAL_TABLE": {"database": "DST", "name": "game_free_formation"},
+        }
+        stats = {"row_count": 12, "id_count": 4}
+
+        with (
+            mock.patch.object(sampling_core, "MAX_DB_RETRIES", 1, create=True),
+            mock.patch.object(sampling_core, "DB_RETRY_DELAY", 0, create=True),
+            mock.patch.object(
+                sampling_core,
+                "make_staging_table_name",
+                return_value="append_tmp",
+                create=True,
+            ),
+            mock.patch.object(sampling_core, "table_exists_exact", return_value=True, create=True),
+            mock.patch.object(
+                sampling_core,
+                "get_table_columns",
+                return_value=[("id", "bigint")],
+                create=True,
+            ),
+            mock.patch.object(
+                sampling_core,
+                "compare_table_structure_for_append",
+                return_value={"compatible": True},
+                create=True,
+            ),
+            mock.patch.object(sampling_core, "prepare_staging_table_like_existing"),
+            mock.patch.object(sampling_core, "copy_existing_final_table_to_append_staging"),
+            mock.patch.object(sampling_core, "count_table_rows", return_value=12, create=True),
+            mock.patch.object(sampling_core, "get_table_game_id_zero_stats", return_value=stats),
+            mock.patch.object(sampling_core, "validate_game_id_zero_stats_preserved"),
+            mock.patch.object(sampling_core, "get_table_max_id", return_value=900, create=True),
+            mock.patch.object(sampling_core, "print"),
+        ):
+            staging_state = sampling_core.prepare_direct_sampling_staging(
+                source_conn,
+                staging_conn,
+                table_config,
+                names,
+                True,
+                final_target_conn=target_conn,
+                staging_table_config={
+                    "SOURCE_TABLE": table_config["SOURCE_TABLE"],
+                    "FINAL_TABLE": {"database": "TMP", "name": "game_free_formation"},
+                },
+            )
+
+        self.assertEqual(staging_state["base_existing_count"], 12)
+        self.assertEqual(staging_state["id_mapping"], {})
+        self.assertEqual(staging_state["next_id_state"], [901])
+
+    def test_append_sampling_identity_records_preserve_old_id_policy(self):
+        identity = sampling_task_state.build_sampling_identity(
+            {
+                "source_db_name": "SRC",
+                "source_table_name": "source_table",
+                "final_db_name": "DST",
+                "final_table_name": "final_table",
+            },
+            {"where_clause": "rebate = {target_rebate}", "random_seed": 108},
+            True,
+        )
+
+        self.assertEqual(
+            identity["append_id_policy"],
+            "preserve_existing_max_plus_one",
+        )
+
     def test_game_id_zero_stats_validation_detects_copy_loss(self):
         with self.assertRaisesRegex(RuntimeError, r"game_id=0.*正式表未替换"):
             sampling_core.validate_game_id_zero_stats_preserved(
@@ -4099,6 +4184,84 @@ class DirectSamplingRunnerTests(unittest.TestCase):
         self.assertIn(("sample_append_mode", True), events)
         self.assertIn(("finalize_append_mode", True), events)
 
+    def test_append_sampling_writes_increment_table(self):
+        events = []
+        deps = self.build_base_deps(events, append_mode=False)
+        deps.names["staging_db_name"] = "TMP"
+        deps.names["increment_db_name"] = "INC"
+        staging_conn = object()
+        final_conn = object()
+        increment_conn = object()
+        staging_state = {"staging_table_name": "final_table_tmp", "base_existing_count": 0}
+        increment_state = {
+            "increment_db_name": "INC",
+            "increment_table_name": "final_table",
+            "increment_staging_table_name": "final_table_increment_tmp",
+        }
+
+        def connect_by_table(table_key, table_config):
+            db_name = (table_config.get("FINAL_TABLE") or {}).get("database") if isinstance(table_config, dict) else None
+            events.append(("connect", table_key, db_name))
+            if table_key == "SOURCE_TABLE":
+                return deps.source_conn
+            if db_name == "INC":
+                return increment_conn
+            if db_name == "TMP":
+                return staging_conn
+            return final_conn
+
+        def get_engine_by_table(table_key, table_config):
+            db_name = (table_config.get("FINAL_TABLE") or {}).get("database") if isinstance(table_config, dict) else None
+            return f"engine:{table_key}:{db_name or 'DST'}"
+
+        def prepare_staging(*_args, **_kwargs):
+            return dict(staging_state)
+
+        def prepare_increment(source_conn, received_increment_conn, _table_config, names):
+            events.append(("prepare_increment", source_conn, received_increment_conn, names["increment_db_name"]))
+            return dict(increment_state)
+
+        def sample_rows(_config_df, **kwargs):
+            events.append((
+                "sample_increment",
+                kwargs["increment_engine"],
+                kwargs["increment_staging_table_name"],
+            ))
+            return {"sampled_count": 4, "remapped_id_count": 2, "remapped_row_count": 4}, staging_conn
+
+        def finalize(_final_conn, _names, received_staging_state, _totals, _append_mode, **kwargs):
+            events.append((
+                "finalize_increment",
+                received_staging_state["increment_staging_table_name"],
+                kwargs["increment_conn"],
+            ))
+            return True, final_conn
+
+        deps.connect_by_table = connect_by_table
+        deps.get_engine_by_table = get_engine_by_table
+        deps.get_sampling_staging_table_config = lambda _config: {"FINAL_TABLE": {"database": "TMP"}}
+        deps.get_sampling_increment_table_config = lambda _config: {"FINAL_TABLE": {"database": "INC"}}
+        deps.prepare_direct_sampling_staging = prepare_staging
+        deps.prepare_increment_sampling_staging = prepare_increment
+        deps.sample_config_rows_to_staging = sample_rows
+        deps.finalize_direct_sampling_staging = finalize
+        deps.cleanup_direct_sampling_failure = lambda *args, **kwargs: events.append(("cleanup", args, kwargs))
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = direct_sampling_runner.direct_sample_from_source(
+                {},
+                {},
+                deps=deps,
+                append_mode=True,
+            )
+
+        self.assertTrue(result)
+        self.assertIn(("connect", "FINAL_TABLE", "INC"), events)
+        self.assertIn(("prepare_increment", deps.source_conn, increment_conn, "INC"), events)
+        self.assertIn(("sample_increment", "engine:FINAL_TABLE:INC", "final_table_increment_tmp"), events)
+        self.assertIn(("finalize_increment", "final_table_increment_tmp", increment_conn), events)
+        self.assertIn(("close", increment_conn), events)
+
     def test_direct_sampling_sample_failure_keeps_staging_context_for_cleanup(self):
         events = []
         deps = self.build_base_deps(events)
@@ -4720,6 +4883,7 @@ class SlotAppDepsTests(unittest.TestCase):
             "DEFAULT_SAMPLING_DETAILED_LOG": False,
             "DEFAULT_SAMPLING_USE_TEMP_DB": True,
             "DEFAULT_SAMPLING_TEMP_DB": "MY",
+            "DEFAULT_SAMPLING_INCREMENT_DB": "增量",
             "DEFAULT_SAMPLING_AUTO_SYNC_TO_TARGET": False,
             "DEFAULT_BUY_GROUP_ENABLED": False,
             "DEFAULT_EX_BUY_GROUP_ENABLED": False,
@@ -4969,10 +5133,10 @@ class SlotAppSettingsPersistenceTests(unittest.TestCase):
             direct_count_tiers=[],
         )
 
-        self.assertEqual(last_data["runtime"]["sampling_temp_db"], "MY")
+        self.assertEqual(last_data["runtime"]["sampling_temp_db"], formation_defaults.DEFAULT_SAMPLING_TEMP_DB)
         self.assertTrue(last_data["runtime"]["sampling_use_temp_db"])
         self.assertFalse(last_data["runtime"]["sampling_auto_sync_to_target"])
-        self.assertEqual(app_data["sampling_options"]["temp_db"], "MY")
+        self.assertEqual(app_data["sampling_options"]["temp_db"], formation_defaults.DEFAULT_SAMPLING_TEMP_DB)
         self.assertTrue(app_data["sampling_options"]["use_temp_db"])
         self.assertFalse(app_data["sampling_options"]["auto_sync_to_target"])
 
@@ -5660,7 +5824,15 @@ class BuyGroupUiTests(unittest.TestCase):
 
         deps = SimpleNamespace(
             get_extra_buy_groups=lambda: [
-                {"game_type": 120, "rules": [{"rebate_min": 0, "weight": 1}]}
+                {
+                    "game_type": 120,
+                    "rules": [{"rebate_min": 0, "weight": 1}],
+                    "group_rules": {
+                        "0": [{"rebate_min": 0, "weight": 10}],
+                        "1": [{"rebate_min": 0, "weight": 20}],
+                        "2": [{"rebate_min": 0, "weight": 30}],
+                    },
+                }
             ],
             normalize_extra_buy_groups=lambda groups: groups,
         )
@@ -5679,6 +5851,14 @@ class BuyGroupUiTests(unittest.TestCase):
 
         self.assertEqual(groups[0]["game_type"], "120")
         self.assertEqual(groups[0]["rules"], [{"rebate_min": 0, "weight": 1}])
+        self.assertEqual(
+            groups[0]["group_rules"],
+            {
+                "0": [{"rebate_min": 0, "weight": 10}],
+                "1": [{"rebate_min": 0, "weight": 20}],
+                "2": [{"rebate_min": 0, "weight": 30}],
+            },
+        )
 
     def test_collect_extra_buy_groups_skips_disabled_rows(self):
         class Var:
@@ -6225,7 +6405,7 @@ class GroupWeightRulesDialogTests(unittest.TestCase):
         self.assertEqual(dialog.current_rule_group_suffix, 1)
         self.assertEqual(loaded, [1])
 
-    def test_restore_defaults_resets_visible_rules_and_special_target(self):
+    def test_restore_defaults_resets_only_current_group_rules(self):
         class FakeRuleEditor:
             def __init__(self):
                 self.mode_rows = {"1": [], "extra_buy:91": []}
@@ -6243,6 +6423,7 @@ class GroupWeightRulesDialogTests(unittest.TestCase):
         )
         dialog.deps = SimpleNamespace(
             buy_group_mode="99",
+            group_weight_modes=("1",),
             default_rules={
                 "1": [{"rebate_min": 0, "weight": 10}],
                 "99": [{"rebate_min": 1000, "weight": 20}],
@@ -6251,6 +6432,21 @@ class GroupWeightRulesDialogTests(unittest.TestCase):
             default_special_target_rtp=6.5,
         )
         dialog.rule_editor = FakeRuleEditor()
+        dialog.current_rule_group_suffix = 1
+        dialog.group_rules_by_suffix = {
+            "1": {"1": [{"rebate_min": 0, "weight": 99}]},
+            "2": {"1": [{"rebate_min": 0, "weight": 88}]},
+        }
+        dialog.default_group_rules_by_suffix = {
+            "1": {"1": [{"rebate_min": 0, "weight": 10}]},
+            "2": {"1": [{"rebate_min": 0, "weight": 20}]},
+        }
+        dialog.extra_buy_rules_by_mode = {
+            "extra_buy:91": {
+                "1": [{"rebate_min": 1000, "weight": 90}],
+                "2": [{"rebate_min": 1000, "weight": 80}],
+            }
+        }
         dialog.special_target_rtp_var = tk.StringVar(master=master, value="9")
         dialog.dialog = None
         dialog.update_rtp_info = lambda: setattr(dialog, "updated", True)
@@ -6269,7 +6465,23 @@ class GroupWeightRulesDialogTests(unittest.TestCase):
             ("add", "extra_buy:91", {"rebate_min": 1000, "weight": 20}),
             dialog.rule_editor.added,
         )
-        self.assertEqual(dialog.special_target_rtp_var.get(), "6.5")
+        self.assertEqual(
+            dialog.group_rules_by_suffix["1"]["1"],
+            [{"rebate_min": 0, "weight": 10}],
+        )
+        self.assertEqual(
+            dialog.group_rules_by_suffix["2"]["1"],
+            [{"rebate_min": 0, "weight": 88}],
+        )
+        self.assertEqual(
+            dialog.extra_buy_rules_by_mode["extra_buy:91"]["1"],
+            [{"rebate_min": 1000, "weight": 20}],
+        )
+        self.assertEqual(
+            dialog.extra_buy_rules_by_mode["extra_buy:91"]["2"],
+            [{"rebate_min": 1000, "weight": 80}],
+        )
+        self.assertEqual(dialog.special_target_rtp_var.get(), "9")
         self.assertTrue(dialog.updated)
 
 

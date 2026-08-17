@@ -73,6 +73,7 @@ def build_task_preflight_deps(module):
         get_sampling_append_mode=lambda: module.RUNTIME_STATE.sampling_append_mode,
         get_sampling_use_temp_db=lambda: True,
         get_sampling_temp_db=lambda: module.RUNTIME_STATE.sampling_temp_db,
+        get_sampling_increment_db=lambda: module.RUNTIME_STATE.sampling_increment_db,
         get_sampling_auto_sync_to_target=lambda: module.RUNTIME_STATE.sampling_auto_sync_to_target,
         get_group_weight_formation_exists=module.get_group_weight_formation_exists,
         get_active_group_weight_modes=module.get_active_group_weight_modes,

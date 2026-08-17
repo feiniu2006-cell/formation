@@ -142,6 +142,9 @@ class SlotAppSettingsMixin:
         self.sampling_temp_db_var.set(
             getattr(deps, "default_sampling_temp_db", formation_defaults.DEFAULT_SAMPLING_TEMP_DB)
         )
+        self.sampling_increment_db_var.set(
+            getattr(deps, "default_sampling_increment_db", formation_defaults.DEFAULT_SAMPLING_INCREMENT_DB)
+        )
         self.buy_group_enabled_var.set(deps.default_buy_group_enabled)
         self.ex_buy_group_enabled_var.set(deps.default_ex_buy_group_enabled)
         self.ex_buy_game_type_var.set(str(deps.default_ex_buy_group_game_type))
@@ -241,6 +244,7 @@ class SlotAppSettingsMixin:
             sampling_detailed_log=deps.get_sampling_detailed_log(),
             sampling_use_temp_db=True,
             sampling_temp_db=getattr(deps, "get_sampling_temp_db", lambda: None)(),
+            sampling_increment_db=getattr(deps, "get_sampling_increment_db", lambda: None)(),
             sampling_auto_sync_to_target=getattr(deps, "get_sampling_auto_sync_to_target", lambda: False)(),
             group_weight_rules=deps.clone_group_weight_rules(group_weight_rules),
             group_weight_group_rules=getattr(deps, "clone_group_weight_group_rules", lambda rules: rules or {})(
@@ -294,6 +298,10 @@ class SlotAppSettingsMixin:
             self.config_db_var.set(str(runtime.get('config_db', self.config_db_var.get())))
             if hasattr(self, 'sampling_temp_db_var'):
                 self.sampling_temp_db_var.set(str(runtime.get('sampling_temp_db', self.sampling_temp_db_var.get())))
+            if hasattr(self, 'sampling_increment_db_var'):
+                self.sampling_increment_db_var.set(
+                    str(runtime.get('sampling_increment_db', self.sampling_increment_db_var.get()))
+                )
             if hasattr(self, 'sampling_auto_sync_to_target_var'):
                 self.sampling_auto_sync_to_target_var.set(
                     bool(runtime.get('sampling_auto_sync_to_target', self.sampling_auto_sync_to_target_var.get()))
@@ -335,6 +343,10 @@ class SlotAppSettingsMixin:
                 )
             if hasattr(self, 'sampling_temp_db_var'):
                 self.sampling_temp_db_var.set(str(sampling_options.get('temp_db', self.sampling_temp_db_var.get())))
+            if hasattr(self, 'sampling_increment_db_var'):
+                self.sampling_increment_db_var.set(
+                    str(sampling_options.get('increment_db', self.sampling_increment_db_var.get()))
+                )
 
         if 'group_weight_rules' in data:
             deps.apply_group_weight_rules_config(
@@ -726,6 +738,9 @@ class SlotAppSettingsMixin:
             getattr(deps, "apply_sampling_temp_db_config", lambda _enabled, _db: None)(
                 True,
                 self.sampling_temp_db_var.get(),
+            )
+            getattr(deps, "apply_sampling_increment_db_config", lambda _db: None)(
+                self.sampling_increment_db_var.get(),
             )
             getattr(deps, "apply_sampling_auto_sync_to_target", lambda _enabled: None)(
                 self.sampling_auto_sync_to_target_var.get(),

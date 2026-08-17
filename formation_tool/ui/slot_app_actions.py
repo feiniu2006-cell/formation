@@ -40,6 +40,7 @@ def build_action_groups(app, deps):
             "配置生成",
             [
                 ("生成group_weight", app.open_group_weight_rules_dialog),
+                ("演示用group_weight配置", app.open_demo_group_weight_rules_dialog),
                 (
                     "通用表配置",
                     lambda: app.run_task(

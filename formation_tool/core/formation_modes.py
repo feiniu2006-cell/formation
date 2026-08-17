@@ -59,7 +59,7 @@ EX_INDEPENDENT_GROUP_WEIGHT_MODES = tuple(
     if mode_def.get('rtp_role') == 'ex_independent'
 )
 INDEPENDENT_RTP_CONFIG_MODES = ('1', '6')
-DEFAULT_INDEPENDENT_RTP_MODES = tuple()
+DEFAULT_INDEPENDENT_RTP_MODES = INDEPENDENT_RTP_CONFIG_MODES
 
 
 def make_extra_buy_mode(game_type):

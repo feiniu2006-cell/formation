@@ -30,7 +30,7 @@ class TableDrivenConfigTests(unittest.TestCase):
         self.assertEqual(table_config["FINAL_TABLE"]["name"], "jili_523_custom_formation")
         self.assertEqual(table_config["REBATE_CONFIG_TABLE"]["name"], "jili_523_rebate_custom_formation_count")
 
-    def test_runtime_buy_group_entries_use_table_source_suffix(self):
+    def test_runtime_buy_group_entries_prioritize_main_config_source_suffix(self):
         runtime = SimpleNamespace(
             buy_groups=[
                 {
@@ -61,8 +61,41 @@ class TableDrivenConfigTests(unittest.TestCase):
         )
 
         self.assertEqual(default_entry["game_type"], 91)
-        self.assertEqual(default_entry["source_suffix"], "db_special_formation")
-        self.assertEqual(extra_entries[0]["source_suffix"], "db_buy2_special_formation")
+        self.assertEqual(default_entry["source_suffix"], "special_formation")
+        self.assertEqual(extra_entries[0]["source_suffix"], "fallback_special_formation")
+
+    def test_runtime_buy_group_entries_keep_multiple_manual_sampling_sources(self):
+        runtime = SimpleNamespace(
+            buy_groups=[
+                {
+                    "enabled": True,
+                    "game_type": 91,
+                    "multiplier": 1,
+                    "source_suffix": "buy2_formation",
+                },
+                {
+                    "enabled": True,
+                    "game_type": 92,
+                    "multiplier": 1,
+                    "source_suffix": "buy3_formation",
+                },
+            ],
+            buy_group_enabled=False,
+            buy_group_game_type=99,
+            buy_group_multiplier=75,
+            buy_group_source_suffix="free_formation",
+        )
+
+        default_entry, extra_entries = table_driven_configs.build_runtime_buy_group_entries_with_table_sources(
+            runtime=runtime,
+            get_game_type_source_suffix=lambda game_type, default=None: {
+                91: "special_formation",
+                92: "buy2_formation",
+            }.get(int(game_type), default),
+        )
+
+        self.assertEqual(default_entry["source_suffix"], "buy2_formation")
+        self.assertEqual(extra_entries[0]["source_suffix"], "buy3_formation")
 
 
 if __name__ == "__main__":

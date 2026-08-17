@@ -39,6 +39,12 @@ def build_runtime_buy_group_entries_with_table_sources(
     runtime,
     get_game_type_source_suffix,
 ):
+    """Build enabled buy rows, with the current main-window suffix as source of truth.
+
+    The database loader already copies game_room_game_type_config values into the
+    main window. Re-reading the database here would silently overwrite later
+    manual edits before sampling/group_weight config generation.
+    """
     split = buy_group_config.split_buy_groups_to_legacy(
         runtime.buy_groups,
         default_buy_enabled=runtime.buy_group_enabled,
@@ -46,21 +52,27 @@ def build_runtime_buy_group_entries_with_table_sources(
         default_buy_multiplier=runtime.buy_group_multiplier,
         default_buy_source_suffix=runtime.buy_group_source_suffix,
     )
+    default_source_suffix = str(split.get('buy_source_suffix') or '').strip()
+    if not default_source_suffix:
+        default_source_suffix = get_game_type_source_suffix(
+            split['buy_game_type'],
+            default=buy_group_config.DEFAULT_BUY_GROUP_SOURCE_SUFFIX,
+        )
     default_entry = {
         'enabled': bool(split['buy_enabled']),
         'game_type': int(split['buy_game_type']),
-        'source_suffix': get_game_type_source_suffix(
-            split['buy_game_type'],
-            default=split['buy_source_suffix'],
-        ),
+        'source_suffix': default_source_suffix,
     }
     extra_entries = []
     for group in split['extra_buy_groups']:
         entry = dict(group)
-        entry['source_suffix'] = get_game_type_source_suffix(
-            group['game_type'],
-            default=group.get('source_suffix') or split['buy_source_suffix'],
-        )
+        source_suffix = str(group.get('source_suffix') or '').strip()
+        if not source_suffix:
+            source_suffix = get_game_type_source_suffix(
+                group['game_type'],
+                default=default_source_suffix,
+            )
+        entry['source_suffix'] = source_suffix
         extra_entries.append(entry)
     return default_entry, extra_entries
 

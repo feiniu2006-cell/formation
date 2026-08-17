@@ -26,6 +26,7 @@ class SettingsDeps:
     default_sampling_detailed_log: Any
     default_sampling_use_temp_db: Any
     default_sampling_temp_db: Any
+    default_sampling_increment_db: Any
     default_sampling_auto_sync_to_target: Any
     default_buy_group_enabled: Any
     default_ex_buy_group_enabled: Any
@@ -52,6 +53,7 @@ class SettingsDeps:
     get_sampling_detailed_log: Any
     get_sampling_use_temp_db: Any
     get_sampling_temp_db: Any
+    get_sampling_increment_db: Any
     get_sampling_auto_sync_to_target: Any
     get_group_weight_rules: Any
     get_group_weight_group_rules: Any
@@ -118,6 +120,7 @@ class SettingsDeps:
     apply_sampling_append_mode: Any
     apply_sampling_detailed_log: Any
     apply_sampling_temp_db_config: Any
+    apply_sampling_increment_db_config: Any
     apply_sampling_auto_sync_to_target: Any
 
 
@@ -132,6 +135,7 @@ class TaskDeps:
     get_sampling_detailed_log: Any
     get_sampling_use_temp_db: Any
     get_sampling_temp_db: Any
+    get_sampling_increment_db: Any
     get_sampling_auto_sync_to_target: Any
     get_direct_count_modes: Any
     get_direct_count_tiers: Any
@@ -312,6 +316,7 @@ def build_settings_deps(ctx):
         default_sampling_detailed_log=ctx.default_sampling_detailed_log,
         default_sampling_use_temp_db=ctx.default_sampling_use_temp_db,
         default_sampling_temp_db=ctx.default_sampling_temp_db,
+        default_sampling_increment_db=ctx.default_sampling_increment_db,
         default_sampling_auto_sync_to_target=ctx.default_sampling_auto_sync_to_target,
         default_buy_group_enabled=ctx.default_buy_group_enabled,
         default_ex_buy_group_enabled=ctx.default_ex_buy_group_enabled,
@@ -338,6 +343,7 @@ def build_settings_deps(ctx):
         get_sampling_detailed_log=ctx.get_sampling_detailed_log,
         get_sampling_use_temp_db=ctx.get_sampling_use_temp_db,
         get_sampling_temp_db=ctx.get_sampling_temp_db,
+        get_sampling_increment_db=ctx.get_sampling_increment_db,
         get_sampling_auto_sync_to_target=ctx.get_sampling_auto_sync_to_target,
         get_group_weight_rules=ctx.get_group_weight_rules,
         get_group_weight_group_rules=getattr(ctx, 'get_group_weight_group_rules', lambda: {}),
@@ -426,6 +432,7 @@ def build_settings_deps(ctx):
         apply_sampling_append_mode=ctx.apply_sampling_append_mode,
         apply_sampling_detailed_log=ctx.apply_sampling_detailed_log,
         apply_sampling_temp_db_config=ctx.apply_sampling_temp_db_config,
+        apply_sampling_increment_db_config=ctx.apply_sampling_increment_db_config,
         apply_sampling_auto_sync_to_target=ctx.apply_sampling_auto_sync_to_target,
     )
 
@@ -441,6 +448,7 @@ def build_task_deps(ctx):
         get_sampling_detailed_log=ctx.get_sampling_detailed_log,
         get_sampling_use_temp_db=ctx.get_sampling_use_temp_db,
         get_sampling_temp_db=ctx.get_sampling_temp_db,
+        get_sampling_increment_db=ctx.get_sampling_increment_db,
         get_sampling_auto_sync_to_target=ctx.get_sampling_auto_sync_to_target,
         get_direct_count_modes=ctx.get_direct_count_modes,
         get_direct_count_tiers=ctx.get_direct_count_tiers,
