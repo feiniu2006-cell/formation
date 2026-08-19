@@ -168,6 +168,13 @@ class RuntimeState:
         self.group_weight_group_rules = formation_defaults.clone_group_rule_map(
             formation_defaults.GROUP_WEIGHT_GROUP_RULES
         )
+        self.demo_group_weight_rules = formation_defaults.clone_rule_map(
+            formation_defaults.DEFAULT_DEMO_GROUP_WEIGHT_RULES
+        )
+        self.demo_group_weight_target_rtps = formation_defaults.clone_demo_group_weight_target_rtps()
+        self.demo_zero_rebate_inference_modes = set(
+            formation_defaults.DEFAULT_DEMO_ZERO_REBATE_INFERENCE_MODES
+        )
         self.zero_rebate_inference_modes = formation_modes.normalize_zero_rebate_inference_modes(None)
         self.independent_rtp_modes = formation_modes.normalize_independent_rtp_modes(None)
         self.sampling_append_mode = formation_defaults.DEFAULT_SAMPLING_APPEND_MODE
@@ -243,6 +250,15 @@ class RuntimeState:
         self.group_weight_rules = _clone(_read(namespace, 'GROUP_WEIGHT_RULES', self.group_weight_rules))
         self.group_weight_group_rules = _clone(
             _read(namespace, 'GROUP_WEIGHT_GROUP_RULES', self.group_weight_group_rules)
+        )
+        self.demo_group_weight_rules = _clone(
+            _read(namespace, 'DEMO_GROUP_WEIGHT_RULES', self.demo_group_weight_rules)
+        )
+        self.demo_group_weight_target_rtps = _clone(
+            _read(namespace, 'DEMO_GROUP_WEIGHT_TARGET_RTPS', self.demo_group_weight_target_rtps)
+        )
+        self.demo_zero_rebate_inference_modes = set(
+            _read(namespace, 'DEMO_ZERO_REBATE_INFERENCE_MODES', self.demo_zero_rebate_inference_modes)
         )
         self.zero_rebate_inference_modes = formation_modes.normalize_zero_rebate_inference_modes(
             _read(namespace, 'ZERO_REBATE_INFERENCE_MODES', self.zero_rebate_inference_modes)
@@ -353,6 +369,9 @@ class RuntimeState:
         _assign(namespace, 'REBATE_RULES', _clone(self.rebate_rules))
         _assign(namespace, 'GROUP_WEIGHT_RULES', _clone(self.group_weight_rules))
         _assign(namespace, 'GROUP_WEIGHT_GROUP_RULES', _clone(self.group_weight_group_rules))
+        _assign(namespace, 'DEMO_GROUP_WEIGHT_RULES', _clone(self.demo_group_weight_rules))
+        _assign(namespace, 'DEMO_GROUP_WEIGHT_TARGET_RTPS', _clone(self.demo_group_weight_target_rtps))
+        _assign(namespace, 'DEMO_ZERO_REBATE_INFERENCE_MODES', set(self.demo_zero_rebate_inference_modes))
         _assign(namespace, 'ZERO_REBATE_INFERENCE_MODES', set(self.zero_rebate_inference_modes))
         _assign(namespace, 'INDEPENDENT_RTP_MODES', set(self.independent_rtp_modes))
         _assign(namespace, 'SAMPLING_APPEND_MODE', False)

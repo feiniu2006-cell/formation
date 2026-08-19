@@ -158,6 +158,17 @@ class SlotAppSettingsMixin:
         self.set_extra_weight_group_rows(getattr(deps, "default_extra_weight_groups", []))
         deps.apply_rebate_rules_config(deps.clone_rebate_rules(deps.default_rebate_rules))
         deps.apply_group_weight_rules_config(deps.clone_group_weight_rules(deps.default_group_weight_rules))
+        getattr(deps, "apply_demo_group_weight_rules_config", lambda _rules: None)(
+            deps.clone_group_weight_rules(
+                getattr(deps, "default_demo_group_weight_rules", deps.default_group_weight_rules)
+            )
+        )
+        getattr(deps, "apply_demo_group_weight_target_rtps_config", lambda _targets: None)(
+            getattr(deps, "default_demo_group_weight_target_rtps", {})
+        )
+        getattr(deps, "apply_demo_zero_rebate_inference_modes_config", lambda _modes: None)(
+            getattr(deps, "default_demo_zero_rebate_inference_modes", set())
+        )
         getattr(deps, "apply_group_weight_group_rules_config", lambda _rules: None)(
             getattr(deps, "clone_group_weight_group_rules", lambda rules: rules or {})(
                 getattr(deps, "default_group_weight_group_rules", {})
@@ -193,6 +204,8 @@ class SlotAppSettingsMixin:
         *,
         group_weight_rules_override=_SETTINGS_VALUE_UNSET,
         group_weight_group_rules_override=_SETTINGS_VALUE_UNSET,
+        demo_group_weight_rules_override=_SETTINGS_VALUE_UNSET,
+        demo_group_weight_options_override=_SETTINGS_VALUE_UNSET,
     ):
         deps = self.settings_deps
         group_weight_rules = (
@@ -204,6 +217,21 @@ class SlotAppSettingsMixin:
             getattr(deps, "get_group_weight_group_rules", lambda: {})()
             if group_weight_group_rules_override is _SETTINGS_VALUE_UNSET
             else group_weight_group_rules_override
+        )
+        demo_group_weight_rules = (
+            getattr(deps, "get_demo_group_weight_rules", deps.get_group_weight_rules)()
+            if demo_group_weight_rules_override is _SETTINGS_VALUE_UNSET
+            else demo_group_weight_rules_override
+        )
+        demo_group_weight_options = (
+            {
+                'target_rtps': getattr(deps, "get_demo_group_weight_target_rtps", lambda: {})(),
+                'zero_rebate_inference_modes': sorted(
+                    getattr(deps, "get_demo_zero_rebate_inference_modes", lambda: set())()
+                ),
+            }
+            if demo_group_weight_options_override is _SETTINGS_VALUE_UNSET
+            else demo_group_weight_options_override
         )
         if (
             group_weight_rules_override is _SETTINGS_VALUE_UNSET
@@ -274,6 +302,8 @@ class SlotAppSettingsMixin:
                     getattr(deps, "get_extra_weight_groups", lambda: [])()
                 ),
             },
+            demo_group_weight_rules=deps.clone_group_weight_rules(demo_group_weight_rules),
+            demo_group_weight_options=demo_group_weight_options,
             direct_count_modes=deps.get_direct_count_modes(),
             direct_count_tiers=deps.get_direct_count_tiers(),
         )
@@ -358,6 +388,20 @@ class SlotAppSettingsMixin:
                     data['group_weight_group_rules']
                 )
             )
+        if 'demo_group_weight_rules' in data:
+            getattr(deps, "apply_demo_group_weight_rules_config", lambda _rules: None)(
+                deps.normalize_group_weight_rules_for_load(data['demo_group_weight_rules'])
+            )
+        demo_options = data.get('demo_group_weight_options', {})
+        if demo_options:
+            if 'target_rtps' in demo_options:
+                getattr(deps, "apply_demo_group_weight_target_rtps_config", lambda _targets: None)(
+                    demo_options.get('target_rtps')
+                )
+            if 'zero_rebate_inference_modes' in demo_options:
+                getattr(deps, "apply_demo_zero_rebate_inference_modes_config", lambda _modes: None)(
+                    demo_options.get('zero_rebate_inference_modes')
+                )
 
         group_options = data.get('group_weight_options', {})
         if group_options:
@@ -500,6 +544,8 @@ class SlotAppSettingsMixin:
         silent=False,
         group_weight_rules_override=_SETTINGS_VALUE_UNSET,
         group_weight_group_rules_override=_SETTINGS_VALUE_UNSET,
+        demo_group_weight_rules_override=_SETTINGS_VALUE_UNSET,
+        demo_group_weight_options_override=_SETTINGS_VALUE_UNSET,
     ):
         if self.running:
             messagebox.showinfo("正在运行", "当前任务还没有结束，请稍后再操作。")
@@ -511,6 +557,8 @@ class SlotAppSettingsMixin:
             data = self.build_app_settings_data(
                 group_weight_rules_override=group_weight_rules_override,
                 group_weight_group_rules_override=group_weight_group_rules_override,
+                demo_group_weight_rules_override=demo_group_weight_rules_override,
+                demo_group_weight_options_override=demo_group_weight_options_override,
             )
             last_data = self.build_last_settings_data()
             profile_path = deps.get_app_profile_settings_path()

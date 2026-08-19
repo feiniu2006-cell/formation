@@ -4,6 +4,7 @@ from formation_tool.group_weight.group_weight_logic import (
     build_rebate_weight_pairs,
     format_weighted_rtp,
     should_infer_zero_rebate,
+    should_infer_zero_rebate_for_modes,
 )
 from formation_tool.group_weight import group_weight_row_helpers
 from formation_tool.group_weight import group_weight_pair_sets
@@ -18,10 +19,20 @@ def configure(**values):
 
 
 def should_infer_buy_zero_rebate(mode, source_rebates):
+    enabled_modes = globals().get('ZERO_REBATE_INFERENCE_MODES', set())
+    candidates = [mode]
+    write_game_type_getter = globals().get('get_group_weight_write_game_type')
+    if callable(write_game_type_getter):
+        try:
+            candidates.append(write_game_type_getter(mode))
+        except (KeyError, TypeError, ValueError):
+            pass
+    if should_infer_zero_rebate_for_modes(candidates, source_rebates, enabled_modes):
+        return True
     return should_infer_zero_rebate(
         mode,
         source_rebates,
-        globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
+        enabled_modes,
     )
 
 

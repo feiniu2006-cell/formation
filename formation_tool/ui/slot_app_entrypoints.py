@@ -35,6 +35,12 @@ def build_group_weight_dialog_deps(runtime_state, module_namespace):
     )
 
 
+def build_demo_group_weight_dialog_deps(runtime_state, module_namespace):
+    return slot_app_deps.build_demo_group_weight_dialog_deps(
+        build_slot_app_deps_context(runtime_state, module_namespace)
+    )
+
+
 def build_slot_process_app_deps(runtime_state, module_namespace):
     return slot_app_deps.build_process_app_deps(
         build_slot_app_deps_context(runtime_state, module_namespace)

@@ -127,6 +127,8 @@ def build_app_settings_data(
     group_weight_rules,
     group_weight_group_rules=None,
     group_weight_options,
+    demo_group_weight_rules=None,
+    demo_group_weight_options=None,
     direct_count_modes,
     direct_count_tiers,
 ):
@@ -156,6 +158,8 @@ def build_app_settings_data(
         'group_weight_rules': group_weight_rules,
         'group_weight_group_rules': group_weight_group_rules or {},
         'group_weight_options': group_weight_options,
+        'demo_group_weight_rules': demo_group_weight_rules or {},
+        'demo_group_weight_options': demo_group_weight_options or {},
         'direct_count_modes': sorted(direct_count_modes),
         'direct_count_tiers': [dict(rule) for rule in direct_count_tiers],
     }
@@ -189,6 +193,20 @@ def migrate_settings_data(data):
                         formation_defaults.clone_rule_map(default_group_rules),
                     )
             migrated['group_weight_group_rules'] = group_rules_by_suffix
+    if not isinstance(migrated.get('demo_group_weight_rules'), dict):
+        migrated['demo_group_weight_rules'] = formation_defaults.clone_rule_map(
+            formation_defaults.DEFAULT_DEMO_GROUP_WEIGHT_RULES
+        )
+    demo_options = dict(migrated.get('demo_group_weight_options') or {})
+    demo_options.setdefault(
+        'target_rtps',
+        formation_defaults.clone_demo_group_weight_target_rtps(),
+    )
+    demo_options.setdefault(
+        'zero_rebate_inference_modes',
+        list(formation_defaults.DEFAULT_DEMO_ZERO_REBATE_INFERENCE_MODES),
+    )
+    migrated['demo_group_weight_options'] = demo_options
     sampling_options = dict(migrated.get('sampling_options') or {})
     if sampling_options:
         sampling_options.setdefault(

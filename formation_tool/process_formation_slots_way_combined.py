@@ -1,4 +1,4 @@
-﻿# ================== 配置区域 ==================
+# ================== 配置区域 ==================
 import copy
 import os
 import sys
@@ -14,6 +14,7 @@ if PROJECT_ROOT not in sys.path:
 from db_config import DATABASE_CONFIGS, MAX_DB_RETRIES, DB_RETRY_DELAY
 from formation_tool.common import common_config_entrypoints
 from formation_tool.common import common_config_runner
+from formation_tool.cli import formation_script_entrypoint
 from formation_tool.db import external_db_config_loader
 from formation_tool.db import game_type_config_runtime
 from formation_tool.core import formation_cli_settings
@@ -25,6 +26,7 @@ from formation_tool.core import formation_modes
 from formation_tool.core import table_driven_configs
 from formation_tool.db import formation_table_detection
 from formation_tool.group_weight import group_weight_entrypoints
+from formation_tool.group_weight import group_weight_demo
 from formation_tool.group_weight import group_weight_logic
 from formation_tool.group_weight import group_weight_rebate_loader
 from formation_tool.rebate import buy_source_rebate_configs
@@ -32,6 +34,7 @@ from formation_tool.core import buy_group_config
 from formation_tool.core import rule_config_state
 from formation_tool.core import runtime_config
 from formation_tool.core import runtime_state_sync
+from formation_tool.core import sampling_job_orchestrator
 from formation_tool.core import settings_logic
 from formation_tool.core import task_entrypoints
 from formation_tool.core import task_dependency_factories
@@ -673,6 +676,16 @@ DEFAULT_GROUP_WEIGHT_RULES = {
     mode: [dict(rule) for rule in GROUP_WEIGHT_RULES.get(mode, [])]
     for mode in GROUP_WEIGHT_MODES
 }
+DEMO_GROUP_WEIGHT_RULES = formation_defaults.clone_rule_map(formation_defaults.DEFAULT_DEMO_GROUP_WEIGHT_RULES)
+DEFAULT_DEMO_GROUP_WEIGHT_RULES = formation_defaults.clone_rule_map(
+    formation_defaults.DEFAULT_DEMO_GROUP_WEIGHT_RULES
+)
+DEMO_GROUP_WEIGHT_TARGET_RTPS = formation_defaults.clone_demo_group_weight_target_rtps()
+DEFAULT_DEMO_GROUP_WEIGHT_TARGET_RTPS = formation_defaults.clone_demo_group_weight_target_rtps()
+DEMO_ZERO_REBATE_INFERENCE_MODES = set(formation_defaults.DEFAULT_DEMO_ZERO_REBATE_INFERENCE_MODES)
+DEFAULT_DEMO_ZERO_REBATE_INFERENCE_MODES = set(
+    formation_defaults.DEFAULT_DEMO_ZERO_REBATE_INFERENCE_MODES
+)
 DEFAULT_GROUP_WEIGHT_GROUP_RULES = formation_defaults.clone_group_rule_map(
     formation_defaults.GROUP_WEIGHT_GROUP_RULES
 )
@@ -736,6 +749,7 @@ def _sync_globals_from_runtime_state():
     global WEIGHT_GROUP_IDS, EXTRA_WEIGHT_GROUPS
     global SPECIAL_WEIGHT_BY_LAST_DIGIT, FREE_WEIGHT_BY_LAST_DIGIT
     global REBATE_RULES, GROUP_WEIGHT_RULES, GROUP_WEIGHT_GROUP_RULES
+    global DEMO_GROUP_WEIGHT_RULES, DEMO_GROUP_WEIGHT_TARGET_RTPS, DEMO_ZERO_REBATE_INFERENCE_MODES
     global ZERO_REBATE_INFERENCE_MODES, INDEPENDENT_RTP_MODES
     global SAMPLING_APPEND_MODE, SAMPLING_DETAILED_LOG
     global SAMPLING_USE_TEMP_DB, SAMPLING_TEMP_DB, SAMPLING_INCREMENT_DB, SAMPLING_AUTO_SYNC_TO_TARGET
@@ -767,6 +781,9 @@ def _sync_globals_from_runtime_state():
     REBATE_RULES = target.REBATE_RULES
     GROUP_WEIGHT_RULES = target.GROUP_WEIGHT_RULES
     GROUP_WEIGHT_GROUP_RULES = target.GROUP_WEIGHT_GROUP_RULES
+    DEMO_GROUP_WEIGHT_RULES = target.DEMO_GROUP_WEIGHT_RULES
+    DEMO_GROUP_WEIGHT_TARGET_RTPS = target.DEMO_GROUP_WEIGHT_TARGET_RTPS
+    DEMO_ZERO_REBATE_INFERENCE_MODES = target.DEMO_ZERO_REBATE_INFERENCE_MODES
     ZERO_REBATE_INFERENCE_MODES = target.ZERO_REBATE_INFERENCE_MODES
     INDEPENDENT_RTP_MODES = target.INDEPENDENT_RTP_MODES
     SAMPLING_APPEND_MODE = target.SAMPLING_APPEND_MODE
@@ -1114,6 +1131,80 @@ def apply_group_weight_group_rules_config(rules):
     GROUP_WEIGHT_GROUP_RULES = validate_group_weight_group_rules(rules)
     RUNTIME_STATE.group_weight_group_rules = GROUP_WEIGHT_GROUP_RULES
     return GROUP_WEIGHT_GROUP_RULES
+
+
+def validate_demo_group_weight_rules(rules):
+    return rule_config_state.validate_group_weight_rules(
+        rules,
+        group_modes=GROUP_WEIGHT_MODES,
+        game_type_names=GAME_TYPE_NAMES,
+        default_rules=DEFAULT_DEMO_GROUP_WEIGHT_RULES,
+        fill_missing=True,
+        warn_unknown=True,
+        add_warning=add_config_warning,
+    )
+
+
+def normalize_demo_group_weight_rules_for_load(rules):
+    return validate_demo_group_weight_rules(rules)
+
+
+def apply_demo_group_weight_rules_config(rules):
+    """Apply demo group_weight interval rules."""
+    global DEMO_GROUP_WEIGHT_RULES
+    DEMO_GROUP_WEIGHT_RULES = validate_demo_group_weight_rules(rules)
+    RUNTIME_STATE.demo_group_weight_rules = DEMO_GROUP_WEIGHT_RULES
+    return DEMO_GROUP_WEIGHT_RULES
+
+
+def normalize_demo_group_weight_target_rtps(values):
+    normalized = {}
+    values = values or {}
+    for mode in GROUP_WEIGHT_MODES:
+        raw_value = values.get(str(mode)) if isinstance(values, dict) else None
+        if raw_value is None:
+            try:
+                raw_value = values.get(int(mode)) if isinstance(values, dict) else None
+            except (TypeError, ValueError):
+                raw_value = None
+        if raw_value is None or str(raw_value).strip() == "":
+            continue
+        normalized[str(mode)] = _parse_positive_float_text(
+            raw_value,
+            f"{GAME_TYPE_NAMES.get(str(mode), mode)}演示目标RTP",
+        )
+    return normalized
+
+
+def apply_demo_group_weight_target_rtps_config(values):
+    """Apply manual display RTP targets for demo group_weight generation."""
+    global DEMO_GROUP_WEIGHT_TARGET_RTPS
+    DEMO_GROUP_WEIGHT_TARGET_RTPS = normalize_demo_group_weight_target_rtps(values)
+    RUNTIME_STATE.demo_group_weight_target_rtps = dict(DEMO_GROUP_WEIGHT_TARGET_RTPS)
+    return dict(DEMO_GROUP_WEIGHT_TARGET_RTPS)
+
+
+def get_demo_group_weight_target_rtps():
+    _sync_group_weight_runtime_from_globals()
+    return dict(RUNTIME_STATE.demo_group_weight_target_rtps)
+
+
+def get_demo_group_weight_rules():
+    _sync_group_weight_runtime_from_globals()
+    return RUNTIME_STATE.demo_group_weight_rules
+
+
+def apply_demo_zero_rebate_inference_modes_config(modes):
+    """Apply demo rebate=0 inference switches."""
+    global DEMO_ZERO_REBATE_INFERENCE_MODES
+    DEMO_ZERO_REBATE_INFERENCE_MODES = formation_modes.normalize_zero_rebate_inference_modes(modes)
+    RUNTIME_STATE.demo_zero_rebate_inference_modes = set(DEMO_ZERO_REBATE_INFERENCE_MODES)
+    return set(DEMO_ZERO_REBATE_INFERENCE_MODES)
+
+
+def get_demo_zero_rebate_inference_modes():
+    _sync_group_weight_runtime_from_globals()
+    return set(RUNTIME_STATE.demo_zero_rebate_inference_modes)
 
 
 def apply_special_group_target_rtp(value):
@@ -2090,6 +2181,11 @@ def get_group_weight_table_name():
     return f'{RUNTIME_STATE.game_table_prefix}group_weight'
 
 
+def get_demo_group_weight_table_name():
+    """Return the current demo group_weight table name."""
+    return f'{RUNTIME_STATE.game_table_prefix}group_weight_demo'
+
+
 def get_buy_group_source_suffix_for_mode(game_type):
     mode = formation_modes.normalize_group_weight_mode_key(game_type)
     if mode == BUY_GROUP_MODE or is_extra_buy_mode(mode):
@@ -2391,6 +2487,44 @@ def build_group_weight_zero_weight_write_rows(*args, **kwargs):
     return _call_group_weight_builder('build_group_weight_zero_weight_write_rows', *args, **kwargs)
 
 
+def build_demo_group_weight_logic_deps():
+    return SimpleNamespace(
+        buy_group_mode=BUY_GROUP_MODE,
+        is_extra_buy_mode=is_extra_buy_mode,
+        default_buy_group_weight_rules=lambda: DEFAULT_DEMO_GROUP_WEIGHT_RULES.get(BUY_GROUP_MODE, []),
+        default_demo_target_rtps=lambda: dict(DEFAULT_DEMO_GROUP_WEIGHT_TARGET_RTPS),
+        get_group_weight_rtp_role=get_group_weight_rtp_role,
+        get_buy_group_multiplier_for_mode=get_buy_group_multiplier_for_mode,
+        get_ex_group_multiplier=lambda: RUNTIME_STATE.ex_group_multiplier,
+        get_group_weight_write_game_type=get_group_weight_write_game_type,
+        get_group_weight_mode_name=get_group_weight_mode_name,
+    )
+
+
+def build_demo_group_weight_rows(*args, **kwargs):
+    return group_weight_demo.build_demo_group_weight_rows(
+        *args,
+        deps=build_demo_group_weight_logic_deps(),
+        **kwargs,
+    )
+
+
+def build_demo_group_weight_preview_text(*args, **kwargs):
+    return group_weight_demo.build_demo_group_weight_preview_text(
+        *args,
+        deps=build_demo_group_weight_logic_deps(),
+        **kwargs,
+    )
+
+
+def build_demo_group_weight_preview_points(*args, **kwargs):
+    return group_weight_demo.build_demo_group_weight_preview_points(
+        *args,
+        deps=build_demo_group_weight_logic_deps(),
+        **kwargs,
+    )
+
+
 def _call_group_weight_builder(func_name, *args, **kwargs):
     return group_weight_entrypoints.call_builder_function(
         _sync_group_weight_builder_context,
@@ -2487,6 +2621,12 @@ def build_group_weight_generation_context():
     )
 
 
+def build_demo_group_weight_generation_context():
+    return group_weight_runner.build_demo_group_weight_generation_context(
+        deps=build_group_weight_runner_deps(),
+    )
+
+
 def print_group_weight_generation_summary(*args, **kwargs):
     return _call_group_weight_builder('print_group_weight_generation_summary', *args, **kwargs)
 
@@ -2544,9 +2684,11 @@ def build_group_weight_runner_deps():
         SimpleNamespace(
             check_cancelled=check_cancelled,
             get_group_weight_table_name=get_group_weight_table_name,
+            get_demo_group_weight_table_name=get_demo_group_weight_table_name,
             get_group_weight_formation_exists=get_group_weight_formation_exists,
             get_active_group_weight_modes=get_active_group_weight_modes,
             build_group_weight_generation_context=build_group_weight_generation_context,
+            build_demo_group_weight_generation_context=build_demo_group_weight_generation_context,
             print_group_weight_generation_summary=print_group_weight_generation_summary,
             connect_group_weight_databases=connect_group_weight_databases,
             load_group_weight_generation_data=load_group_weight_generation_data,
@@ -2555,7 +2697,13 @@ def build_group_weight_runner_deps():
             build_group_weight_zero_weight_write_rows=build_group_weight_zero_weight_write_rows,
             build_normalized_group_weight_generation_rows=build_normalized_group_weight_generation_rows,
             build_group_weight_rows_from_loaded_data=build_group_weight_rows_from_loaded_data,
+            build_demo_group_weight_rows=build_demo_group_weight_rows,
+            get_demo_group_weight_rules=get_demo_group_weight_rules,
+            get_demo_group_weight_target_rtps=get_demo_group_weight_target_rtps,
+            get_demo_zero_rebate_inference_modes=get_demo_zero_rebate_inference_modes,
             normalize_group_weight_rows=normalize_group_weight_rows,
+            connect_to_database=connect_to_database,
+            quote_identifier=quote_identifier,
             write_group_weight_generation_rows=write_group_weight_generation_rows,
             replace_group_weight_rows_atomically=replace_group_weight_rows_atomically,
             verify_group_weight_zero_rebate_rows=verify_group_weight_zero_rebate_rows,
@@ -2570,7 +2718,14 @@ def build_group_weight_runner_deps():
         SimpleNamespace(
             get_config_db=lambda: RUNTIME_STATE.config_db,
             get_final_db=lambda: RUNTIME_STATE.final_db,
+            get_weight_config_db=lambda: RUNTIME_STATE.weight_config_db,
             get_ex_buy_group_enabled=lambda: RUNTIME_STATE.ex_buy_group_enabled,
+            game_id=RUNTIME_STATE.game_id,
+            weight_type_id=RUNTIME_STATE.weight_type_id,
+            special_weight_table=SPECIAL_WEIGHT_TABLE,
+            free_game_config_table=FREE_GAME_CONFIG_TABLE,
+            special_weight_by_last_digit=RUNTIME_STATE.special_weight_by_last_digit,
+            free_weight_by_last_digit=RUNTIME_STATE.free_weight_by_last_digit,
         ),
         SimpleNamespace(
             print_no_group_weight_rows=log_utils.print_no_group_weight_rows,
@@ -2583,6 +2738,15 @@ def build_group_weight_runner_deps():
 
 def generate_group_weight_config():
     return group_weight_runner.generate_group_weight_config(deps=build_group_weight_runner_deps())
+
+
+def generate_demo_group_weight_config():
+    return group_weight_runner.generate_demo_group_weight_config(deps=build_group_weight_runner_deps())
+
+
+def write_demo_common_configs():
+    check_cancelled()
+    return group_weight_runner.write_demo_trigger_weight_config(deps=build_group_weight_runner_deps())
 
 
 def build_common_config_constants():
@@ -3064,43 +3228,31 @@ def build_all_sampling_jobs_deps(*, append_mode=False):
 
 
 def _sync_sampling_modes_after_success(modes):
-    """Mirror completed staging results for successful sampling modes when enabled."""
-    selected_modes = [str(mode) for mode in (modes or [])]
-    if not selected_modes:
-        print("自动镜像已开启，但本次没有成功采样的局类型，跳过镜像。")
-        return False
-    items = build_sampling_temp_sync_items(selected_modes, existing_only=True)
-    if not items:
-        print("自动镜像已开启，但中转库中没有找到本次成功采样的正式表，跳过镜像。")
-        return False
-    print(f"自动镜像已开启：准备将 {len(items)} 张中转表同步到目标库 {FINAL_DB}。")
-    return sync_sampling_temp_results(items)
+    return sampling_job_orchestrator.sync_sampling_modes_after_success(
+        modes,
+        final_db=FINAL_DB,
+        build_sync_items=build_sampling_temp_sync_items,
+        sync_results=sync_sampling_temp_results,
+        print_func=print,
+    )
 
 
 def run_all_sampling_jobs():
-    results = task_entrypoints.run_all_sampling_jobs(deps=build_all_sampling_jobs_deps())
-    if SAMPLING_AUTO_SYNC_TO_TARGET:
-        successful_modes = [
-            mode
-            for mode, success in (results or {}).items()
-            if success is True
-        ]
-        _sync_sampling_modes_after_success(successful_modes)
-    return results
+    return sampling_job_orchestrator.run_all_sampling_jobs(
+        run_all_jobs=task_entrypoints.run_all_sampling_jobs,
+        build_deps=build_all_sampling_jobs_deps,
+        auto_sync=SAMPLING_AUTO_SYNC_TO_TARGET,
+        sync_successful_modes=_sync_sampling_modes_after_success,
+    )
 
 
 def run_all_supplemental_sampling_jobs():
-    results = task_entrypoints.run_all_sampling_jobs(
-        deps=build_all_sampling_jobs_deps(append_mode=True)
+    return sampling_job_orchestrator.run_all_sampling_jobs(
+        run_all_jobs=task_entrypoints.run_all_sampling_jobs,
+        build_deps=lambda: build_all_sampling_jobs_deps(append_mode=True),
+        auto_sync=SAMPLING_AUTO_SYNC_TO_TARGET,
+        sync_successful_modes=_sync_sampling_modes_after_success,
     )
-    if SAMPLING_AUTO_SYNC_TO_TARGET:
-        successful_modes = [
-            mode
-            for mode, success in (results or {}).items()
-            if success is True
-        ]
-        _sync_sampling_modes_after_success(successful_modes)
-    return results
 
 
 def build_rebate_config_generation_deps():
@@ -3135,18 +3287,25 @@ def test_selected_database_connections():
 
 def run_single_game_job(choice):
     """Run sampling for one selected mode."""
-    success = run_single_game(get_runtime_game_configs()[choice])
-    if success and SAMPLING_AUTO_SYNC_TO_TARGET:
-        _sync_sampling_modes_after_success([choice])
-    return success
+    return sampling_job_orchestrator.run_single_sampling_job(
+        choice,
+        get_game_configs=get_runtime_game_configs,
+        run_single_game=run_single_game,
+        auto_sync=SAMPLING_AUTO_SYNC_TO_TARGET,
+        sync_successful_modes=_sync_sampling_modes_after_success,
+    )
 
 
 def run_single_supplemental_game_job(choice):
     """Run supplemental sampling for one selected mode."""
-    success = run_single_game(get_runtime_game_configs()[choice], append_mode=True)
-    if success and SAMPLING_AUTO_SYNC_TO_TARGET:
-        _sync_sampling_modes_after_success([choice])
-    return success
+    return sampling_job_orchestrator.run_single_sampling_job(
+        choice,
+        get_game_configs=get_runtime_game_configs,
+        run_single_game=run_single_game,
+        auto_sync=SAMPLING_AUTO_SYNC_TO_TARGET,
+        sync_successful_modes=_sync_sampling_modes_after_success,
+        append_mode=True,
+    )
 
 
 def sync_sampling_temp_result(item):
@@ -3167,33 +3326,24 @@ def sync_sampling_temp_result(item):
 
 
 def sync_sampling_temp_results(items):
-    """Synchronize completed staging-DB sampling tables after user confirmation."""
-    results = {}
-    for index, item in enumerate(items or [], start=1):
-        check_cancelled()
-        table_name = item.get('table_name') if isinstance(item, dict) else None
-        label = table_name or f"待同步表{index}"
-        log_utils.print_section(f"同步采样临时库：{label}")
-        results[label] = sync_sampling_temp_result(item)
-    if not results:
-        print("没有待同步的采样临时库结果。")
-        return False
-    log_utils.print_result_summary(
-        "采样临时库同步完毕，汇总结果",
-        results,
-        name_getter=lambda key: key,
+    return sampling_job_orchestrator.sync_sampling_temp_results(
+        items,
+        check_cancelled=check_cancelled,
+        sync_one=sync_sampling_temp_result,
+        print_section=log_utils.print_section,
+        print_result_summary=log_utils.print_result_summary,
+        print_func=print,
     )
-    return results
 
 
 def mirror_sampling_temp_to_target():
-    """Mirror existing sampling staging-DB formal tables to the target DB."""
-    items = build_sampling_temp_sync_items("all", existing_only=True)
-    if not items:
-        print(f"采样临时库 {SAMPLING_TEMP_DB} 中没有找到当前游戏可镜像的采样正式表。")
-        return False
-    print(f"发现 {len(items)} 张采样中转表，将镜像到目标库 {FINAL_DB}。")
-    return sync_sampling_temp_results(items)
+    return sampling_job_orchestrator.mirror_sampling_temp_to_target(
+        sampling_temp_db=SAMPLING_TEMP_DB,
+        final_db=FINAL_DB,
+        build_sync_items=build_sampling_temp_sync_items,
+        sync_results=sync_sampling_temp_results,
+        print_func=print,
+    )
 
 
 def build_slot_app_deps_context():
@@ -3235,6 +3385,14 @@ def build_group_weight_dialog_deps():
     )
 
 
+def build_demo_group_weight_dialog_deps():
+    """Build dependencies consumed by the demo GroupWeightRulesDialog."""
+    return slot_app_entrypoints.build_demo_group_weight_dialog_deps(
+        RUNTIME_STATE,
+        _current_module_namespace(),
+    )
+
+
 def build_slot_process_app_deps():
     """Build dependencies consumed by SlotProcessApp."""
     return slot_app_entrypoints.build_slot_process_app_deps(
@@ -3251,40 +3409,19 @@ def run_gui():
 
 
 def main():
-    if not load_cli_settings():
-        return False
-    game_configs = get_cli_menu_game_configs()
-    deps = SimpleNamespace(
-        game_configs=game_configs,
-        run_all_sampling_jobs=run_all_sampling_jobs,
-        run_all_supplemental_sampling_jobs=run_all_supplemental_sampling_jobs,
-        generate_all_rebate_configs=generate_all_rebate_configs,
-        write_common_configs=write_common_configs,
-        run_single_game=run_single_game,
-        run_single_game_by_choice=run_single_game_job,
-        run_single_supplemental_game_job=run_single_supplemental_game_job,
-    )
-    return run_cli(deps)
+    return formation_script_entrypoint.run_cli_main(_current_module_namespace())
 
 
 def clean_sampling_task_states(max_age_days=sampling_task_state.DEFAULT_COMPLETED_STATE_RETENTION_DAYS, *, dry_run=True):
-    removed = sampling_task_state.cleanup_completed_states(max_age_days=max_age_days, dry_run=dry_run)
-    if dry_run:
-        print(f"将清理 {len(removed)} 个已完成采样任务状态文件（保留 {int(max_age_days)} 天内记录）；追加 --yes 才会实际删除")
-    else:
-        print(f"已清理 {len(removed)} 个已完成采样任务状态文件（保留 {int(max_age_days)} 天内记录）")
-    return removed
+    return formation_script_entrypoint.clean_sampling_task_states(
+        _current_module_namespace(),
+        max_age_days,
+        dry_run=dry_run,
+    )
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--clean-sampling-tasks":
-        clean_args = [arg for arg in sys.argv[2:] if arg != "--yes"]
-        retention_days = int(clean_args[0]) if clean_args else sampling_task_state.DEFAULT_COMPLETED_STATE_RETENTION_DAYS
-        clean_sampling_task_states(retention_days, dry_run="--yes" not in sys.argv[2:])
-    elif len(sys.argv) > 1 and sys.argv[1] == "--cli":
-        main()
-    else:
-        run_gui()
+    formation_script_entrypoint.dispatch_main(_current_module_namespace(), sys.argv)
 
 
 

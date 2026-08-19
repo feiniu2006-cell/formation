@@ -34,6 +34,7 @@ from formation_tool.db import game_type_config_runtime
 from formation_tool.group_weight import group_weight_builder
 from formation_tool.group_weight import group_weight_entrypoints
 from formation_tool.group_weight import group_weight_logic
+from formation_tool.group_weight import group_weight_demo
 from formation_tool.group_weight import group_weight_pair_sets
 from formation_tool.group_weight import group_weight_storage
 from formation_tool.group_weight import group_weight_runner
@@ -262,6 +263,120 @@ class GroupWeightLogicTests(unittest.TestCase):
         self.assertTrue(group_weight_logic.should_infer_zero_rebate("1", [0, 1000], {"1"}))
         self.assertFalse(group_weight_logic.should_infer_zero_rebate("1", [1000, 2000], {"1"}))
         self.assertFalse(group_weight_logic.should_infer_zero_rebate("1", [0, 1000], set()))
+
+    def test_demo_preview_text_shows_actual_rtp_after_zero_inference(self):
+        deps = SimpleNamespace(
+            buy_group_mode="buy",
+            is_extra_buy_mode=lambda _mode: False,
+            default_buy_group_weight_rules=lambda: [],
+            default_demo_target_rtps=lambda: {"1": 0.96},
+            get_group_weight_rtp_role=lambda _mode: "normal",
+            get_buy_group_multiplier_for_mode=lambda _mode: 1,
+            get_ex_group_multiplier=lambda: 1,
+            get_group_weight_write_game_type=lambda mode: int(mode),
+            get_group_weight_mode_name=lambda mode: str(mode),
+        )
+
+        text = group_weight_demo.build_demo_group_weight_preview_text(
+            "1",
+            0,
+            {"1": [{"rebate_min": 0, "weight": 0}, {"rebate_min": 1, "weight": 10}]},
+            {},
+            {"1": [0, 1000]},
+            {},
+            {"1": True},
+            target_rtps={"1": 0.5},
+            zero_rebate_inference_modes={"1"},
+            deps=deps,
+        )
+
+        self.assertIn("targetRTP=0.5", text)
+        self.assertIn("实际RTP=0.5", text)
+        self.assertIn("rebate0_weight=10", text)
+
+    def test_demo_preview_without_rebate_zero_does_not_show_target_rtp(self):
+        deps = SimpleNamespace(
+            buy_group_mode="buy",
+            is_extra_buy_mode=lambda _mode: False,
+            default_buy_group_weight_rules=lambda: [],
+            default_demo_target_rtps=lambda: {"1": 0.96},
+            get_group_weight_rtp_role=lambda _mode: "normal",
+            get_buy_group_multiplier_for_mode=lambda _mode: 1,
+            get_ex_group_multiplier=lambda: 1,
+            get_group_weight_write_game_type=lambda mode: int(mode),
+            get_group_weight_mode_name=lambda mode: str(mode),
+        )
+
+        text = group_weight_demo.build_demo_group_weight_preview_text(
+            "1",
+            0,
+            {"1": [{"rebate_min": 1, "weight": 10}]},
+            {},
+            {"1": [1000]},
+            {},
+            {"1": True},
+            target_rtps={"1": 0.5},
+            zero_rebate_inference_modes={"1"},
+            deps=deps,
+        )
+
+        self.assertNotIn("targetRTP=", text)
+        self.assertIn("实际RTP=1", text)
+
+    def test_demo_buy_generation_accepts_written_game_type_zero_inference_key(self):
+        deps = SimpleNamespace(
+            buy_group_mode="buy",
+            is_extra_buy_mode=lambda _mode: False,
+            default_buy_group_weight_rules=lambda: [],
+            default_demo_target_rtps=lambda: {"buy": 0.5},
+            get_group_weight_rtp_role=lambda _mode: "buy",
+            get_buy_group_multiplier_for_mode=lambda _mode: 1,
+            get_ex_group_multiplier=lambda: 1,
+            get_group_weight_write_game_type=lambda mode: 99 if mode == "buy" else int(mode),
+            get_group_weight_mode_name=lambda mode: str(mode),
+        )
+
+        rows, info = group_weight_demo.build_demo_group_weight_rows_for_mode(
+            "buy",
+            [0, 1000],
+            [{"rebate_min": 0, "weight": 0}, {"rebate_min": 1, "weight": 10}],
+            {"buy": 0.5},
+            {"99"},
+            deps=deps,
+        )
+
+        self.assertTrue(info["should_infer"])
+        self.assertEqual(rows, [(99, 0, 0, 10), (99, 0, 1000, 10)])
+
+    def test_demo_common_config_skips_special_table_without_special_formation(self):
+        calls = []
+        deps = SimpleNamespace(
+            get_group_weight_formation_exists=lambda: {'2': False, '3': True},
+            get_weight_config_db=lambda: 'config',
+            connect_to_database=lambda _db_name: object(),
+            game_id='77',
+            weight_type_id=1,
+            special_weight_by_last_digit={0: 40},
+            free_weight_by_last_digit={0: 20},
+            special_weight_table='game_group_special_weight_config',
+            free_game_config_table='game_group_free_game_config',
+            print_step_error=lambda *_args: None,
+            rollback_safely=lambda _conn: None,
+            close_safely=lambda _conn: None,
+        )
+        runner = group_weight_runner
+        original_replace = runner._replace_demo_trigger_rows
+        try:
+            runner._replace_demo_trigger_rows = lambda _conn, _db, table, _columns, row, **_kwargs: (
+                calls.append((table, row)) or True
+            )
+            self.assertTrue(runner.write_demo_trigger_weight_config(deps=deps))
+        finally:
+            runner._replace_demo_trigger_rows = original_replace
+
+        self.assertEqual(calls, [
+            ('game_group_free_game_config', (77, 1, 0, 20, 0, 0)),
+        ])
 
     def test_group_weight_preview_points_use_actual_rebates(self):
         preview = group_weight_builder.group_weight_preview
@@ -721,6 +836,19 @@ class GroupWeightLogicTests(unittest.TestCase):
             for mode in formation_defaults.GROUP_WEIGHT_RULES:
                 self.assertIsNot(group_defaults["0"][mode], group_defaults[group_suffix][mode])
 
+    def test_demo_group_weight_rules_are_independent_from_normal_rules(self):
+        demo_rules = formation_defaults.DEMO_GROUP_WEIGHT_RULES
+        demo_defaults = formation_defaults.DEFAULT_DEMO_GROUP_WEIGHT_RULES
+        normal_rules = formation_defaults.GROUP_WEIGHT_RULES
+
+        self.assertEqual(demo_defaults, demo_rules)
+        self.assertIsNot(demo_rules, normal_rules)
+        self.assertIsNot(demo_defaults, normal_rules)
+        for mode in demo_rules:
+            self.assertIsNot(demo_rules[mode], normal_rules[mode])
+            self.assertIsNot(demo_defaults[mode], demo_rules[mode])
+            self.assertIsNot(demo_rules[mode][0], normal_rules[mode][0])
+
     def test_group_one_to_four_defaults_are_explicitly_declared(self):
         source = inspect.getsource(formation_defaults)
 
@@ -1125,6 +1253,122 @@ class GroupWeightLogicTests(unittest.TestCase):
                             delattr(module, name)
                     else:
                         setattr(module, name, value)
+
+    def test_buy_pair_building_accepts_written_game_type_zero_inference_key(self):
+        names = (
+            "WEIGHT_GROUP_IDS",
+            "GROUP_WEIGHT_RULES",
+            "GROUP_WEIGHT_GROUP_RULES",
+            "ZERO_REBATE_INFERENCE_MODES",
+            "BUY_GROUP_MODE",
+            "is_extra_buy_mode",
+            "get_extra_buy_group_by_mode",
+            "get_group_weight_write_game_type",
+        )
+        missing = object()
+        old_values = {name: getattr(group_weight_builder, name, missing) for name in names}
+        try:
+            group_weight_builder.WEIGHT_GROUP_IDS = (9000,)
+            group_weight_builder.GROUP_WEIGHT_RULES = {
+                "buy": [
+                    {"rebate_min": 0, "weight": 0},
+                    {"rebate_min": 800, "weight": 10},
+                ]
+            }
+            group_weight_builder.GROUP_WEIGHT_GROUP_RULES = {}
+            group_weight_builder.ZERO_REBATE_INFERENCE_MODES = {"99"}
+            group_weight_builder.BUY_GROUP_MODE = "buy"
+            group_weight_builder.is_extra_buy_mode = lambda _mode: False
+            group_weight_builder.get_extra_buy_group_by_mode = lambda _mode: None
+            group_weight_builder.get_group_weight_write_game_type = lambda mode: 99 if mode == "buy" else int(mode)
+
+            pair_set = group_weight_builder.build_group_weight_pair_set_for_mode(
+                "buy",
+                [0, 800, 1000],
+            )
+        finally:
+            for name, value in old_values.items():
+                if value is missing:
+                    if hasattr(group_weight_builder, name):
+                        delattr(group_weight_builder, name)
+                else:
+                    setattr(group_weight_builder, name, value)
+
+        self.assertEqual(
+            group_weight_pair_sets.get_pairs_for_group(pair_set, 9000),
+            [(800, 10), (1000, 10)],
+        )
+        self.assertEqual(
+            group_weight_pair_sets.get_stats_for_group(pair_set, 9000).get("skipped_rebate_zero"),
+            1,
+        )
+        self.assertTrue(
+            group_weight_pair_sets.get_stats_for_group(pair_set, 9000).get("infer_zero")
+        )
+
+    def test_default_buy_generation_infers_zero_when_written_game_type_is_enabled(self):
+        missing = object()
+        configured_modules = (
+            group_weight_builder,
+            group_weight_builder.group_weight_row_helpers,
+            group_weight_builder.group_weight_original_modes,
+            group_weight_builder.group_weight_buy_modes,
+            group_weight_builder.group_weight_ex_modes,
+            group_weight_builder.group_weight_preview,
+        )
+        configured_names = (
+            "WEIGHT_GROUP_IDS",
+            "BUY_GROUP_ENABLED",
+            "BUY_GROUP_MODE",
+            "GAME_TYPE_NAMES",
+            "BUY_GROUP_MULTIPLIER",
+            "EXTRA_BUY_GROUPS",
+            "ZERO_REBATE_INFERENCE_MODES",
+            "get_group_weight_write_game_type",
+            "get_group_target_rtp_ratio",
+        )
+        original_values = {
+            module: {
+                name: getattr(module, name, missing)
+                for name in configured_names
+            }
+            for module in configured_modules
+        }
+        try:
+            group_weight_builder.configure(
+                WEIGHT_GROUP_IDS=(9000,),
+                BUY_GROUP_ENABLED=True,
+                BUY_GROUP_MODE="buy",
+                GAME_TYPE_NAMES={"buy": "buy"},
+                BUY_GROUP_MULTIPLIER=1,
+                EXTRA_BUY_GROUPS=[],
+                ZERO_REBATE_INFERENCE_MODES={"99"},
+                get_group_weight_write_game_type=lambda mode: 99 if mode == "buy" else int(mode),
+                get_group_target_rtp_ratio=lambda _group_id: 0.5,
+            )
+            pair_set = group_weight_pair_sets.make_pair_set(
+                {"0": [(1000, 10)]},
+                {"0": {"skipped_zero": 0, "skipped_rebate_zero": 1, "infer_zero": True}},
+            )
+
+            rows = []
+            with contextlib.redirect_stdout(io.StringIO()):
+                group_weight_builder.append_buy_group_weight_modes(
+                    rows,
+                    rebates_by_mode={"buy": [0, 1000]},
+                    mode_exists={"buy": True},
+                    mode_pairs={"buy": pair_set},
+                )
+        finally:
+            for module, values in original_values.items():
+                for name, value in values.items():
+                    if value is missing:
+                        if hasattr(module, name):
+                            delattr(module, name)
+                    else:
+                        setattr(module, name, value)
+
+        self.assertEqual(rows, [(99, 9000, 0, 10), (99, 9000, 1000, 10)])
 
 
 class GroupWeightRunnerWarningTests(unittest.TestCase):

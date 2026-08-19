@@ -15,6 +15,8 @@ import pandas as pd
 from formation_tool.core import formation_defaults
 from formation_tool.core import runtime_context_sync
 from formation_tool.sampling import direct_sampling_runner
+from formation_tool.sampling import sampling_metrics
+from formation_tool.sampling import sampling_mysql_sync
 from formation_tool.sampling import sampling_task_state
 from formation_tool.sampling import sampling_table_utils
 from formation_tool.utils import log_utils
@@ -31,26 +33,10 @@ SAMPLE_TABLE_COPY_CHUNK_SIZE = 1000
 MYSQL_DUMP_IMPORT_RETRIES = 5
 SAMPLING_DETAILED_LOG = False
 SAMPLING_INCREMENT_DB = formation_defaults.DEFAULT_SAMPLING_INCREMENT_DB
-SLOW_REBATE_SUMMARY_LIMIT = 5
-SAMPLING_TIMING_KEYS = (
-    'id_query_seconds',
-    'row_read_seconds',
-    'row_write_seconds',
-    'id_remap_seconds',
-    'rebate_seconds',
-)
-SAMPLING_COUNTER_KEYS = (
-    'random_range_attempts',
-    'random_range_returned_ids',
-    'random_range_added_ids',
-    'random_range_duplicate_ids',
-    'full_scan_fallback_count',
-    'sparse_shortcut_count',
-)
 
 
 class SamplingFieldMismatchError(RuntimeError):
-    user_dialog_title = "补充采样字段不一致"
+    user_dialog_title = "\u8865\u5145\u91c7\u6837\u5b57\u6bb5\u4e0d\u4e00\u81f4"
 
     def __init__(self, message):
         super().__init__(message)
@@ -58,113 +44,51 @@ class SamplingFieldMismatchError(RuntimeError):
 
 
 def new_sampling_timing():
-    timing = {key: 0.0 for key in SAMPLING_TIMING_KEYS}
-    timing.update({key: 0 for key in SAMPLING_COUNTER_KEYS})
-    timing.update({
-        'rebate_count': 0,
-        'row_count': 0,
-        'rebate_details': [],
-        'full_scan_fallback_rebates': [],
-    })
-    return timing
+    return sampling_metrics.new_sampling_timing()
 
 
 def add_sampling_timing(timing, key, elapsed):
-    if timing is not None:
-        timing[key] = float(timing.get(key, 0.0)) + float(elapsed)
+    return sampling_metrics.add_sampling_timing(timing, key, elapsed)
 
 
 def add_sampling_counter(timing, key, value=1):
-    if timing is not None:
-        timing[key] = int(timing.get(key, 0)) + int(value)
+    return sampling_metrics.add_sampling_counter(timing, key, value)
 
 
 def is_sampling_detailed_log_enabled():
-    return bool(globals().get('SAMPLING_DETAILED_LOG', False))
+    return sampling_metrics.is_sampling_detailed_log_enabled(
+        globals().get('SAMPLING_DETAILED_LOG', False)
+    )
 
 
 def print_sampling_detail(message=""):
-    if is_sampling_detailed_log_enabled():
-        print(message)
+    return sampling_metrics.print_sampling_detail(
+        message,
+        detailed_log_enabled=globals().get('SAMPLING_DETAILED_LOG', False),
+        print_func=print,
+    )
 
 
 def print_sampling_timing_summary(timing):
-    if not timing:
-        return
-    print(
-        f"\n采样性能汇总：rebate数 {int(timing.get('rebate_count', 0))}，"
-        f"写入行数 {int(timing.get('row_count', 0))}，"
-        f"rebate循环 {timing.get('rebate_seconds', 0.0):.2f} 秒"
+    return sampling_metrics.print_sampling_timing_summary(
+        timing,
+        detailed_log_enabled=globals().get('SAMPLING_DETAILED_LOG', False),
+        print_func=print,
     )
-    print(
-        f"  阶段耗时：查ID {timing.get('id_query_seconds', 0.0):.2f} 秒，"
-        f"读完整行 {timing.get('row_read_seconds', 0.0):.2f} 秒，"
-        f"写临时表 {timing.get('row_write_seconds', 0.0):.2f} 秒，"
-        f"append改ID {timing.get('id_remap_seconds', 0.0):.2f} 秒"
-    )
-    random_returned = int(timing.get('random_range_returned_ids', 0))
-    random_added = int(timing.get('random_range_added_ids', 0))
-    random_duplicates = int(timing.get('random_range_duplicate_ids', 0))
-    hit_rate = (random_added / random_returned * 100.0) if random_returned else 0.0
-    print_sampling_detail(
-        f"  随机范围候选：尝试 {int(timing.get('random_range_attempts', 0))} 次，"
-        f"返回 {random_returned} 个，新增 {random_added} 个，"
-        f"重复 {random_duplicates} 个，新增率 {hit_rate:.1f}%"
-    )
-    fallback_rebates = timing.get('full_scan_fallback_rebates') or []
-    if fallback_rebates:
-        preview = ', '.join(str(value) for value in fallback_rebates[:8])
-        if len(fallback_rebates) > 8:
-            preview += ', ...'
-        print(f"  全量 DISTINCT fallback：{len(fallback_rebates)} 个 rebate ({preview})")
-    else:
-        print_sampling_detail("  全量 DISTINCT fallback：0 个 rebate")
-    details = sorted(
-        timing.get('rebate_details') or [],
-        key=lambda item: item.get('total_seconds', 0.0),
-        reverse=True,
-    )
-    if details and is_sampling_detailed_log_enabled():
-        print(f"  最慢rebate Top {min(len(details), SLOW_REBATE_SUMMARY_LIMIT)}：")
-        for item in details[:SLOW_REBATE_SUMMARY_LIMIT]:
-            print(
-                f"    rebate={item.get('rebate')} 总耗时 {item.get('total_seconds', 0.0):.2f} 秒，"
-                f"行数={int(item.get('row_count', 0))}，"
-                f"查ID={item.get('id_query_seconds', 0.0):.2f}，"
-                f"读行={item.get('row_read_seconds', 0.0):.2f}，"
-                f"写入={item.get('row_write_seconds', 0.0):.2f}，"
-                f"改ID={item.get('id_remap_seconds', 0.0):.2f}，"
-                f"随机尝试={int(item.get('random_range_attempts', 0))}，"
-                f"fallback={'是' if int(item.get('full_scan_fallback_count', 0)) else '否'}"
-            )
 
 
 def snapshot_sampling_timing(timing):
-    if timing is None:
-        return {}
-    snapshot = {key: float(timing.get(key, 0.0)) for key in SAMPLING_TIMING_KEYS}
-    snapshot.update({key: int(timing.get(key, 0)) for key in SAMPLING_COUNTER_KEYS})
-    return snapshot
+    return sampling_metrics.snapshot_sampling_timing(timing)
 
 
 def record_rebate_timing(timing, start, row_count=0, target_rebate=None, before=None):
-    if timing is None:
-        return
-    total_seconds = time.perf_counter() - start
-    add_sampling_timing(timing, 'rebate_seconds', total_seconds)
-    timing['rebate_count'] = int(timing.get('rebate_count', 0)) + 1
-    timing['row_count'] = int(timing.get('row_count', 0)) + int(row_count or 0)
-    before = before or {}
-    detail = {
-        'rebate': target_rebate,
-        'row_count': int(row_count or 0),
-        'total_seconds': total_seconds,
-    }
-    for key in ('id_query_seconds', 'row_read_seconds', 'row_write_seconds', 'id_remap_seconds'):
-        detail[key] = float(timing.get(key, 0.0)) - float(before.get(key, 0.0))
-    for key in SAMPLING_COUNTER_KEYS:
-        detail[key] = int(timing.get(key, 0)) - int(before.get(key, 0))
-    timing.setdefault('rebate_details', []).append(detail)
+    return sampling_metrics.record_rebate_timing(
+        timing,
+        start,
+        row_count=row_count,
+        target_rebate=target_rebate,
+        before=before,
+    )
 
 
 def configure(**values):
@@ -1117,133 +1041,68 @@ def copy_table_between_engines(source_engine, target_engine, source_table_name, 
 
 
 def find_mysql_cli_executable(executable_name):
-    """Find mysql/mysqldump without requiring users to type the full path."""
-    names = [executable_name]
-    if not executable_name.lower().endswith('.exe'):
-        names.append(f"{executable_name}.exe")
-
-    candidates = []
-    for name in names:
-        found = shutil.which(name)
-        if found:
-            candidates.append(found)
-
-    for env_key in ('ProgramFiles', 'ProgramFiles(x86)'):
-        base_dir = os.environ.get(env_key)
-        if not base_dir:
-            continue
-        for version in ('8.4', '8.0', '5.7'):
-            for name in names:
-                candidates.append(os.path.join(base_dir, 'MySQL', f'MySQL Server {version}', 'bin', name))
-
-    for path in candidates:
-        if path and os.path.exists(path):
-            return path
-    raise RuntimeError(f"未找到 {executable_name}，请确认 MySQL Client 已安装并加入 PATH")
+    return sampling_mysql_sync.find_mysql_cli_executable(
+        executable_name,
+        shutil_module=shutil,
+        os_module=os,
+    )
 
 
 def mysql_cli_env(db_config):
-    env = os.environ.copy()
-    password = db_config.get('password')
-    if password:
-        env['MYSQL_PWD'] = str(password)
-    return env
+    return sampling_mysql_sync.mysql_cli_env(db_config, os_module=os)
 
 
 def mysql_cli_common_args(executable_path, db_config):
-    return [
-        executable_path,
-        f"--host={db_config['host']}",
-        f"--port={int(db_config['port'])}",
-        f"--user={db_config['user']}",
-        "--protocol=TCP",
-        "--default-character-set=utf8mb4",
-    ]
+    return sampling_mysql_sync.mysql_cli_common_args(executable_path, db_config)
 
 
 def decode_cli_output(value):
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode('utf-8', errors='replace').strip()
-    return str(value).strip()
+    return sampling_mysql_sync.decode_cli_output(value)
 
 
 def run_mysql_cli_command(args, *, env, label, input_path=None):
-    input_file = None
-    try:
-        if input_path:
-            input_file = open(input_path, 'rb')
-        completed = subprocess.run(
-            args,
-            stdin=input_file,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-            check=False,
-        )
-    finally:
-        if input_file is not None:
-            input_file.close()
-
-    if completed.returncode != 0:
-        stdout_text = decode_cli_output(completed.stdout)
-        stderr_text = decode_cli_output(completed.stderr)
-        detail = stderr_text or stdout_text or "无错误输出"
-        raise RuntimeError(f"{label}失败，退出码 {completed.returncode}：{detail[-2000:]}")
-    return completed
+    return sampling_mysql_sync.run_mysql_cli_command(
+        args,
+        env=env,
+        label=label,
+        input_path=input_path,
+        subprocess_module=subprocess,
+    )
 
 
 def dump_mysql_table_data(source_db_config, source_table_name, dump_path, *, label):
-    mysqldump_path = find_mysql_cli_executable('mysqldump')
-    args = mysql_cli_common_args(mysqldump_path, source_db_config) + [
-        "--column-statistics=0",
-        "--single-transaction",
-        "--quick",
-        "--skip-lock-tables",
-        "--no-create-info",
-        "--skip-triggers",
-        "--skip-add-locks",
-        "--skip-comments",
-        "--compact",
-        "--hex-blob",
-        f"--result-file={dump_path}",
-        source_db_config['database'],
+    return sampling_mysql_sync.dump_mysql_table_data(
+        source_db_config,
         source_table_name,
-    ]
-    env = mysql_cli_env(source_db_config)
-    try:
-        return run_mysql_cli_command(args, env=env, label=label)
-    except RuntimeError as exc:
-        if "column-statistics" not in str(exc):
-            raise
-        retry_args = [arg for arg in args if arg != "--column-statistics=0"]
-        return run_mysql_cli_command(retry_args, env=env, label=label)
+        dump_path,
+        label=label,
+        os_module=os,
+        shutil_module=shutil,
+        subprocess_module=subprocess,
+    )
 
 
 def backticked_identifier_bytes(table_name):
-    return f"`{table_name}`".encode('utf-8')
+    return sampling_mysql_sync.backticked_identifier_bytes(table_name)
 
 
 def rewrite_dump_table_name(dump_path, import_path, source_table_name, target_table_name):
-    source_token = backticked_identifier_bytes(source_table_name)
-    target_token = backticked_identifier_bytes(target_table_name)
-    with open(dump_path, 'rb') as source_file, open(import_path, 'wb') as target_file:
-        for line in source_file:
-            target_file.write(line.replace(source_token, target_token))
+    return sampling_mysql_sync.rewrite_dump_table_name(
+        dump_path,
+        import_path,
+        source_table_name,
+        target_table_name,
+    )
 
 
 def import_mysql_dump_file(target_db_config, import_path, *, label):
-    mysql_path = find_mysql_cli_executable('mysql')
-    args = mysql_cli_common_args(mysql_path, target_db_config) + [
-        f"--database={target_db_config['database']}",
-        "--binary-mode",
-    ]
-    return run_mysql_cli_command(
-        args,
-        env=mysql_cli_env(target_db_config),
+    return sampling_mysql_sync.import_mysql_dump_file(
+        target_db_config,
+        import_path,
         label=label,
-        input_path=import_path,
+        os_module=os,
+        shutil_module=shutil,
+        subprocess_module=subprocess,
     )
 
 
@@ -1256,59 +1115,23 @@ def dump_import_table_between_databases(
     label,
     reprepare_target=None,
 ):
-    temp_dir = tempfile.mkdtemp(prefix='formation_mysql_dump_')
-    dump_path = os.path.join(temp_dir, 'source.sql')
-    import_path = os.path.join(temp_dir, 'target.sql')
-    try:
-        max_retries = max(1, int(globals().get('MYSQL_DUMP_IMPORT_RETRIES', MYSQL_DUMP_IMPORT_RETRIES) or 1))
-        retry_delay = int(globals().get('DB_RETRY_DELAY', 0) or 0)
-        for attempt in range(1, max_retries + 1):
-            check_cancelled()
-            try:
-                with contextlib.suppress(Exception):
-                    os.remove(dump_path)
-                print(f"{label}：使用 mysqldump 导出 {source_table_name} (第 {attempt}/{max_retries} 次)")
-                dump_mysql_table_data(
-                    source_db_config,
-                    source_table_name,
-                    dump_path,
-                    label=f"{label} dump导出",
-                )
-                if attempt > 1:
-                    print(f"{label}：第 {attempt} 次重试导出成功")
-                break
-            except Exception as exc:
-                if attempt >= max_retries:
-                    raise
-                print(f"{label}：dump导出失败 (第{attempt}次)：{exc}")
-                print(f"等待{retry_delay}秒后重试...")
-                interruptible_sleep(retry_delay)
-        check_cancelled()
-        rewrite_dump_table_name(dump_path, import_path, source_table_name, target_table_name)
-        for attempt in range(1, max_retries + 1):
-            check_cancelled()
-            if attempt > 1 and callable(reprepare_target):
-                reprepare_target()
-            try:
-                print(f"{label}：导入到目标临时表 {target_table_name} (第 {attempt}/{max_retries} 次)")
-                import_mysql_dump_file(
-                    target_db_config,
-                    import_path,
-                    label=f"{label} dump导入",
-                )
-                if attempt > 1:
-                    print(f"{label}：第 {attempt} 次重试导入成功")
-                return True
-            except Exception as exc:
-                if attempt >= max_retries:
-                    raise
-                print(f"{label}：dump导入失败 (第{attempt}次)：{exc}")
-                print(f"等待{retry_delay}秒后重试...")
-                interruptible_sleep(retry_delay)
-        return False
-    finally:
-        with contextlib.suppress(Exception):
-            shutil.rmtree(temp_dir)
+    return sampling_mysql_sync.dump_import_table_between_databases(
+        source_db_config,
+        target_db_config,
+        source_table_name,
+        target_table_name,
+        label=label,
+        reprepare_target=reprepare_target,
+        max_retries=globals().get('MYSQL_DUMP_IMPORT_RETRIES', MYSQL_DUMP_IMPORT_RETRIES),
+        retry_delay=globals().get('DB_RETRY_DELAY', 0),
+        check_cancelled_func=globals().get('check_cancelled', lambda: None),
+        sleep_func=globals().get('interruptible_sleep', lambda _seconds: None),
+        print_func=print,
+        os_module=os,
+        shutil_module=shutil,
+        subprocess_module=subprocess,
+        tempfile_module=tempfile,
+    )
 
 
 def fetch_and_write_sample_rows_in_chunks(

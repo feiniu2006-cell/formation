@@ -29,11 +29,22 @@ class RunnerDeps:
     ex_purchase_mode: str
     get_config_db: Callable[[], str]
     get_final_db: Callable[[], str]
+    get_weight_config_db: Callable[[], str]
     get_ex_buy_group_enabled: Callable[[], bool]
+    game_id: str
+    weight_type_id: int
+    special_weight_table: str
+    free_game_config_table: str
+    special_weight_by_last_digit: dict
+    free_weight_by_last_digit: dict
+    connect_to_database: Callable[[str], Any]
+    quote_identifier: Callable[..., str]
     get_group_weight_table_name: Callable[[], str]
+    get_demo_group_weight_table_name: Callable[[], str]
     get_group_weight_formation_exists: Callable[[], dict]
     get_active_group_weight_modes: Callable[[dict], list]
     build_group_weight_generation_context: Callable[[], dict]
+    build_demo_group_weight_generation_context: Callable[[], dict]
     print_group_weight_generation_summary: Callable[[dict], None]
     connect_group_weight_databases: Callable[[str, str], tuple]
     load_group_weight_generation_data: Callable[[Any, dict], tuple]
@@ -42,6 +53,10 @@ class RunnerDeps:
     build_group_weight_zero_weight_write_rows: Callable[..., list]
     build_normalized_group_weight_generation_rows: Callable[..., Any]
     build_group_weight_rows_from_loaded_data: Callable[..., Any]
+    build_demo_group_weight_rows: Callable[..., Any]
+    get_demo_group_weight_rules: Callable[[], dict]
+    get_demo_group_weight_target_rtps: Callable[[], dict]
+    get_demo_zero_rebate_inference_modes: Callable[[], set]
     normalize_group_weight_rows: Callable[[list], list]
     print_no_group_weight_rows: Callable[[], None]
     print_group_weight_validation_failed: Callable[[Exception], None]
@@ -186,11 +201,30 @@ def build_runner_deps(callbacks, constants, runtime_getters, log_callbacks):
         ex_purchase_mode=constants.ex_purchase_mode,
         get_config_db=runtime_getters.get_config_db,
         get_final_db=runtime_getters.get_final_db,
+        get_weight_config_db=getattr(runtime_getters, 'get_weight_config_db', runtime_getters.get_config_db),
         get_ex_buy_group_enabled=runtime_getters.get_ex_buy_group_enabled,
+        game_id=str(getattr(runtime_getters, 'game_id', '0')),
+        weight_type_id=int(getattr(runtime_getters, 'weight_type_id', 0)),
+        special_weight_table=getattr(runtime_getters, 'special_weight_table', 'game_group_special_weight_config'),
+        free_game_config_table=getattr(runtime_getters, 'free_game_config_table', 'game_group_free_game_config'),
+        special_weight_by_last_digit=dict(getattr(runtime_getters, 'special_weight_by_last_digit', {}) or {}),
+        free_weight_by_last_digit=dict(getattr(runtime_getters, 'free_weight_by_last_digit', {}) or {}),
+        connect_to_database=getattr(callbacks, 'connect_to_database', lambda _db_name: None),
+        quote_identifier=getattr(callbacks, 'quote_identifier', lambda value, _label=None: f"`{value}`"),
         get_group_weight_table_name=callbacks.get_group_weight_table_name,
+        get_demo_group_weight_table_name=getattr(
+            callbacks,
+            'get_demo_group_weight_table_name',
+            lambda: f"{callbacks.get_group_weight_table_name()}_demo",
+        ),
         get_group_weight_formation_exists=callbacks.get_group_weight_formation_exists,
         get_active_group_weight_modes=callbacks.get_active_group_weight_modes,
         build_group_weight_generation_context=callbacks.build_group_weight_generation_context,
+        build_demo_group_weight_generation_context=getattr(
+            callbacks,
+            'build_demo_group_weight_generation_context',
+            lambda: {},
+        ),
         print_group_weight_generation_summary=callbacks.print_group_weight_generation_summary,
         connect_group_weight_databases=callbacks.connect_group_weight_databases,
         load_group_weight_generation_data=callbacks.load_group_weight_generation_data,
@@ -199,6 +233,10 @@ def build_runner_deps(callbacks, constants, runtime_getters, log_callbacks):
         build_group_weight_zero_weight_write_rows=callbacks.build_group_weight_zero_weight_write_rows,
         build_normalized_group_weight_generation_rows=callbacks.build_normalized_group_weight_generation_rows,
         build_group_weight_rows_from_loaded_data=callbacks.build_group_weight_rows_from_loaded_data,
+        build_demo_group_weight_rows=getattr(callbacks, 'build_demo_group_weight_rows', lambda *_args: ([], {})),
+        get_demo_group_weight_rules=getattr(callbacks, 'get_demo_group_weight_rules', lambda: {}),
+        get_demo_group_weight_target_rtps=getattr(callbacks, 'get_demo_group_weight_target_rtps', lambda: {}),
+        get_demo_zero_rebate_inference_modes=getattr(callbacks, 'get_demo_zero_rebate_inference_modes', lambda: set()),
         normalize_group_weight_rows=callbacks.normalize_group_weight_rows,
         print_no_group_weight_rows=log_callbacks.print_no_group_weight_rows,
         print_group_weight_validation_failed=log_callbacks.print_group_weight_validation_failed,

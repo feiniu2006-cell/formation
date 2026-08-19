@@ -77,6 +77,14 @@ def should_infer_zero_rebate(mode, rebates, enabled_modes):
     return str(mode) in {str(item) for item in (enabled_modes or set())} and has_rebate_zero(rebates)
 
 
+def should_infer_zero_rebate_for_modes(modes, rebates, enabled_modes):
+    """Check zero-rebate inference against equivalent mode keys."""
+    enabled = {str(item) for item in (enabled_modes or set())}
+    if not enabled or not has_rebate_zero(rebates):
+        return False
+    return any(str(mode) in enabled for mode in modes if mode is not None)
+
+
 def infer_zero_rebate_weight(nonzero_pairs, target_rtp):
     """Infer rebate=0 weight with ceiling rounding."""
     if target_rtp <= 0:

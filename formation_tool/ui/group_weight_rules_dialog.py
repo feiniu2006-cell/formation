@@ -141,9 +141,10 @@ def choose_default_rtp_group_option(group_ids, formatter, default_group_id=DEFAU
 class GroupWeightRulesDialog(LoadingDialogBase):
     """group_weight 权重配置窗口。"""
 
-    def __init__(self, app, deps):
+    def __init__(self, app, deps, demo_mode=False):
         super().__init__(app)
         self.deps = deps
+        self.demo_mode = bool(demo_mode or getattr(deps, 'demo_mode', False))
         self.formation_exists = {}
         self.preview_rebates = {}
         self.preview_status = {}
@@ -178,7 +179,7 @@ class GroupWeightRulesDialog(LoadingDialogBase):
 
     def open(self):
         self.create_dialog(
-            group_weight_ui_text.DIALOG_TITLE,
+            getattr(self.deps, 'dialog_title', group_weight_ui_text.DIALOG_TITLE),
             ui_layout_defaults.GROUP_WEIGHT_DIALOG,
         )
         self.show_loading()
@@ -249,7 +250,10 @@ class GroupWeightRulesDialog(LoadingDialogBase):
 
         self.show_missing_config_warning()
         self.build_header()
-        self.build_rtp_selector()
+        if getattr(self, 'demo_mode', False):
+            self.build_demo_rtp_state()
+        else:
+            self.build_rtp_selector()
         self.build_rule_tabs()
         self.build_buttons()
         self.update_rtp_info()
@@ -337,6 +341,41 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         for var in self.ex_target_rtp_vars.values():
             var.trace_add("write", lambda *_args: self.update_rtp_info())
 
+    def build_demo_rtp_state(self):
+        self.current_group_var = tk.StringVar(value="0")
+        self.rtp_info_var = tk.StringVar()
+        self.current_rule_group_suffix = 0
+        self.group_suffixes = [0]
+        self.group_suffix_var = tk.IntVar(value=0)
+        self.special_target_rtp_var = tk.StringVar(value="")
+        self.ex_target_rtp_vars = {}
+        targets = getattr(self.deps, 'demo_target_rtps', {}) or {}
+        defaults = getattr(self.deps, 'default_demo_target_rtps', {}) or {}
+        self.demo_target_rtp_vars = {}
+        for mode in self.displayed_modes:
+            value = targets.get(str(mode), defaults.get(str(mode), ""))
+            if value == "" and getattr(self.deps, 'is_extra_buy_mode', lambda _mode: False)(mode):
+                value = targets.get(self.deps.buy_group_mode, defaults.get(self.deps.buy_group_mode, ""))
+            self.demo_target_rtp_vars[str(mode)] = tk.StringVar(
+                value="" if value is None else str(value)
+            )
+            self.demo_target_rtp_vars[str(mode)].trace_add(
+                "write",
+                lambda *_args: self.update_rtp_info(),
+            )
+        ttk.Label(
+            self.frame,
+            text="演示用配置固定写入 group_id=0；每个局类型按本页目标RTP独立反推。",
+            foreground="#555555",
+        ).grid(row=2, column=0, sticky="w", pady=(0, 8))
+        ttk.Label(
+            self.frame,
+            textvariable=self.rtp_info_var,
+            wraplength=760,
+            justify="right",
+            foreground="#333333",
+        ).grid(row=2, column=0, sticky="e", pady=(0, 8))
+
     def initialize_group_rule_state(self):
         self.base_rules = clone_mode_rules_map(getattr(self.deps, 'rules', {}))
         self.default_base_rules = clone_mode_rules_map(getattr(self.deps, 'default_rules', {}))
@@ -367,13 +406,19 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             self.extra_buy_rules_by_mode[mode] = rules_by_suffix
 
     def get_selected_group_id(self):
+        if getattr(self, 'demo_mode', False):
+            return 0
         text = self.current_group_var.get() if self.current_group_var is not None else ""
         return int(text.split(" ", 1)[0])
 
     def get_selected_group_suffix(self):
+        if getattr(self, 'demo_mode', False):
+            return 0
         return self.get_selected_group_id() % 10
 
     def get_available_group_suffixes(self):
+        if getattr(self, 'demo_mode', False):
+            return [0]
         suffixes = sorted({
             int(group_id) % 10
             for group_id in getattr(self.deps, 'weight_group_ids', ())
@@ -418,6 +463,12 @@ class GroupWeightRulesDialog(LoadingDialogBase):
 
     def get_rules_for_mode_group(self, mode, group_suffix):
         mode = str(mode)
+        if getattr(self, 'demo_mode', False):
+            if mode in getattr(self, 'base_rules', {}):
+                return self.base_rules.get(mode, [])
+            if getattr(self.deps, 'is_extra_buy_mode', lambda _mode: False)(mode):
+                return self.base_rules.get(self.deps.buy_group_mode, self.get_default_rules_for_mode(mode))
+            return self.get_default_rules_for_mode(mode)
         is_extra_buy_mode = getattr(self.deps, 'is_extra_buy_mode', lambda _mode: False)
         if is_extra_buy_mode(mode):
             rules_by_suffix = getattr(self, 'extra_buy_rules_by_mode', {}).get(mode, {})
@@ -439,6 +490,13 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         if self.rule_editor is None:
             return True
         try:
+            if getattr(self, 'demo_mode', False):
+                for mode in self.displayed_modes:
+                    self.base_rules[str(mode)] = self.parse_group_weight_rule_rows(
+                        mode,
+                        self.rule_editor.get_rows(mode),
+                    )
+                return True
             suffix_rules = clone_mode_rules_map(self.group_rules_by_suffix.get(str(group_suffix), {}))
             for mode in self.displayed_modes:
                 parsed = self.parse_group_weight_rule_rows(
@@ -821,6 +879,23 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         return [dict(rule) for rule in self.get_default_rules_for_mode(mode)]
 
     def reset_group_weight_rules_to_defaults(self):
+        if getattr(self, 'demo_mode', False):
+            if not messagebox.askyesno(
+                "恢复默认权重规则",
+                "将演示用 group_weight 的当前可见规则恢复为默认值，是否继续？",
+                parent=self.dialog,
+            ):
+                return
+            for mode in getattr(self.rule_editor, 'mode_rows', {}):
+                self.rule_editor.clear_rule_rows(mode)
+                default_rules = self.get_default_rules_for_mode(mode)
+                self.base_rules[str(mode)] = [dict(rule) for rule in default_rules]
+                for rule in default_rules:
+                    self.rule_editor.add_rule_row(mode, rule)
+            self.apply_zero_rebate_entry_states()
+            self.refresh_zero_rebate_option_states()
+            self.update_rtp_info()
+            return
         current_suffix = getattr(self, 'current_rule_group_suffix', None)
         if current_suffix is None:
             try:
@@ -849,6 +924,29 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         self.update_rtp_info()
 
     def build_mode_options(self, mode, options_frame):
+        if getattr(self, 'demo_mode', False):
+            row = self.build_zero_rebate_inference_option(mode, options_frame, row=0)
+            if self.mode_has_rebate_zero(mode):
+                ttk.Label(options_frame, text="演示目标RTP").grid(row=row, column=0, sticky="w", padx=(0, 8))
+                target_var = getattr(self, 'demo_target_rtp_vars', {}).get(str(mode))
+                if target_var is None:
+                    target_var = tk.StringVar(value="")
+                    self.demo_target_rtp_vars[str(mode)] = target_var
+                ttk.Entry(options_frame, textvariable=target_var, width=14).grid(row=row, column=1, sticky="w")
+                ttk.Label(
+                    options_frame,
+                    text="rebate=0反推开启时按此目标RTP独立计算；购买/EX局会沿用主界面倍数折算。",
+                    foreground="#555555",
+                ).grid(row=row, column=2, sticky="w", padx=(10, 0))
+                row += 1
+            ttk.Label(
+                options_frame,
+                textvariable=self.rtp_info_var,
+                foreground="#333333",
+                wraplength=980,
+                justify="left",
+            ).grid(row=row, column=0, columnspan=3, sticky="w", pady=(4, 0))
+            return True
         row = self.build_zero_rebate_inference_option(mode, options_frame, row=0)
         row = self.build_independent_rtp_option(mode, options_frame, row=row)
         if mode == '2':
@@ -1101,6 +1199,27 @@ class GroupWeightRulesDialog(LoadingDialogBase):
                 errors[mode] = str(e)
         return targets, errors
 
+    def parse_demo_target_rtps_for_preview(self):
+        # Keep saved targets for modes not currently sampled at rebate=0.  They are
+        # inactive in this dialog, but may be needed after the sampling data changes.
+        targets = dict(getattr(self.deps, 'demo_target_rtps', {}) or {})
+        errors = {}
+        for mode, var in getattr(self, 'demo_target_rtp_vars', {}).items():
+            if not self.mode_has_rebate_zero(mode):
+                continue
+            text = var.get().strip()
+            if not text:
+                errors[mode] = f"{self.deps.get_mode_name(mode)}演示目标RTP不能为空"
+                continue
+            try:
+                targets[mode] = self.deps.parse_positive_float_text(
+                    text,
+                    f"{self.deps.get_mode_name(mode)}演示目标RTP",
+                )
+            except ValueError as e:
+                errors[mode] = str(e)
+        return targets, errors
+
     def update_rtp_info(self, _event=None):
         if getattr(self, '_loading_group_rules', False):
             return
@@ -1108,6 +1227,9 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             return
         self.apply_zero_rebate_entry_states()
         self.refresh_zero_rebate_option_states()
+        if getattr(self, 'demo_mode', False):
+            self.update_demo_rtp_info()
+            return
         text = self.current_group_var.get()
         try:
             group_id = int(text.split(" ", 1)[0])
@@ -1187,6 +1309,61 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         )
         self.update_weight_chart_points(current_mode, chart_points)
 
+    def update_demo_rtp_info(self):
+        current_mode = self.get_current_mode()
+        rules_by_mode = {}
+        parse_errors = {}
+        for mode in self.dialog_modes:
+            rules_by_mode[mode], parse_errors[mode] = self.parse_dialog_rules(mode)
+            if mode not in getattr(self.rule_editor, 'mode_rows', {}) and parse_errors[mode] is None:
+                rules_by_mode[mode] = self.get_initial_rules_for_mode(mode, 0)
+        demo_target_rtps, target_errors = self.parse_demo_target_rtps_for_preview()
+        parse_errors.update(target_errors)
+        preview_kwargs = dict(
+            target_rtps=demo_target_rtps,
+            zero_rebate_inference_modes=self.collect_zero_rebate_inference_modes(),
+            buy_multiplier=self.deps.buy_multiplier,
+            ex_multiplier=self.deps.ex_multiplier,
+            buy_enabled=self.deps.buy_enabled or self.deps.has_extra_buy_groups(),
+        )
+        chart_points = []
+        try:
+            current_rtp_text = self.deps.build_preview_text(
+                current_mode,
+                0,
+                rules_by_mode,
+                parse_errors,
+                self.preview_rebates,
+                self.preview_status,
+                self.formation_exists,
+                **preview_kwargs,
+            )
+        except ValueError as e:
+            current_rtp_text = str(e)
+        except Exception as e:
+            print(f"[WARN] demo group_weight preview failed: {e}")
+            current_rtp_text = f"预览生成失败：{e}"
+        else:
+            if hasattr(self.deps, 'build_preview_points'):
+                try:
+                    chart_points = self.deps.build_preview_points(
+                        current_mode,
+                        0,
+                        rules_by_mode,
+                        parse_errors,
+                        self.preview_rebates,
+                        self.preview_status,
+                        self.formation_exists,
+                        **preview_kwargs,
+                    )
+                except Exception as e:
+                    print(f"[WARN] demo group_weight chart preview failed: {e}")
+                    chart_points = []
+        self.rtp_info_var.set(
+            f"演示用：group_id=0，当前{self.deps.get_mode_name(current_mode)}配置RTP={current_rtp_text}"
+        )
+        self.update_weight_chart_points(current_mode, chart_points)
+
     def parse_group_weight_rule_rows(self, mode, rows):
         mode_rules = []
         mode_name = self.deps.get_mode_name(mode)
@@ -1215,6 +1392,16 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         return mode_rules
 
     def collect_group_weight_rules(self, include_buy):
+        if getattr(self, 'demo_mode', False):
+            allowed = {str(mode) for mode in self.deps.group_weight_modes}
+            rules = {
+                str(mode): [dict(rule) for rule in mode_rules]
+                for mode, mode_rules in self.base_rules.items()
+                if str(mode) in allowed
+            }
+            for mode in self.deps.group_weight_modes:
+                rules.setdefault(mode, self.get_default_rules_for_mode(mode))
+            return self.deps.validate_rules(rules)
         rules = clone_mode_rules_map(self.base_rules)
         for mode in self.deps.group_weight_modes:
             if mode == self.deps.buy_group_mode and not include_buy:
@@ -1310,6 +1497,8 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         return self.deps.normalize_extra_buy_groups(groups)
 
     def apply_and_save_config(self):
+        if getattr(self, 'demo_mode', False):
+            return self.apply_and_save_demo_config()
         try:
             if self.current_rule_group_suffix is not None:
                 if not self.save_visible_rules_for_group(
@@ -1355,8 +1544,47 @@ class GroupWeightRulesDialog(LoadingDialogBase):
             return False
         return True
 
+    def apply_and_save_demo_config(self):
+        try:
+            if not self.save_visible_rules_for_group(0, show_error=True):
+                return False
+            rules = self.collect_group_weight_rules(
+                self.deps.buy_enabled or self.deps.has_extra_buy_groups()
+            )
+            rules_for_save = self.filter_group_weight_rules_for_save(rules)
+            target_rtps, target_errors = self.parse_demo_target_rtps_for_preview()
+            if target_errors:
+                raise ValueError(next(iter(target_errors.values())))
+        except ValueError as e:
+            messagebox.showerror("演示用group_weight配置错误", str(e), parent=self.dialog)
+            return False
+
+        self.deps.apply_rules(rules)
+        apply_targets = getattr(self.deps, 'apply_demo_target_rtps', None)
+        if callable(apply_targets):
+            apply_targets(target_rtps)
+        self.deps.apply_zero_rebate_inference_modes(self.collect_zero_rebate_inference_modes())
+        save_settings = getattr(self.app, 'save_app_settings', None)
+        if save_settings is not None and save_settings(
+            silent=True,
+            demo_group_weight_rules_override=rules_for_save,
+            demo_group_weight_options_override={
+                'target_rtps': target_rtps,
+                'zero_rebate_inference_modes': sorted(self.collect_zero_rebate_inference_modes()),
+            },
+        ) is False:
+            return False
+        return True
+
     def save_config(self):
         if not self.apply_and_save_config():
+            return
+        if getattr(self, 'demo_mode', False):
+            messagebox.showinfo(
+                "保存配置",
+                "演示用 group_weight 配置已保存到当前游戏的配置 JSON。",
+                parent=self.dialog,
+            )
             return
         saved_suffixes = sorted(
             getattr(self, 'group_rules_by_suffix', {}),
@@ -1374,6 +1602,13 @@ class GroupWeightRulesDialog(LoadingDialogBase):
         if not self.apply_and_save_config():
             return
         self.dialog.destroy()
+        if getattr(self, 'demo_mode', False):
+            self.app.run_task(
+                getattr(self.deps, 'save_task_name', "生成演示用group_weight"),
+                self.deps.generate_config,
+                preflight={"kind": getattr(self.deps, 'preflight_kind', "demo_group_weight")},
+            )
+            return
         self.app.run_task(
             "生成group_weight",
             self.deps.generate_config,

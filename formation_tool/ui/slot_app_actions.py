@@ -49,6 +49,14 @@ def build_action_groups(app, deps):
                         preflight={"kind": "common_config"},
                     ),
                 ),
+                (
+                    "demo通用表配置",
+                    lambda: app.run_task(
+                        "demo通用表配置",
+                        deps.write_demo_common_configs,
+                        preflight={"kind": "demo_common_config"},
+                    ),
+                ),
             ],
         ),
         (

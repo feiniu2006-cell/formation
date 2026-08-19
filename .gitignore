@@ -17,3 +17,19 @@ db_compare/db_config.json
 formation_tool/formation_tool_settings.json
 formation_tool/formation_tool_settings.json.bak
 formation_tool/formation_tool_settings/
+
+# Security: never commit local database credentials or runtime state.
+.agents/
+**/__pycache__/
+**/db_config.py
+**/db_config.json
+**/db_config*.json
+**/build/
+**/build_encrypted/
+**/build_backup_db/
+**/dist/
+**/dist_encrypted/
+**/*.exe
+**/*.spec
+**/reports/
+formation_tool/formation_sampling_tasks/

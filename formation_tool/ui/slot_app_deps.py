@@ -12,6 +12,7 @@ class UiDeps:
     run_all_supplemental_sampling_jobs: Any
     mirror_sampling_temp_to_target: Any
     write_common_configs: Any
+    write_demo_common_configs: Any
     test_selected_database_connections: Any
     normalize_extra_buy_groups: Any
     get_extra_buy_groups: Any
@@ -41,7 +42,10 @@ class SettingsDeps:
     default_rebate_rules: Any
     default_direct_count_tiers: Any
     default_group_weight_rules: Any
+    default_demo_group_weight_rules: Any
     default_group_weight_group_rules: Any
+    default_demo_group_weight_target_rtps: Any
+    default_demo_zero_rebate_inference_modes: Any
     default_special_group_target_rtp: Any
     default_ex_group_target_rtps: Any
     default_zero_rebate_inference_modes: Any
@@ -56,7 +60,10 @@ class SettingsDeps:
     get_sampling_increment_db: Any
     get_sampling_auto_sync_to_target: Any
     get_group_weight_rules: Any
+    get_demo_group_weight_rules: Any
     get_group_weight_group_rules: Any
+    get_demo_group_weight_target_rtps: Any
+    get_demo_zero_rebate_inference_modes: Any
     get_group_weight_formation_exists: Any
     get_displayed_group_weight_modes: Any
     get_special_group_target_rtp: Any
@@ -97,7 +104,10 @@ class SettingsDeps:
     apply_weight_config: Any
     apply_rebate_rules_config: Any
     apply_group_weight_rules_config: Any
+    apply_demo_group_weight_rules_config: Any
     apply_group_weight_group_rules_config: Any
+    apply_demo_group_weight_target_rtps_config: Any
+    apply_demo_zero_rebate_inference_modes_config: Any
     apply_special_group_target_rtp: Any
     apply_ex_group_target_rtps_config: Any
     apply_zero_rebate_inference_modes_config: Any
@@ -143,6 +153,7 @@ class TaskDeps:
     ex_purchase_mode: Any
     buy_group_mode: Any
     get_group_weight_rules: Any
+    get_demo_group_weight_rules: Any
     get_group_weight_group_rules: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
@@ -219,6 +230,13 @@ class GroupWeightDialogDeps:
     parse_positive_float_text: Any
     build_preview_text: Any
     build_preview_points: Any
+    dialog_title: Any
+    demo_mode: Any
+    demo_target_rtps: Any
+    default_demo_target_rtps: Any
+    apply_demo_target_rtps: Any
+    save_task_name: Any
+    preflight_kind: Any
     validate_rules: Any
     normalize_extra_buy_groups: Any
     apply_special_target: Any
@@ -252,6 +270,9 @@ class ProcessAppDeps:
 
     def build_group_weight_dialog_deps(self):
         return build_group_weight_dialog_deps(self.ctx)
+
+    def build_demo_group_weight_dialog_deps(self):
+        return build_demo_group_weight_dialog_deps(self.ctx)
 
     def get_ready_status_text(self):
         return build_ready_status_text(self.ctx.get_runtime_state())
@@ -301,6 +322,7 @@ def build_ui_deps(ctx):
         run_all_supplemental_sampling_jobs=ctx.run_all_supplemental_sampling_jobs,
         mirror_sampling_temp_to_target=ctx.mirror_sampling_temp_to_target,
         write_common_configs=ctx.write_common_configs,
+        write_demo_common_configs=ctx.write_demo_common_configs,
         test_selected_database_connections=ctx.test_selected_database_connections,
         normalize_extra_buy_groups=ctx.normalize_extra_buy_groups,
         get_extra_buy_groups=ctx.get_extra_buy_groups,
@@ -331,7 +353,10 @@ def build_settings_deps(ctx):
         default_rebate_rules=ctx.default_rebate_rules,
         default_direct_count_tiers=ctx.default_direct_count_tiers,
         default_group_weight_rules=ctx.default_group_weight_rules,
+        default_demo_group_weight_rules=ctx.default_demo_group_weight_rules,
         default_group_weight_group_rules=getattr(ctx, 'default_group_weight_group_rules', {}),
+        default_demo_group_weight_target_rtps=ctx.default_demo_group_weight_target_rtps,
+        default_demo_zero_rebate_inference_modes=ctx.default_demo_zero_rebate_inference_modes,
         default_special_group_target_rtp=ctx.default_special_group_target_rtp,
         default_ex_group_target_rtps=ctx.default_ex_group_target_rtps,
         default_zero_rebate_inference_modes=ctx.default_zero_rebate_inference_modes,
@@ -346,7 +371,10 @@ def build_settings_deps(ctx):
         get_sampling_increment_db=ctx.get_sampling_increment_db,
         get_sampling_auto_sync_to_target=ctx.get_sampling_auto_sync_to_target,
         get_group_weight_rules=ctx.get_group_weight_rules,
+        get_demo_group_weight_rules=ctx.get_demo_group_weight_rules,
         get_group_weight_group_rules=getattr(ctx, 'get_group_weight_group_rules', lambda: {}),
+        get_demo_group_weight_target_rtps=ctx.get_demo_group_weight_target_rtps,
+        get_demo_zero_rebate_inference_modes=ctx.get_demo_zero_rebate_inference_modes,
         get_group_weight_formation_exists=ctx.get_group_weight_formation_exists,
         get_displayed_group_weight_modes=ctx.get_displayed_group_weight_modes,
         get_special_group_target_rtp=ctx.get_special_group_target_rtp,
@@ -405,11 +433,14 @@ def build_settings_deps(ctx):
         apply_weight_config=ctx.apply_weight_config,
         apply_rebate_rules_config=ctx.apply_rebate_rules_config,
         apply_group_weight_rules_config=ctx.apply_group_weight_rules_config,
+        apply_demo_group_weight_rules_config=ctx.apply_demo_group_weight_rules_config,
         apply_group_weight_group_rules_config=getattr(
             ctx,
             'apply_group_weight_group_rules_config',
             lambda _rules: None,
         ),
+        apply_demo_group_weight_target_rtps_config=ctx.apply_demo_group_weight_target_rtps_config,
+        apply_demo_zero_rebate_inference_modes_config=ctx.apply_demo_zero_rebate_inference_modes_config,
         apply_special_group_target_rtp=ctx.apply_special_group_target_rtp,
         apply_ex_group_target_rtps_config=ctx.apply_ex_group_target_rtps_config,
         apply_zero_rebate_inference_modes_config=ctx.apply_zero_rebate_inference_modes_config,
@@ -456,6 +487,7 @@ def build_task_deps(ctx):
         ex_purchase_mode=ctx.ex_purchase_mode,
         buy_group_mode=ctx.buy_group_mode,
         get_group_weight_rules=ctx.get_group_weight_rules,
+        get_demo_group_weight_rules=ctx.get_demo_group_weight_rules,
         get_group_weight_group_rules=getattr(ctx, 'get_group_weight_group_rules', lambda: {}),
         get_special_group_target_rtp=ctx.get_special_group_target_rtp,
         get_ex_group_target_rtps=ctx.get_ex_group_target_rtps,
@@ -547,6 +579,13 @@ def build_group_weight_dialog_deps(ctx):
         parse_positive_float_text=ctx.parse_positive_float_text,
         build_preview_text=ctx.build_group_weight_preview_text,
         build_preview_points=ctx.build_group_weight_preview_points,
+        dialog_title="group_weight 权重配置",
+        demo_mode=False,
+        demo_target_rtps={},
+        default_demo_target_rtps={},
+        apply_demo_target_rtps=lambda _targets: None,
+        save_task_name="生成group_weight",
+        preflight_kind="group_weight",
         validate_rules=ctx.validate_group_weight_rules,
         normalize_extra_buy_groups=ctx.normalize_extra_buy_groups,
         apply_special_target=ctx.apply_special_group_target_rtp,
@@ -565,6 +604,38 @@ def build_group_weight_dialog_deps(ctx):
         apply_group_rules=getattr(ctx, 'apply_group_weight_group_rules_config', lambda _rules: None),
         apply_extra_buy_groups=ctx.apply_extra_buy_groups_config,
         generate_config=ctx.generate_group_weight_config,
+    )
+
+
+def build_demo_group_weight_dialog_deps(ctx):
+    """Return dependencies consumed by GroupWeightRulesDialog in demo mode."""
+    deps = build_group_weight_dialog_deps(ctx)
+    return GroupWeightDialogDeps(
+        **{
+            **deps.__dict__,
+            'rules': ctx.clone_group_weight_rules(ctx.get_demo_group_weight_rules()),
+            'group_rules': {'0': ctx.clone_group_weight_rules(ctx.get_demo_group_weight_rules())},
+            'default_rules': ctx.clone_group_weight_rules(ctx.default_demo_group_weight_rules),
+            'default_group_rules': {'0': ctx.clone_group_weight_rules(ctx.default_demo_group_weight_rules)},
+            'zero_rebate_inference_modes': ctx.get_demo_zero_rebate_inference_modes(),
+            'default_zero_rebate_inference_modes': ctx.default_demo_zero_rebate_inference_modes,
+            'independent_rtp_modes': set(),
+            'default_independent_rtp_modes': set(),
+            'build_preview_text': ctx.build_demo_group_weight_preview_text,
+            'build_preview_points': ctx.build_demo_group_weight_preview_points,
+            'dialog_title': "演示用group_weight配置",
+            'demo_mode': True,
+            'demo_target_rtps': ctx.get_demo_group_weight_target_rtps(),
+            'default_demo_target_rtps': dict(ctx.default_demo_group_weight_target_rtps),
+            'apply_demo_target_rtps': ctx.apply_demo_group_weight_target_rtps_config,
+            'apply_rules': ctx.apply_demo_group_weight_rules_config,
+            'apply_group_rules': lambda _rules: None,
+            'apply_zero_rebate_inference_modes': ctx.apply_demo_zero_rebate_inference_modes_config,
+            'apply_independent_rtp_modes': lambda _modes: None,
+            'generate_config': ctx.generate_demo_group_weight_config,
+            'save_task_name': "生成演示用group_weight",
+            'preflight_kind': "demo_group_weight",
+        }
     )
 
 

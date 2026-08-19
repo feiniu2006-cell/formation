@@ -107,4 +107,11 @@ def build_dangerous_task_confirmation(title, preflight, *, deps):
             f"目标库：{runtime['final_db']}\n\n"
             "会写入特殊局/免费局触发权重和下注配置等通用配置。"
         )
+    if kind == "demo_common_config":
+        db_name = runtime.get("weight_config_db") or runtime.get("config_db")
+        return (
+            "即将写入 demo 通用表配置：\n\n"
+            f"目标库：{db_name}\n\n"
+            "会写入 game_group_special_weight_config / game_group_free_game_config 的 group_id=0 行。"
+        )
     return None

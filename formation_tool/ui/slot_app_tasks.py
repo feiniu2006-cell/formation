@@ -180,6 +180,8 @@ class SlotAppTaskMixin:
             return "sampling"
         if title == "通用表配置":
             return "common_config"
+        if title == "demo通用表配置":
+            return "demo_common_config"
         return None
 
     def append_task_header_log(self, title, preflight=None):
@@ -195,6 +197,8 @@ class SlotAppTaskMixin:
         elif kind == "common_config":
             self.append_trigger_weight_config_log()
             self.append_purchase_config_log()
+        elif kind == "demo_common_config":
+            self.append_trigger_weight_config_log()
 
     def build_dangerous_task_confirmation(self, title, preflight):
         return task_confirmations.build_dangerous_task_confirmation(

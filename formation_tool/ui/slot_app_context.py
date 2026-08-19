@@ -15,6 +15,7 @@ class SlotAppDepsContext:
     mirror_sampling_temp_to_target: Any
     sync_sampling_temp_results: Any
     write_common_configs: Any
+    write_demo_common_configs: Any
     test_selected_database_connections: Any
     normalize_extra_buy_groups: Any
     default_trigger_weights: Any
@@ -37,7 +38,10 @@ class SlotAppDepsContext:
     default_rebate_rules: Any
     default_direct_count_tiers: Any
     default_group_weight_rules: Any
+    default_demo_group_weight_rules: Any
     default_group_weight_group_rules: Any
+    default_demo_group_weight_target_rtps: Any
+    default_demo_zero_rebate_inference_modes: Any
     default_special_group_target_rtp: Any
     default_ex_group_target_rtps: Any
     default_zero_rebate_inference_modes: Any
@@ -52,7 +56,10 @@ class SlotAppDepsContext:
     get_sampling_increment_db: Any
     get_sampling_auto_sync_to_target: Any
     get_group_weight_rules: Any
+    get_demo_group_weight_rules: Any
     get_group_weight_group_rules: Any
+    get_demo_group_weight_target_rtps: Any
+    get_demo_zero_rebate_inference_modes: Any
     get_special_group_target_rtp: Any
     get_ex_group_target_rtps: Any
     get_zero_rebate_inference_modes: Any
@@ -96,7 +103,10 @@ class SlotAppDepsContext:
     apply_weight_config: Any
     apply_rebate_rules_config: Any
     apply_group_weight_rules_config: Any
+    apply_demo_group_weight_rules_config: Any
     apply_group_weight_group_rules_config: Any
+    apply_demo_group_weight_target_rtps_config: Any
+    apply_demo_zero_rebate_inference_modes_config: Any
     apply_special_group_target_rtp: Any
     apply_ex_group_target_rtps_config: Any
     apply_zero_rebate_inference_modes_config: Any
@@ -171,8 +181,11 @@ class SlotAppDepsContext:
     parse_positive_float_text: Any
     build_group_weight_preview_text: Any
     build_group_weight_preview_points: Any
+    build_demo_group_weight_preview_text: Any
+    build_demo_group_weight_preview_points: Any
     validate_group_weight_rules: Any
     generate_group_weight_config: Any
+    generate_demo_group_weight_config: Any
     run_task_preflight: Any
 
 
@@ -187,6 +200,9 @@ REQUIRED_RUNTIME_ATTRS = (
     'sampling_temp_db',
     'sampling_auto_sync_to_target',
     'group_weight_rules',
+    'demo_group_weight_rules',
+    'demo_group_weight_target_rtps',
+    'demo_zero_rebate_inference_modes',
     'group_weight_group_rules',
     'zero_rebate_inference_modes',
     'independent_rtp_modes',
@@ -218,6 +234,7 @@ REQUIRED_MODULE_ATTRS = (
     'mirror_sampling_temp_to_target',
     'sync_sampling_temp_results',
     'write_common_configs',
+    'write_demo_common_configs',
     'test_selected_database_connections',
     'normalize_extra_buy_groups',
     'DEFAULT_TRIGGER_WEIGHTS',
@@ -240,6 +257,9 @@ REQUIRED_MODULE_ATTRS = (
     'DEFAULT_REBATE_RULES',
     'DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIERS',
     'DEFAULT_GROUP_WEIGHT_RULES',
+    'DEFAULT_DEMO_GROUP_WEIGHT_RULES',
+    'DEFAULT_DEMO_GROUP_WEIGHT_TARGET_RTPS',
+    'DEFAULT_DEMO_ZERO_REBATE_INFERENCE_MODES',
     'DEFAULT_GROUP_WEIGHT_GROUP_RULES',
     'DEFAULT_SPECIAL_GROUP_TARGET_RTP',
     'DEFAULT_EX_GROUP_TARGET_RTPS',
@@ -262,6 +282,9 @@ REQUIRED_MODULE_ATTRS = (
     'apply_weight_config',
     'apply_rebate_rules_config',
     'apply_group_weight_rules_config',
+    'apply_demo_group_weight_rules_config',
+    'apply_demo_group_weight_target_rtps_config',
+    'apply_demo_zero_rebate_inference_modes_config',
     'apply_group_weight_group_rules_config',
     'apply_special_group_target_rtp',
     'apply_ex_group_target_rtps_config',
@@ -340,8 +363,11 @@ REQUIRED_MODULE_ATTRS = (
     '_parse_positive_float_text',
     'build_group_weight_preview_text',
     'build_group_weight_preview_points',
+    'build_demo_group_weight_preview_text',
+    'build_demo_group_weight_preview_points',
     'validate_group_weight_rules',
     'generate_group_weight_config',
+    'generate_demo_group_weight_config',
     'run_task_preflight',
 )
 
@@ -366,6 +392,7 @@ def build_slot_app_deps_context(runtime, module):
         mirror_sampling_temp_to_target=m.mirror_sampling_temp_to_target,
         sync_sampling_temp_results=m.sync_sampling_temp_results,
         write_common_configs=m.write_common_configs,
+        write_demo_common_configs=m.write_demo_common_configs,
         test_selected_database_connections=m.test_selected_database_connections,
         normalize_extra_buy_groups=m.normalize_extra_buy_groups,
         default_trigger_weights=m.DEFAULT_TRIGGER_WEIGHTS,
@@ -388,7 +415,10 @@ def build_slot_app_deps_context(runtime, module):
         default_rebate_rules=m.DEFAULT_REBATE_RULES,
         default_direct_count_tiers=m.DEFAULT_REBATE_CONFIG_DIRECT_COUNT_TIERS,
         default_group_weight_rules=m.DEFAULT_GROUP_WEIGHT_RULES,
+        default_demo_group_weight_rules=m.DEFAULT_DEMO_GROUP_WEIGHT_RULES,
         default_group_weight_group_rules=getattr(m, 'DEFAULT_GROUP_WEIGHT_GROUP_RULES', {}),
+        default_demo_group_weight_target_rtps=m.DEFAULT_DEMO_GROUP_WEIGHT_TARGET_RTPS,
+        default_demo_zero_rebate_inference_modes=m.DEFAULT_DEMO_ZERO_REBATE_INFERENCE_MODES,
         default_special_group_target_rtp=m.DEFAULT_SPECIAL_GROUP_TARGET_RTP,
         default_ex_group_target_rtps=m.DEFAULT_EX_GROUP_TARGET_RTPS,
         default_zero_rebate_inference_modes=m.DEFAULT_ZERO_REBATE_INFERENCE_MODES,
@@ -403,7 +433,10 @@ def build_slot_app_deps_context(runtime, module):
         get_sampling_increment_db=lambda: runtime.sampling_increment_db,
         get_sampling_auto_sync_to_target=lambda: runtime.sampling_auto_sync_to_target,
         get_group_weight_rules=lambda: runtime.group_weight_rules,
+        get_demo_group_weight_rules=lambda: runtime.demo_group_weight_rules,
         get_group_weight_group_rules=lambda: getattr(runtime, 'group_weight_group_rules', {}),
+        get_demo_group_weight_target_rtps=lambda: dict(runtime.demo_group_weight_target_rtps),
+        get_demo_zero_rebate_inference_modes=lambda: set(runtime.demo_zero_rebate_inference_modes),
         get_special_group_target_rtp=lambda: runtime.special_group_target_rtp,
         get_ex_group_target_rtps=lambda: dict(getattr(runtime, 'ex_group_target_rtps', {})),
         get_zero_rebate_inference_modes=lambda: set(runtime.zero_rebate_inference_modes or ()),
@@ -455,11 +488,14 @@ def build_slot_app_deps_context(runtime, module):
         apply_weight_config=m.apply_weight_config,
         apply_rebate_rules_config=m.apply_rebate_rules_config,
         apply_group_weight_rules_config=m.apply_group_weight_rules_config,
+        apply_demo_group_weight_rules_config=m.apply_demo_group_weight_rules_config,
         apply_group_weight_group_rules_config=getattr(
             m,
             'apply_group_weight_group_rules_config',
             lambda _rules: None,
         ),
+        apply_demo_group_weight_target_rtps_config=m.apply_demo_group_weight_target_rtps_config,
+        apply_demo_zero_rebate_inference_modes_config=m.apply_demo_zero_rebate_inference_modes_config,
         apply_special_group_target_rtp=m.apply_special_group_target_rtp,
         apply_ex_group_target_rtps_config=m.apply_ex_group_target_rtps_config,
         apply_zero_rebate_inference_modes_config=m.apply_zero_rebate_inference_modes_config,
@@ -534,7 +570,10 @@ def build_slot_app_deps_context(runtime, module):
         parse_positive_float_text=m._parse_positive_float_text,
         build_group_weight_preview_text=m.build_group_weight_preview_text,
         build_group_weight_preview_points=m.build_group_weight_preview_points,
+        build_demo_group_weight_preview_text=m.build_demo_group_weight_preview_text,
+        build_demo_group_weight_preview_points=m.build_demo_group_weight_preview_points,
         validate_group_weight_rules=m.validate_group_weight_rules,
         generate_group_weight_config=m.generate_group_weight_config,
+        generate_demo_group_weight_config=m.generate_demo_group_weight_config,
         run_task_preflight=m.run_task_preflight,
     )

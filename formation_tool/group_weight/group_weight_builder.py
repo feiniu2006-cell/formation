@@ -13,6 +13,7 @@ from formation_tool.group_weight.group_weight_logic import (
     build_zero_weight_rebate_pairs,
     format_weighted_rtp,
     should_infer_zero_rebate,
+    should_infer_zero_rebate_for_modes,
 )
 from formation_tool.group_weight import group_weight_pair_sets
 from formation_tool.core import runtime_context_sync
@@ -75,14 +76,24 @@ def get_group_weight_rules_for_mode_group(game_type, group_id):
     return get_group_weight_rules_for_mode(game_type)
 
 
+def should_infer_zero_rebate_for_write_mode(game_type, rebates):
+    enabled_modes = globals().get('ZERO_REBATE_INFERENCE_MODES', set())
+    candidates = [game_type]
+    write_game_type_getter = globals().get('get_group_weight_write_game_type')
+    if callable(write_game_type_getter):
+        try:
+            candidates.append(write_game_type_getter(game_type))
+        except (KeyError, TypeError, ValueError):
+            pass
+    if should_infer_zero_rebate_for_modes(candidates, rebates, enabled_modes):
+        return True
+    return should_infer_zero_rebate(game_type, rebates, enabled_modes)
+
+
 def build_group_weight_pair_set_for_mode(game_type, rebates):
     pairs_by_suffix = {}
     stats_by_suffix = {}
-    infer_zero = should_infer_zero_rebate(
-        game_type,
-        rebates,
-        globals().get('ZERO_REBATE_INFERENCE_MODES', set()),
-    )
+    infer_zero = should_infer_zero_rebate_for_write_mode(game_type, rebates)
     for suffix in group_weight_pair_sets.get_weight_group_suffixes(WEIGHT_GROUP_IDS):
         rules = get_group_weight_rules_for_mode_group(game_type, suffix)
         pairs, skipped_zero, skipped_rebate_zero = build_rebate_weight_pairs(

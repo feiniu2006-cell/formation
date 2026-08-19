@@ -81,6 +81,12 @@ class SlotAppDialogMixin:
     def open_demo_group_weight_rules_dialog(self):
         if not self.can_open_config_dialog():
             return
+        GroupWeightRulesDialog(
+            self,
+            self.app_deps.build_demo_group_weight_dialog_deps(),
+            demo_mode=True,
+        ).open()
+        return
         messagebox.showinfo(
             "演示用group_weight配置",
             "演示用 group_weight 配置入口已预留，具体配置和生成逻辑待接入。",

@@ -192,6 +192,13 @@ def _check_rule_configs(report, deps):
         report.add_info("group_weight 权重规则格式已检查")
     except Exception as exc:
         report.add_fatal(f"group_weight 权重规则配置错误：{exc}")
+    get_demo_rules = getattr(deps, 'get_demo_group_weight_rules', None)
+    if get_demo_rules is not None:
+        try:
+            deps.validate_group_weight_rules(get_demo_rules())
+            report.add_info("演示用 group_weight 权重规则格式已检查")
+        except Exception as exc:
+            report.add_fatal(f"演示用 group_weight 权重规则配置错误：{exc}")
     validate_group_rules = getattr(deps, 'validate_group_weight_group_rules', None)
     get_group_rules = getattr(deps, 'get_group_weight_group_rules', None)
     if validate_group_rules is not None and get_group_rules is not None:
@@ -634,10 +641,35 @@ def preflight_group_weight(report, _metadata, deps):
         _close_connections(connections, deps)
 
 
+def preflight_demo_group_weight(report, _metadata, deps):
+    formation_exists = deps.get_group_weight_formation_exists()
+    active_modes = deps.get_active_group_weight_modes(formation_exists)
+    if not active_modes:
+        report.add_fatal("没有检测到可生成演示用 group_weight 的局类型")
+        return
+    context = deps.build_demo_group_weight_generation_context()
+    connections = _connect_required_databases(report, {context["read_db_name"], context["write_db_name"]}, deps)
+    try:
+        _check_group_weight_rebate_tables(report, active_modes, context, connections, deps)
+        report.add_info(f"演示用 group_weight 目标表：{context['write_db_name']}.{context['table_name']}")
+    finally:
+        _close_connections(connections, deps)
+
+
 def preflight_common_config(report, _metadata, deps):
     runtime = deps.get_runtime_state()
     connections = _connect_required_databases(report, {runtime.get("final_db"), runtime.get("config_db")}, deps)
     _close_connections(connections, deps)
+
+
+def preflight_demo_common_config(report, _metadata, deps):
+    runtime = deps.get_runtime_state()
+    db_name = runtime.get("weight_config_db") or runtime.get("config_db")
+    connections = _connect_required_databases(report, {db_name}, deps)
+    try:
+        report.add_info(f"demo通用表配置将写入：{db_name}.game_group_special_weight_config / game_group_free_game_config，group_id=0")
+    finally:
+        _close_connections(connections, deps)
 
 
 def preflight_sampling_temp_mirror(report, _metadata, deps):
@@ -699,8 +731,12 @@ def run_task_preflight(title, metadata=None, *, deps):
         preflight_sampling(report, metadata, deps)
     elif kind == "group_weight":
         preflight_group_weight(report, metadata, deps)
+    elif kind == "demo_group_weight":
+        preflight_demo_group_weight(report, metadata, deps)
     elif kind == "common_config":
         preflight_common_config(report, metadata, deps)
+    elif kind == "demo_common_config":
+        preflight_demo_common_config(report, metadata, deps)
     elif kind == "sampling_temp_mirror":
         preflight_sampling_temp_mirror(report, metadata, deps)
     else:
